@@ -157,9 +157,20 @@ main{padding-top:54px;position:relative;z-index:1;}
 .ew-banner.show{display:flex;}
 .ew-title{font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;color:var(--yellow);}
 .ew-desc{font-size:11px;color:#fcd34d;margin-top:2px;font-family:'IBM Plex Mono',monospace;line-height:1.4;}
-.grid-top{display:grid;grid-template-columns:1fr 1fr 310px;gap:12px;margin-bottom:12px;}
+.grid-top{display:grid;grid-template-columns:1fr 1fr 340px;gap:12px;margin-bottom:12px;}
+.grid-charts{display:grid;grid-template-columns:3fr 2fr;gap:12px;margin-bottom:12px;}
 .grid-mid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
-@media(max-width:900px){.grid-top{grid-template-columns:1fr;}.grid-mid{grid-template-columns:1fr;}}
+@media(max-width:1000px){.grid-top{grid-template-columns:1fr;}.grid-charts{grid-template-columns:1fr;}.grid-mid{grid-template-columns:1fr;}}
+/* Tooltip styles */
+.tip{position:relative;cursor:help;border-bottom:1px dashed rgba(0,229,255,0.35);}
+.tip:hover .tip-box{display:block;}
+.tip-box{display:none;position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);
+  background:#131920;border:1px solid #1e2d3d;border-radius:8px;padding:10px 13px;
+  font-family:'IBM Plex Sans',sans-serif;font-size:11px;font-weight:400;color:#dde6f0;
+  line-height:1.55;white-space:normal;width:260px;z-index:999;pointer-events:none;
+  box-shadow:0 8px 24px rgba(0,0,0,0.5);}
+.tip-box strong{color:var(--accent);font-weight:600;}
+.tip-box .tip-iso{display:block;margin-top:5px;font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:11px;overflow:hidden;}
 .card-header{padding:11px 15px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .card-title{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);}
@@ -261,28 +272,109 @@ main{padding-top:54px;position:relative;z-index:1;}
 <div id="results-screen">
   <div class="results-header"><div><div class="results-title">Diagnostic Report</div><div class="results-meta" id="results-meta">—</div></div><button class="btn" id="new-upload-btn">&#11014; New Upload</button></div>
   <div class="ew-banner" id="ew-banner"><div style="font-size:18px;flex-shrink:0;">&#9889;</div><div><div class="ew-title">Early Warning — Pre-Zone Breach Alert</div><div class="ew-desc" id="ew-desc">—</div><div style="margin-top:4px;" id="ew-clause"></div></div></div>
+
+  <!-- ROW 1: NVR metrics · ISO Zone/RUL · Radar -->
   <div class="grid-top">
-    <div class="card fade-in" style="animation-delay:0.05s"><div class="card-header"><div class="card-title">NVR Record</div><span class="badge b-green">OK</span></div><div class="card-body"><div class="nvr-grid" id="nvr-grid"></div><div style="margin-top:9px;display:flex;flex-wrap:wrap;gap:4px;" id="nvr-clauses"></div></div></div>
+    <!-- NVR Record -->
+    <div class="card fade-in" style="animation-delay:0.05s">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="tip">Measurement Record (NVR)<span class="tip-box"><strong>NVR — Normalised Vibration Record</strong><br>The computed values extracted from your uploaded file, converted to standard units. Every value here is calculated directly from your actual data — nothing is estimated.<span class="tip-iso">ISO 13373-1:2002 §5.2</span></span></span>
+        </div>
+        <span class="badge b-green">OK</span>
+      </div>
+      <div class="card-body">
+        <div class="nvr-grid" id="nvr-grid"></div>
+        <div style="margin-top:9px;display:flex;flex-wrap:wrap;gap:4px;" id="nvr-clauses"></div>
+      </div>
+    </div>
+
+    <!-- ISO Zone & RUL -->
     <div class="card fade-in" style="animation-delay:0.1s">
-      <div class="card-header"><div class="card-title">ISO Zone & RUL</div><span class="clause" id="zone-iso-clause">—</span></div>
+      <div class="card-header">
+        <div class="card-title">
+          <span class="tip">Severity Zone &amp; Remaining Life<span class="tip-box"><strong>ISO Severity Zone</strong><br>A standard scale (A→D) that tells you how serious the vibration level is. Zone A = healthy. Zone B = acceptable but watch it. Zone C = action needed soon. Zone D = danger, stop the machine.<br><br><strong>RUL</strong> = Remaining Useful Life — an estimate of how many days before the machine needs maintenance.<span class="tip-iso">ISO 10816-3:2009 · ISO 13381-1:2015</span></span></span>
+        </div>
+        <span class="clause" id="zone-iso-clause">—</span>
+      </div>
       <div class="card-body">
         <div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;">Severity Zone</div>
         <div class="zone-row"><div class="zone-seg z-A" data-z="A">A</div><div class="zone-seg z-B" data-z="B">B</div><div class="zone-seg z-C" data-z="C">C</div><div class="zone-seg z-D" data-z="D">D</div></div>
         <div id="zone-desc" style="font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:11px;line-height:1.5;"></div>
-        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:3px;"><div><div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">RUL Estimate</div><div class="rul-num" id="rul-num">—</div><div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);margin-top:2px;" id="rul-ci">—</div></div><div style="text-align:right;"><div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:4px;">TREND STATE</div><span class="badge" id="trend-badge">—</span></div></div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:3px;">
+          <div>
+            <div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;"><span class="tip">RUL Estimate<span class="tip-box"><strong>Remaining Useful Life (RUL)</strong><br>A statistical estimate of how many days before this machine is likely to need corrective maintenance, based on its current zone and condition indicators. Always shown with a confidence interval (±days).<span class="tip-iso">ISO 13381-1:2015 §5.2</span></span></span></div>
+            <div class="rul-num" id="rul-num">—</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);margin-top:2px;" id="rul-ci">—</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:4px;"><span class="tip">Trend State<span class="tip-box"><strong>Trend State</strong><br>Is the vibration getting better or worse over time?<br><br>• <strong>SWB</strong> — Stable, no change<br>• <strong>DDU</strong> — Changed but direction unclear (need more readings)<br>• <strong>PRS</strong> — Slowly getting worse<br>• <strong>PRA</strong> — Rapidly getting worse (urgent)<br>• <strong>RGI</strong> — Improving<br>• <strong>SCO</strong> — Sudden jump — investigate now<span class="tip-iso">ISO 13373-2:2016 §8.2</span></span></span></div>
+            <span class="badge" id="trend-badge">—</span>
+          </div>
+        </div>
         <div style="position:relative;"><div class="rul-track"><div class="rul-fill"></div><div class="rul-arrow" id="rul-arrow" style="left:70%"></div></div><div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--muted);margin-top:4px;"><span>0d</span><span style="color:var(--yellow)">NOW</span><span id="rul-scale-label">365d</span></div></div>
         <div style="margin-top:9px;" id="rul-clauses"></div>
       </div>
     </div>
-    <div class="card fade-in" style="animation-delay:0.15s"><div class="card-header"><div class="card-title">Fault Severity Radar</div><span class="clause">ISO 13379-1</span></div><div style="padding:6px 8px;"><canvas id="radarChart" height="205"></canvas></div></div>
+
+    <!-- Fault Severity Radar -->
+    <div class="card fade-in" style="animation-delay:0.15s">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="tip">Fault Severity Radar<span class="tip-box"><strong>Fault Severity Radar</strong><br>Shows how strongly the vibration signature matches each known fault type. The bigger the spike toward a fault name, the stronger the evidence for that fault in your data. Red/orange spikes = top suspects.<span class="tip-iso">ISO 13379-1:2012 Annex A</span></span></span>
+        </div>
+        <span class="clause">ISO 13379-1</span>
+      </div>
+      <div style="padding:8px 12px 4px;"><canvas id="radarChart" height="230"></canvas></div>
+    </div>
   </div>
-  <div class="grid-mid">
-    <div class="card fade-in" style="animation-delay:0.2s"><div class="card-header"><div class="card-title">FFT Spectrum</div><div style="display:flex;gap:5px;"><span class="clause">ISO 13373-2</span><span class="badge b-blue" id="rpm-badge">—</span></div></div><div style="padding:9px 11px 5px;"><canvas id="fftChart" height="145"></canvas></div><div style="padding:0 11px 9px;display:flex;gap:10px;flex-wrap:wrap;" id="fft-legend"></div></div>
-    <div class="card fade-in" style="animation-delay:0.25s"><div class="card-header"><div class="card-title">Fault Classification</div><span class="badge" id="top-fault-badge">—</span></div><div class="card-body" style="padding-top:7px;"><div id="fault-bars"></div><div style="margin-top:11px;padding-top:9px;border-top:1px solid var(--border);"><div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:4px;">DRIVING FEATURE</div><div style="font-size:10px;font-family:'IBM Plex Mono',monospace;" id="driving-feature">—</div></div><div style="margin-top:7px;" id="fault-clauses"></div></div></div>
+
+  <!-- ROW 2: FFT (wide) + Fault Classification -->
+  <div class="grid-charts">
+    <!-- FFT — larger -->
+    <div class="card fade-in" style="animation-delay:0.2s">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="tip">FFT Frequency Spectrum<span class="tip-box"><strong>FFT — Fast Fourier Transform</strong><br>This chart breaks your vibration signal into its individual frequency components — like separating a chord into individual notes. Each spike is a specific vibration frequency. The pattern of spikes tells us what type of fault is present.<br><br>Red spikes = the strongest fault frequency and its harmonics (repeating multiples).<span class="tip-iso">ISO 13373-2:2016 §7.2</span></span></span>
+        </div>
+        <div style="display:flex;gap:5px;align-items:center;">
+          <span class="clause">ISO 13373-2</span>
+          <span class="badge b-blue" id="rpm-badge">—</span>
+        </div>
+      </div>
+      <div style="padding:10px 14px 6px;"><canvas id="fftChart" height="200"></canvas></div>
+      <div style="padding:0 14px 12px;display:flex;gap:14px;flex-wrap:wrap;" id="fft-legend"></div>
+    </div>
+
+    <!-- Fault Classification -->
+    <div class="card fade-in" style="animation-delay:0.25s">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="tip">Fault Classification<span class="tip-box"><strong>Fault Classification</strong><br>Each bar shows how likely a specific fault type is, based on the frequency pattern and vibration statistics from your data. Scored 0–100%. Above 60% = strong evidence. Below 40% = weak / indicative only.<span class="tip-iso">ISO 13379-1:2012 §5</span></span></span>
+        </div>
+        <span class="badge" id="top-fault-badge">—</span>
+      </div>
+      <div class="card-body" style="padding-top:10px;">
+        <div style="font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:10px;line-height:1.5;">
+          <span class="tip">What do these fault types mean?<span class="tip-box"><strong>Common Fault Types</strong><br>• <strong>BPFO</strong> — Outer race bearing defect (most common)<br>• <strong>BPFI</strong> — Inner race bearing defect<br>• <strong>BSF</strong> — Rolling ball/element defect<br>• <strong>FTF</strong> — Bearing cage defect<br>• <strong>Imbalance</strong> — Unequal weight distribution on rotor<br>• <strong>Misalignment</strong> — Shaft not aligned correctly<br>• <strong>Looseness</strong> — Loose bolts, bearings or mountings<br>• <strong>Electrical</strong> — Motor winding or rotor bar faults<span class="tip-iso">ISO 13379-1:2012 Annex A</span></span></span>
+        </div>
+        <div id="fault-bars"></div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
+          <div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:4px;"><span class="tip">Driving Feature<span class="tip-box"><strong>Driving Feature</strong><br>The specific measurement that most strongly triggered the top fault classification — the estimated shaft frequency, number of matching harmonics, and the statistical indicators (Kurtosis and Crest Factor) that support the diagnosis.</span></span></div>
+          <div style="font-size:10px;font-family:'IBM Plex Mono',monospace;" id="driving-feature">—</div>
+        </div>
+        <div style="margin-top:7px;" id="fault-clauses"></div>
+      </div>
+    </div>
   </div>
+
+  <!-- ROW 3: AI Recommendations -->
   <div class="card fade-in" style="animation-delay:0.3s;">
-    <div class="card-header"><div class="card-title">AI Diagnostic Recommendations — AxiomAssist</div><div style="display:flex;gap:5px;"><span class="clause">ISO 13379-1</span><span class="clause">ISO 13381-1</span><span class="badge b-purple">Claude AI</span></div></div>
-    <div class="stream-thinking" id="stream-thinking"><div class="spinner"></div><span>Claude is analysing against ISO standards…</span></div>
+    <div class="card-header">
+      <div class="card-title">AI Diagnostic Recommendations — AxiomAssist</div>
+      <div style="display:flex;gap:5px;"><span class="clause">ISO 13379-1</span><span class="clause">ISO 13381-1</span><span class="badge b-purple">Claude AI</span></div>
+    </div>
+    <div class="stream-thinking" id="stream-thinking"><div class="spinner"></div><span>Claude is analysing your data against ISO standards…</span></div>
     <div class="reco-text typing" id="reco-text"></div>
     <div class="disclaimer-box" id="disclaimer-box"></div>
   </div>

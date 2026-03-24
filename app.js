@@ -363,6 +363,14 @@ function renderResults(){
   const zC={A:'var(--green)',B:'#60a5fa',C:'var(--yellow)',D:'var(--red)'};
   document.getElementById('results-meta').innerHTML='File: <span>'+d.filename+'</span> &nbsp;·&nbsp; Class: <span>'+d.classRow.machine_type_desc+'</span>';
   const cfL=getCFLabel(parseFloat(d.cf)), kL=getKLabel(parseFloat(d.kurt));
+  const tips = {
+    'RMS Velocity': 'The overall vibration energy level — the most important single number. Higher = more vibration. Compared against ISO limits to determine your severity zone.',
+    'Peak': 'The highest instantaneous vibration spike in the data. High peak with low RMS can indicate intermittent impact faults like bearing defects.',
+    'Crest Factor': 'Peak divided by RMS. A healthy machine is typically 2.5–3.5. Above 5 = impacting faults likely (e.g. bearing damage). Think of it as a measure of how spiky the signal is.',
+    'Kurtosis': 'A statistical measure of how sharp the vibration peaks are. Normal machinery = around 3. Above 6 = strong evidence of bearing impact faults. Your value here is key.',
+    'Deviation': 'How far the current RMS is from the learned baseline — measured in standard deviations (σ). Above 2σ = Significant Deviation. Above 3.5σ = Step-Change anomaly.',
+    'Samples': 'Total data points analysed and the sampling rate. Higher sample rates capture higher-frequency faults like bearing defects more accurately.'
+  };
   document.getElementById('nvr-grid').innerHTML=[
     {lb:'RMS Velocity',v:d.rms,u:d.cu,c:zC[d.zoneRow.zone_label]||'var(--text)'},
     {lb:'Peak',v:d.peak,u:d.cu,c:'var(--text)'},
@@ -370,7 +378,7 @@ function renderResults(){
     {lb:'Kurtosis',v:d.kurt,u:kL,c:kL==='High impacting'?'var(--orange)':kL==='Elevated'?'var(--yellow)':'var(--text)'},
     {lb:'Deviation',v:d.devSc+'σ',u:d.devRow.classification,c:['Significant Deviation','Step-Change'].includes(d.devRow.classification)?'var(--orange)':'var(--green)'},
     {lb:'Samples',v:d.n.toLocaleString(),u:(d.sr/1000).toFixed(1)+' kHz',c:'var(--accent)'},
-  ].map(i=>'<div class="nvr-item"><div class="nvr-label">'+i.lb+'</div><div class="nvr-val" style="color:'+i.c+'">'+i.v+'</div><div class="nvr-unit">'+i.u+'</div></div>').join('');
+  ].map(i=>'<div class="nvr-item"><div class="nvr-label"><span class="tip">'+i.lb+'<span class="tip-box">'+tips[i.lb]+'</span></span></div><div class="nvr-val" style="color:'+i.c+'">'+i.v+'</div><div class="nvr-unit">'+i.u+'</div></div>').join('');
   document.getElementById('nvr-clauses').innerHTML='<span class="clause">'+d.devRow.iso_reference+'</span><span class="clause">ISO 13373-1:2002 §5.2</span>';
   document.querySelectorAll('.zone-seg').forEach(el=>el.classList.toggle('current',el.dataset.z===d.zoneRow.zone_label));
   document.getElementById('zone-desc').textContent=d.zoneRow.action_required;
