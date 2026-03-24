@@ -3,23 +3,291 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AxiomAnare — Deployment Test</title>
+<title>AxiomAnare — Vibration Diagnostic Engine</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Barlow+Condensed:wght@500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+const CONFIG = {
+  iso_machine_classes: [
+    { class_id:"cls_i",    iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Small machines < 15 kW",             power_kw_min:0,   power_kw_max:15,   mounting_type:"rigid"    },
+    { class_id:"cls_ii",   iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Medium machines 15-300 kW rigid",    power_kw_min:15,  power_kw_max:300,  mounting_type:"rigid"    },
+    { class_id:"cls_ii_f", iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Medium machines 15-300 kW flexible", power_kw_min:15,  power_kw_max:300,  mounting_type:"flexible" },
+    { class_id:"cls_iii",  iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Large machines > 300 kW rigid",      power_kw_min:300, power_kw_max:50000,mounting_type:"rigid"    },
+    { class_id:"cls_iv",   iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Large machines > 300 kW flexible",   power_kw_min:300, power_kw_max:50000,mounting_type:"flexible" }
+  ],
+  iso_severity_zones: [
+    { zone_id:"zi_a",  class_id:"cls_i",    zone_label:"A", rms_lower_mm_s:0,    rms_upper_mm_s:0.71,  action_required:"No action required. Newly commissioned or well-maintained.",                     iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.1" },
+    { zone_id:"zi_b",  class_id:"cls_i",    zone_label:"B", rms_lower_mm_s:0.71, rms_upper_mm_s:1.8,   action_required:"Satisfactory for continuous operation.",                                        iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.2" },
+    { zone_id:"zi_c",  class_id:"cls_i",    zone_label:"C", rms_lower_mm_s:1.8,  rms_upper_mm_s:4.5,   action_required:"Unsatisfactory for long-term operation. Corrective action required.",            iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.3" },
+    { zone_id:"zi_d",  class_id:"cls_i",    zone_label:"D", rms_lower_mm_s:4.5,  rms_upper_mm_s:99999, action_required:"Dangerous. Risk of machine damage. Immediate shutdown warranted.",               iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.4" },
+    { zone_id:"zii_a", class_id:"cls_ii",   zone_label:"A", rms_lower_mm_s:0,    rms_upper_mm_s:2.3,   action_required:"No action required. Newly commissioned or well-maintained.",                     iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.1" },
+    { zone_id:"zii_b", class_id:"cls_ii",   zone_label:"B", rms_lower_mm_s:2.3,  rms_upper_mm_s:7.1,   action_required:"Satisfactory for continuous operation. Maintenance planning recommended.",        iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.2" },
+    { zone_id:"zii_c", class_id:"cls_ii",   zone_label:"C", rms_lower_mm_s:7.1,  rms_upper_mm_s:11.2,  action_required:"Unsatisfactory - acceptable for short periods only. Corrective action required.", iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.3" },
+    { zone_id:"zii_d", class_id:"cls_ii",   zone_label:"D", rms_lower_mm_s:11.2, rms_upper_mm_s:99999, action_required:"Dangerous. Risk of machine damage. Immediate shutdown warranted.",               iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.4" },
+    { zone_id:"ziif_a",class_id:"cls_ii_f", zone_label:"A", rms_lower_mm_s:0,    rms_upper_mm_s:3.5,   action_required:"No action required.",                                                           iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.1" },
+    { zone_id:"ziif_b",class_id:"cls_ii_f", zone_label:"B", rms_lower_mm_s:3.5,  rms_upper_mm_s:11.2,  action_required:"Satisfactory for continuous operation.",                                        iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.2" },
+    { zone_id:"ziif_c",class_id:"cls_ii_f", zone_label:"C", rms_lower_mm_s:11.2, rms_upper_mm_s:18.0,  action_required:"Unsatisfactory - corrective action required.",                                  iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.3" },
+    { zone_id:"ziif_d",class_id:"cls_ii_f", zone_label:"D", rms_lower_mm_s:18.0, rms_upper_mm_s:99999, action_required:"Dangerous. Immediate shutdown warranted.",                                      iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.4" },
+    { zone_id:"ziii_a",class_id:"cls_iii",  zone_label:"A", rms_lower_mm_s:0,    rms_upper_mm_s:3.5,   action_required:"No action required.",                                                           iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.1" },
+    { zone_id:"ziii_b",class_id:"cls_iii",  zone_label:"B", rms_lower_mm_s:3.5,  rms_upper_mm_s:11.2,  action_required:"Satisfactory for continuous operation.",                                        iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.2" },
+    { zone_id:"ziii_c",class_id:"cls_iii",  zone_label:"C", rms_lower_mm_s:11.2, rms_upper_mm_s:18.0,  action_required:"Unsatisfactory - corrective action required.",                                  iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.3" },
+    { zone_id:"ziii_d",class_id:"cls_iii",  zone_label:"D", rms_lower_mm_s:18.0, rms_upper_mm_s:99999, action_required:"Dangerous. Immediate shutdown warranted.",                                      iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.4" },
+    { zone_id:"ziv_a", class_id:"cls_iv",   zone_label:"A", rms_lower_mm_s:0,    rms_upper_mm_s:3.5,   action_required:"No action required.",                                                           iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.1" },
+    { zone_id:"ziv_b", class_id:"cls_iv",   zone_label:"B", rms_lower_mm_s:3.5,  rms_upper_mm_s:14.0,  action_required:"Satisfactory for continuous operation.",                                        iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.2" },
+    { zone_id:"ziv_c", class_id:"cls_iv",   zone_label:"C", rms_lower_mm_s:14.0, rms_upper_mm_s:22.4,  action_required:"Unsatisfactory - corrective action required.",                                  iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.3" },
+    { zone_id:"ziv_d", class_id:"cls_iv",   zone_label:"D", rms_lower_mm_s:22.4, rms_upper_mm_s:99999, action_required:"Dangerous. Immediate shutdown warranted.",                                      iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.4" }
+  ],
+  fault_frequency_rules: [
+    { rule_id:"r_bpfo",    fault_type:"BPFO - Outer Race",        freq_multiplier:3.5,  harmonic_count:3, bandwidth_pct:0.15, confidence_weight:0.40, iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
+    { rule_id:"r_bpfi",    fault_type:"BPFI - Inner Race",        freq_multiplier:5.5,  harmonic_count:3, bandwidth_pct:0.15, confidence_weight:0.40, iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
+    { rule_id:"r_bsf",     fault_type:"BSF - Rolling Element",    freq_multiplier:2.4,  harmonic_count:2, bandwidth_pct:0.15, confidence_weight:0.30, iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
+    { rule_id:"r_ftf",     fault_type:"FTF - Cage Defect",        freq_multiplier:0.4,  harmonic_count:2, bandwidth_pct:0.20, confidence_weight:0.30, iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
+    { rule_id:"r_imbal",   fault_type:"Mechanical Imbalance",     freq_multiplier:1.0,  harmonic_count:1, bandwidth_pct:0.12, confidence_weight:0.50, iso_reference:"ISO 13379-1:2012 §5.2"         },
+    { rule_id:"r_misalign",fault_type:"Shaft Misalignment",       freq_multiplier:2.0,  harmonic_count:3, bandwidth_pct:0.12, confidence_weight:0.45, iso_reference:"ISO 13379-1:2012 §5.3"         },
+    { rule_id:"r_loose",   fault_type:"Mechanical Looseness",     freq_multiplier:0.5,  harmonic_count:8, bandwidth_pct:0.10, confidence_weight:0.35, iso_reference:"ISO 13379-1:2012 §5.4"         },
+    { rule_id:"r_resonance",fault_type:"Structural Resonance",    freq_multiplier:8.0,  harmonic_count:2, bandwidth_pct:0.25, confidence_weight:0.25, iso_reference:"ISO 13379-1:2012 §5.6"         },
+    { rule_id:"r_elec",    fault_type:"Electrical - Stator/Rotor",freq_multiplier:12.0, harmonic_count:2, bandwidth_pct:0.20, confidence_weight:0.30, iso_reference:"IEC 60034-14:2003 §5.1"        }
+  ],
+  unit_conversion_factors: [
+    { from_unit:"mm/s", to_unit:"mm/s", multiplier:1.0,    offset:0, canonical_flag:1 },
+    { from_unit:"m/s",  to_unit:"mm/s", multiplier:1000.0, offset:0, canonical_flag:0 },
+    { from_unit:"in/s", to_unit:"mm/s", multiplier:25.4,   offset:0, canonical_flag:0 },
+    { from_unit:"g",    to_unit:"mm/s", multiplier:null,   offset:0, canonical_flag:0 },
+    { from_unit:"m/s2", to_unit:"mm/s", multiplier:null,   offset:0, canonical_flag:0 },
+    { from_unit:"mg",   to_unit:"g",    multiplier:0.001,  offset:0, canonical_flag:0 }
+  ],
+  baseline_deviation_thresholds: [
+    { classification:"Within Baseline",       sd_lower:0,   sd_upper:1.0, iso_reference:"ISO 13373-2:2016 §8.1" },
+    { classification:"Minor Deviation",       sd_lower:1.0, sd_upper:2.0, iso_reference:"ISO 13373-2:2016 §8.1" },
+    { classification:"Significant Deviation", sd_lower:2.0, sd_upper:3.5, iso_reference:"ISO 13373-2:2016 §8.1" },
+    { classification:"Step-Change",           sd_lower:3.5, sd_upper:9999,iso_reference:"ISO 13373-2:2016 §8.1" }
+  ],
+  trend_state_rules: [
+    { code:"SWB", label:"Stable Within Baseline",       slope_lower:-0.04, slope_upper:0.04,  sd_trigger:null, description:"Regression slope negligible.",                                   iso_reference:"ISO 13373-2:2016 §8.2" },
+    { code:"DDU", label:"Deviating - Direction Unclear", slope_lower:null,  slope_upper:null,  sd_trigger:1.0,  description:"Single snapshot - trend direction cannot be established.",     iso_reference:"ISO 13373-2:2016 §8.2" },
+    { code:"PRS", label:"Progressing - Steady",         slope_lower:0.04,  slope_upper:0.15,  sd_trigger:null, description:"Positive slope sustained. Maintenance planning recommended.", iso_reference:"ISO 13373-2:2016 §8.2" },
+    { code:"PRA", label:"Progressing - Accelerating",   slope_lower:0.15,  slope_upper:9999,  sd_trigger:null, description:"Slope steepening. Corrective action required.",                iso_reference:"ISO 13373-2:2016 §8.2" },
+    { code:"RGI", label:"Regressing - Improving",       slope_lower:-9999, slope_upper:-0.04, sd_trigger:null, description:"Consistent downward trend. Monitor to confirm.",               iso_reference:"ISO 13373-2:2016 §8.2" },
+    { code:"SCO", label:"Step-Change Outside Baseline",  slope_lower:null,  slope_upper:null,  sd_trigger:3.5,  description:"Sudden departure. Manual review required.",                   iso_reference:"ISO 13373-2:2016 §8.2" }
+  ],
+  early_warning_rule: { trigger_deviation_classes:["Significant Deviation","Step-Change"], trigger_trend_states:["PRS","PRA"], trigger_zones:["A","B"], iso_reference:"ISO 13379-1:2012 §6.4" },
+  rul_zone_base_days: [ { zone:"A", base_days:365, iso_reference:"ISO 13381-1:2015 §5.2" }, { zone:"B", base_days:180, iso_reference:"ISO 13381-1:2015 §5.2" }, { zone:"C", base_days:60, iso_reference:"ISO 13381-1:2015 §5.2" }, { zone:"D", base_days:7, iso_reference:"ISO 13381-1:2015 §5.2" } ],
+  rul_trend_modifiers: [ { trend_code:"SWB", multiplier:1.00 }, { trend_code:"DDU", multiplier:0.90 }, { trend_code:"PRS", multiplier:0.65 }, { trend_code:"PRA", multiplier:0.40 }, { trend_code:"RGI", multiplier:1.30 }, { trend_code:"SCO", multiplier:0.20 } ],
+  rul_ci_fraction: 0.22,
+  kurtosis_thresholds: [ { label:"Normal", lower:0, upper:3.0, score_bonus:0, iso_reference:"ISO 13373-2:2016 §7.4" }, { label:"Minor impacting", lower:3.0, upper:4.0, score_bonus:15, iso_reference:"ISO 13373-2:2016 §7.4" }, { label:"Elevated", lower:4.0, upper:6.0, score_bonus:30, iso_reference:"ISO 13373-2:2016 §7.4" }, { label:"High impacting", lower:6.0, upper:9999, score_bonus:50, iso_reference:"ISO 13373-2:2016 §7.4" } ],
+  crest_factor_thresholds: [ { label:"Normal", lower:0, upper:3.5, score_bonus:0, iso_reference:"ISO 13373-2:2016 §7.3" }, { label:"Elevated", lower:3.5, upper:5.0, score_bonus:10, iso_reference:"ISO 13373-2:2016 §7.3" }, { label:"High", lower:5.0, upper:9999, score_bonus:20, iso_reference:"ISO 13373-2:2016 §7.3" } ],
+  monitoring_intervals: [ { condition:"zone_D", interval_desc:"Continuous until shutdown", iso_reference:"ISO 13373-1:2002 §7.3" }, { condition:"zone_C", interval_desc:"Daily", iso_reference:"ISO 13373-1:2002 §7.3" }, { condition:"trend_PRA", interval_desc:"Every 3 days", iso_reference:"ISO 13373-1:2002 §7.3" }, { condition:"trend_PRS", interval_desc:"Weekly", iso_reference:"ISO 13373-1:2002 §7.3" }, { condition:"zone_B_or_below", interval_desc:"Monthly", iso_reference:"ISO 13373-1:2002 §7.3" } ],
+  minimum_fault_confidence_pct: 15,
+  fault_display_limit: 6,
+  ddu_min_samples: 500,
+  rul_bar_scale_days: null,
+  default_sample_rate_hz: 1000,
+  shaft_freq_search_min_hz: 5,
+  shaft_freq_search_max_hz: 200,
+  harmonic_comb_count: 4,
+  gravity_mm_s2: 9806.65,
+  chatbot_config: { model_version:"claude-sonnet-4-20250514", max_output_tokens:1000, disclaimer_text:"AI-GENERATED ANALYSIS - IMPORTANT NOTICE: This output is intended to assist qualified maintenance and reliability engineers. It does not constitute a certified engineering determination. All corrective actions must be reviewed and authorised by a suitably qualified professional. Kairos Ventures Pte Ltd accepts no liability for any decision arising from reliance on this output without independent qualified engineering review." }
+};
+</script>
 <style>
-body { background:#070a0f; color:#00e5ff; font-family:monospace; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; }
-.box { text-align:center; border:1px solid #1e2d3d; padding:40px; border-radius:12px; background:#0d1117; }
-h1 { font-size:28px; margin-bottom:10px; }
-p { color:#546e85; font-size:12px; }
+:root{--bg:#070a0f;--surface:#0d1117;--surface2:#131920;--surface3:#1a2230;--border:#1e2d3d;--border2:#243447;--accent:#00e5ff;--accent2:#0070a8;--green:#00c896;--yellow:#ffb800;--orange:#ff7a00;--red:#ff3b3b;--purple:#a855f7;--text:#dde6f0;--muted:#546e85;--dim:#2a3a4d;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;min-height:100vh;}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(ellipse 60% 40% at 15% 20%,rgba(0,112,168,0.07),transparent 60%),radial-gradient(ellipse 40% 60% at 85% 80%,rgba(0,229,255,0.04),transparent 60%),repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(0,229,255,0.016) 39px,rgba(0,229,255,0.016) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(0,229,255,0.016) 39px,rgba(0,229,255,0.016) 40px);}
+nav{position:fixed;top:0;left:0;right:0;height:54px;background:rgba(7,10,15,0.95);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 28px;gap:20px;z-index:200;}
+.logo{display:flex;align-items:center;gap:10px;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:16px;letter-spacing:0.3px;color:var(--text);}
+.logo-mark{width:30px;height:30px;border-radius:7px;background:linear-gradient(135deg,var(--accent2),var(--accent));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:var(--bg);box-shadow:0 0 12px rgba(0,229,255,0.3);}
+.logo-sub{font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;line-height:1;}
+.nav-right{margin-left:auto;}.nav-tag{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 10px;border-radius:5px;border:1px solid var(--border);color:var(--muted);}
+main{padding-top:54px;position:relative;z-index:1;}
+#upload-screen{min-height:calc(100vh - 54px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;gap:20px;}
+.hero-title{font-family:'Barlow Condensed',sans-serif;font-size:40px;font-weight:800;letter-spacing:-1px;text-align:center;background:linear-gradient(135deg,var(--text),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.hero-sub{font-size:13px;color:var(--muted);text-align:center;max-width:460px;line-height:1.7;}
+.steps-wrap{width:100%;max-width:700px;display:flex;flex-direction:column;gap:10px;}
+.step-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;transition:border-color 0.2s;}
+.step-header{display:flex;align-items:center;gap:12px;}
+.step-num{width:26px;height:26px;border-radius:50%;border:1px solid var(--border);background:var(--surface2);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:var(--muted);flex-shrink:0;transition:all 0.3s;}
+.step-num.done{background:rgba(0,200,150,0.15);color:var(--green);border-color:var(--green);}
+.step-label{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:0.3px;}
+.step-note{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);margin-left:auto;text-align:right;}
+.class-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-top:12px;}
+.class-btn{padding:9px 7px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;text-align:center;transition:all 0.15s;}
+.class-btn:hover{border-color:var(--border2);}.class-btn.selected{border-color:var(--accent);background:rgba(0,229,255,0.08);}
+.cb-id{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;color:var(--accent);margin-bottom:3px;}
+.cb-desc{font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;line-height:1.3;}
+.cb-std{font-size:8px;color:var(--dim);font-family:'IBM Plex Mono',monospace;margin-top:3px;}
+.dropzone{margin-top:12px;border:2px dashed var(--border2);border-radius:10px;padding:28px 20px;text-align:center;cursor:pointer;transition:all 0.2s;}
+.dropzone:hover{border-color:var(--accent);background:rgba(0,229,255,0.03);}
+.drop-btn{display:inline-flex;align-items:center;gap:7px;padding:10px 24px;border-radius:8px;background:var(--accent);color:var(--bg);border:none;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.2s;margin-top:4px;}
+.drop-btn:hover{background:#33eeff;transform:translateY(-1px);}
+.fmt-tag{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(0,229,255,0.2);color:var(--accent);background:rgba(0,229,255,0.06);}
+.run-card{margin-top:14px;padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;display:flex;align-items:center;gap:14px;}
+.run-btn{display:flex;align-items:center;gap:8px;padding:13px 30px;background:var(--accent);color:var(--bg);border:none;border-radius:9px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:0.5px;transition:all 0.2s;white-space:nowrap;flex-shrink:0;}
+.run-btn:hover{background:#33eeff;transform:translateY(-1px);box-shadow:0 8px 24px rgba(0,229,255,0.25);}
+.iso-strip{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;max-width:700px;}
+.iso-badge{font-family:'IBM Plex Mono',monospace;font-size:9px;padding:3px 9px;border-radius:5px;background:rgba(0,229,255,0.05);border:1px solid rgba(0,229,255,0.12);color:var(--accent);}
+#processing-screen{display:none;min-height:calc(100vh - 54px);flex-direction:column;align-items:center;justify-content:center;padding:40px;gap:18px;}
+.proc-card{width:100%;max-width:520px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px;position:relative;overflow:hidden;}
+.proc-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scan 2s linear infinite;}
+@keyframes scan{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+.proc-title{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;margin-bottom:4px;}
+.proc-file{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent);margin-bottom:18px;}
+.stage-list{display:flex;flex-direction:column;gap:7px;}
+.stage-item{display:flex;align-items:center;gap:12px;padding:9px 11px;border-radius:7px;background:var(--surface2);border:1px solid transparent;transition:all 0.3s;opacity:0.3;}
+.stage-item.active{opacity:1;border-color:rgba(0,229,255,0.2);background:rgba(0,229,255,0.04);}
+.stage-item.done{opacity:1;border-color:rgba(0,200,150,0.18);background:rgba(0,200,150,0.04);}
+.s-num{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:10px;background:var(--dim);color:var(--muted);border:1px solid var(--border);transition:all 0.3s;}
+.stage-item.active .s-num{background:rgba(0,229,255,0.15);color:var(--accent);border-color:var(--accent);}
+.stage-item.done .s-num{background:rgba(0,200,150,0.15);color:var(--green);border-color:var(--green);}
+.s-name{font-size:12px;font-weight:500;margin-bottom:1px;}.s-desc{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);}
+.s-status{font-family:'IBM Plex Mono',monospace;font-size:9px;margin-left:auto;flex-shrink:0;}
+.stage-item.active .s-status{color:var(--accent);}.stage-item.done .s-status{color:var(--green);}
+.spinner{width:12px;height:12px;border:2px solid rgba(0,229,255,0.2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0;}
+@keyframes spin{to{transform:rotate(360deg)}}
+#results-screen{display:none;padding:20px 24px 60px;}
+.results-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;gap:14px;flex-wrap:wrap;}
+.results-title{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;letter-spacing:0.3px;}
+.results-meta{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);margin-top:4px;line-height:1.6;}
+.results-meta span{color:var(--accent);}
+.btn{padding:7px 15px;border-radius:7px;font-size:12px;cursor:pointer;transition:all 0.15s;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-weight:500;display:flex;align-items:center;gap:5px;}
+.btn:hover{border-color:var(--border2);background:var(--surface2);}
+.ew-banner{display:none;margin-bottom:14px;padding:12px 18px;background:rgba(255,184,0,0.06);border:1px solid rgba(255,184,0,0.25);border-radius:10px;gap:12px;align-items:flex-start;}
+.ew-banner.show{display:flex;}
+.ew-title{font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;color:var(--yellow);}
+.ew-desc{font-size:11px;color:#fcd34d;margin-top:2px;font-family:'IBM Plex Mono',monospace;line-height:1.4;}
+.grid-top{display:grid;grid-template-columns:1fr 1fr 310px;gap:12px;margin-bottom:12px;}
+.grid-mid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+@media(max-width:900px){.grid-top{grid-template-columns:1fr;}.grid-mid{grid-template-columns:1fr;}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:11px;overflow:hidden;}
+.card-header{padding:11px 15px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.card-title{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);}
+.card-body{padding:14px;}
+.nvr-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.nvr-item{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;}
+.nvr-label{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:3px;}
+.nvr-val{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;line-height:1;}
+.nvr-unit{font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--muted);margin-top:2px;}
+.zone-row{display:flex;gap:3px;border-radius:6px;overflow:hidden;margin:7px 0 5px;}
+.zone-seg{flex:1;height:30px;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;color:white;opacity:0.22;transition:opacity 0.4s;}
+.zone-seg.current{opacity:1;}.z-A{background:#00c896;}.z-B{background:#3b82f6;}.z-C{background:#ffb800;}.z-D{background:#ff3b3b;}
+.fault-item{display:flex;align-items:center;gap:9px;padding:6px 0;border-bottom:1px solid var(--border);}
+.fault-item:last-child{border-bottom:none;}
+.fault-name{font-family:'IBM Plex Mono',monospace;font-size:10px;width:145px;flex-shrink:0;}
+.fault-bar-wrap{flex:1;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;}
+.fault-bar-fill{height:100%;border-radius:3px;transition:width 1.2s cubic-bezier(0.4,0,0.2,1);width:0%;}
+.fault-pct{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;width:36px;text-align:right;flex-shrink:0;}
+.clause{display:inline-flex;font-family:'IBM Plex Mono',monospace;font-size:9px;padding:2px 6px;border-radius:3px;background:rgba(0,229,255,0.07);border:1px solid rgba(0,229,255,0.14);color:var(--accent);margin-right:4px;white-space:nowrap;}
+.badge{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 7px;border-radius:20px;font-weight:500;}
+.b-green{background:rgba(0,200,150,0.1);color:var(--green);}.b-blue{background:rgba(0,229,255,0.1);color:var(--accent);}.b-yellow{background:rgba(255,184,0,0.1);color:var(--yellow);}.b-orange{background:rgba(255,122,0,0.1);color:var(--orange);}.b-red{background:rgba(255,59,59,0.1);color:var(--red);}.b-purple{background:rgba(168,85,247,0.1);color:var(--purple);}
+.rul-num{font-family:'Barlow Condensed',sans-serif;font-size:34px;font-weight:800;line-height:1;}
+.rul-track{height:7px;background:var(--surface3);border-radius:4px;margin:8px 0 3px;position:relative;overflow:visible;}
+.rul-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--green),var(--yellow),var(--red));}
+.rul-arrow{position:absolute;top:-3px;width:10px;height:10px;border-radius:50%;background:white;transform:translateX(-50%);transition:left 0.8s ease;}
+.stream-thinking{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);padding:11px 15px;border-bottom:1px solid var(--border);display:none;align-items:center;gap:8px;}
+.reco-text{padding:16px 18px;font-size:13px;line-height:1.85;color:var(--text);white-space:pre-wrap;font-family:'IBM Plex Sans',sans-serif;font-weight:300;}
+.reco-text.typing::after{content:'\u258B';animation:blink 0.7s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.disclaimer-box{margin:12px;padding:11px 13px;background:rgba(255,59,59,0.04);border:1px solid rgba(255,59,59,0.17);border-radius:6px;font-size:10px;line-height:1.5;color:#ff9999;font-family:'IBM Plex Mono',monospace;}
+.fade-in{animation:fadeUp 0.4s ease both;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 </style>
 </head>
 <body>
-<div class="box">
-  <h1>AxiomAnare ✓</h1>
-  <p>Deployment pipeline confirmed working.</p>
-  <p>Full app loading now...</p>
-  <p id="status" style="color:#00e5ff;margin-top:20px;">Checking...</p>
+<nav>
+  <div class="logo">
+    <div class="logo-mark">Ax</div>
+    <div><div>AxiomAnare</div><div class="logo-sub">Agnostic · Augmented AI Analysis</div></div>
+  </div>
+  <div class="nav-right"><div class="nav-tag">ISO 10816 · ISO 13373 · ISO 13379 · ISO 13381 · ISO 55001</div></div>
+</nav>
+<main>
+<!-- UPLOAD -->
+<div id="upload-screen">
+  <div><div class="hero-title">Upload. Analyse. Decide.</div><div class="hero-sub" style="margin:8px auto 0;">Drop any vibration data file. Six diagnostic stages, ISO-ringfenced, Claude AI recommendations.</div></div>
+  <div class="steps-wrap">
+    <div class="step-card">
+      <div class="step-header"><div class="step-num" id="step1-num">1</div><div class="step-label">Select Machine Class</div><div class="step-note">Sets all ISO 10816-3 zone thresholds</div></div>
+      <div class="class-grid" id="class-grid"></div>
+    </div>
+    <div class="step-card">
+      <div class="step-header"><div class="step-num" id="step2-num">2</div><div class="step-label">Select Vibration Data File</div><div class="step-note">CSV · TSV · XLSX · XLS · JSON · TXT</div></div>
+      <div class="dropzone" id="dropzone" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor=''" ondrop="onDrop(event);this.style.borderColor=''" onclick="document.getElementById('fileInput').click()">
+        <div id="drop-glyph" style="font-size:30px;margin-bottom:10px;">&#128194;</div>
+        <div id="drop-title" style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;margin-bottom:6px;">Drop file here or click to browse</div>
+        <div id="drop-sub" style="font-size:11px;color:var(--muted);margin-bottom:14px;">Any column layout — auto-detected</div>
+        <button id="select-btn" class="drop-btn" onclick="event.stopPropagation();document.getElementById('fileInput').click()">&#11014; Browse File</button>
+        <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:5px;margin-top:14px;"><span class="fmt-tag">.csv</span><span class="fmt-tag">.tsv</span><span class="fmt-tag">.xlsx</span><span class="fmt-tag">.xls</span><span class="fmt-tag">.json</span><span class="fmt-tag">.txt</span></div>
+      </div>
+      <input type="file" id="fileInput" accept=".csv,.tsv,.xlsx,.xls,.json,.txt" style="display:none">
+    </div>
+    <div class="step-card" id="step3-card" style="display:none;border-color:rgba(0,229,255,0.3);background:rgba(0,229,255,0.03);">
+      <div class="step-header"><div class="step-num" style="background:var(--accent);color:var(--bg);border-color:var(--accent);font-size:13px;">3</div><div class="step-label">Run Diagnostic Analysis</div><div class="step-note" id="step3-note">—</div></div>
+      <div class="run-card">
+        <div style="font-size:22px;">&#128196;</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="ready-filename">—</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px;" id="ready-meta">—</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);margin-top:1px;" id="ready-class">—</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;flex-shrink:0;">
+          <button class="run-btn" id="run-btn">&#9889; Run Analysis</button>
+          <button onclick="clearFile()" style="font-size:11px;font-family:'IBM Plex Mono',monospace;background:none;border:1px solid var(--border);border-radius:6px;padding:5px 12px;color:var(--muted);cursor:pointer;">&#10005; Change file</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="iso-strip"><span class="iso-badge">ISO 10816 / 20816</span><span class="iso-badge">ISO 13373</span><span class="iso-badge">ISO 13379</span><span class="iso-badge">ISO 13381</span><span class="iso-badge">ISO 55001</span></div>
+  <div style="font-size:11px;color:var(--muted);text-align:center;font-family:'IBM Plex Mono',monospace;">No file? <span id="sample-link" style="color:var(--accent);cursor:pointer;text-decoration:underline;">Load sample bearing-fault dataset &rarr;</span></div>
 </div>
-<script>
-document.getElementById('status').textContent = 'DOM loaded OK — ' + new Date().toISOString();
-</script>
+<!-- PROCESSING -->
+<div id="processing-screen">
+  <div class="proc-card">
+    <div class="proc-title">Running Diagnostic Chain</div>
+    <div class="proc-file" id="proc-filename">—</div>
+    <div class="stage-list">
+      <div class="stage-item" id="stage-1"><div class="s-num">1</div><div style="flex:1"><div class="s-name">Ingest & Normalise</div><div class="s-desc">Parse · detect columns · convert to mm/s</div></div><div class="s-status" id="s1-st">—</div></div>
+      <div class="stage-item" id="stage-2"><div class="s-num">2</div><div style="flex:1"><div class="s-name">Baseline Comparison</div><div class="s-desc">RMS · SD · deviation score · ISO 13373-2</div></div><div class="s-status" id="s2-st">—</div></div>
+      <div class="stage-item" id="stage-3"><div class="s-num">3</div><div style="flex:1"><div class="s-name">Trend State Assessment</div><div class="s-desc">Single file = DDU per ISO 13373-2</div></div><div class="s-status" id="s3-st">—</div></div>
+      <div class="stage-item" id="stage-4"><div class="s-num">4</div><div style="flex:1"><div class="s-name">ISO Zone Evaluation</div><div class="s-desc">Map RMS to zone table for selected class</div></div><div class="s-status" id="s4-st">—</div></div>
+      <div class="stage-item" id="stage-5"><div class="s-num">5</div><div style="flex:1"><div class="s-name">Fault Classification</div><div class="s-desc">FFT · harmonic comb · kurtosis/CF</div></div><div class="s-status" id="s5-st">—</div></div>
+      <div class="stage-item" id="stage-6"><div class="s-num">6</div><div style="flex:1"><div class="s-name">RUL Projection & AI Report</div><div class="s-desc">ISO 13381-1 · Claude AI</div></div><div class="s-status" id="s6-st">—</div></div>
+    </div>
+  </div>
+  <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);" id="proc-note">Initialising…</div>
+</div>
+<!-- RESULTS -->
+<div id="results-screen">
+  <div class="results-header"><div><div class="results-title">Diagnostic Report</div><div class="results-meta" id="results-meta">—</div></div><button class="btn" id="new-upload-btn">&#11014; New Upload</button></div>
+  <div class="ew-banner" id="ew-banner"><div style="font-size:18px;flex-shrink:0;">&#9889;</div><div><div class="ew-title">Early Warning — Pre-Zone Breach Alert</div><div class="ew-desc" id="ew-desc">—</div><div style="margin-top:4px;" id="ew-clause"></div></div></div>
+  <div class="grid-top">
+    <div class="card fade-in" style="animation-delay:0.05s"><div class="card-header"><div class="card-title">NVR Record</div><span class="badge b-green">OK</span></div><div class="card-body"><div class="nvr-grid" id="nvr-grid"></div><div style="margin-top:9px;display:flex;flex-wrap:wrap;gap:4px;" id="nvr-clauses"></div></div></div>
+    <div class="card fade-in" style="animation-delay:0.1s">
+      <div class="card-header"><div class="card-title">ISO Zone & RUL</div><span class="clause" id="zone-iso-clause">—</span></div>
+      <div class="card-body">
+        <div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;">Severity Zone</div>
+        <div class="zone-row"><div class="zone-seg z-A" data-z="A">A</div><div class="zone-seg z-B" data-z="B">B</div><div class="zone-seg z-C" data-z="C">C</div><div class="zone-seg z-D" data-z="D">D</div></div>
+        <div id="zone-desc" style="font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:11px;line-height:1.5;"></div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:3px;"><div><div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">RUL Estimate</div><div class="rul-num" id="rul-num">—</div><div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);margin-top:2px;" id="rul-ci">—</div></div><div style="text-align:right;"><div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:4px;">TREND STATE</div><span class="badge" id="trend-badge">—</span></div></div>
+        <div style="position:relative;"><div class="rul-track"><div class="rul-fill"></div><div class="rul-arrow" id="rul-arrow" style="left:70%"></div></div><div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--muted);margin-top:4px;"><span>0d</span><span style="color:var(--yellow)">NOW</span><span id="rul-scale-label">365d</span></div></div>
+        <div style="margin-top:9px;" id="rul-clauses"></div>
+      </div>
+    </div>
+    <div class="card fade-in" style="animation-delay:0.15s"><div class="card-header"><div class="card-title">Fault Severity Radar</div><span class="clause">ISO 13379-1</span></div><div style="padding:6px 8px;"><canvas id="radarChart" height="205"></canvas></div></div>
+  </div>
+  <div class="grid-mid">
+    <div class="card fade-in" style="animation-delay:0.2s"><div class="card-header"><div class="card-title">FFT Spectrum</div><div style="display:flex;gap:5px;"><span class="clause">ISO 13373-2</span><span class="badge b-blue" id="rpm-badge">—</span></div></div><div style="padding:9px 11px 5px;"><canvas id="fftChart" height="145"></canvas></div><div style="padding:0 11px 9px;display:flex;gap:10px;flex-wrap:wrap;" id="fft-legend"></div></div>
+    <div class="card fade-in" style="animation-delay:0.25s"><div class="card-header"><div class="card-title">Fault Classification</div><span class="badge" id="top-fault-badge">—</span></div><div class="card-body" style="padding-top:7px;"><div id="fault-bars"></div><div style="margin-top:11px;padding-top:9px;border-top:1px solid var(--border);"><div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:4px;">DRIVING FEATURE</div><div style="font-size:10px;font-family:'IBM Plex Mono',monospace;" id="driving-feature">—</div></div><div style="margin-top:7px;" id="fault-clauses"></div></div></div>
+  </div>
+  <div class="card fade-in" style="animation-delay:0.3s;">
+    <div class="card-header"><div class="card-title">AI Diagnostic Recommendations — AxiomAssist</div><div style="display:flex;gap:5px;"><span class="clause">ISO 13379-1</span><span class="clause">ISO 13381-1</span><span class="badge b-purple">Claude AI</span></div></div>
+    <div class="stream-thinking" id="stream-thinking"><div class="spinner"></div><span>Claude is analysing against ISO standards…</span></div>
+    <div class="reco-text typing" id="reco-text"></div>
+    <div class="disclaimer-box" id="disclaimer-box"></div>
+  </div>
+</div>
+</main>
+<script src="app.js"></script>
 </body>
 </html>
