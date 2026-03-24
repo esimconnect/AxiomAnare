@@ -195,7 +195,7 @@ async function runPipeline(raw, filename) {
   const mean = vals.reduce((a,b)=>a+b,0)/n;
   const std  = Math.sqrt(vals.reduce((s,v)=>s+(v-mean)**2,0)/n) || 1;
   const rms  = Math.sqrt(vals.reduce((s,v)=>s+v*v,0)/n);
-  const peak = Math.max(...vals.map(Math.abs));
+  let peak = 0; for (let i=0; i<vals.length; i++) { const a=Math.abs(vals[i]); if(a>peak) peak=a; }
   const cf   = peak/(rms||1);
   const kurt = vals.reduce((s,v)=>s+((v-mean)/std)**4,0)/n;
   const devSc = (rms-mean)/std;
@@ -412,7 +412,7 @@ function buildFFT(fft,fs){
   if(fftInst){fftInst.destroy();fftInst=null;}
   const {freqs,mags}=fft, step=Math.max(1,Math.floor(freqs.length/400));
   const df=[],dm=[],dc=[];
-  const dI=mags.indexOf(Math.max(...mags)),tF=freqs[dI];
+  let dI=0; for(let i=1;i<mags.length;i++){if(mags[i]>mags[dI])dI=i;} const tF=freqs[dI];
   for(let i=0;i<freqs.length&&freqs[i]<fs*0.45;i+=step){const f=freqs[i];df.push(f.toFixed(1));dm.push(parseFloat(mags[i].toFixed(5)));dc.push(Math.abs(f-tF)<tF*0.15?'rgba(255,59,59,0.75)':Math.abs(f-tF*2)<tF*0.15?'rgba(255,122,0,0.65)':Math.abs(f-tF*3)<tF*0.15?'rgba(255,184,0,0.55)':f>fs*0.35?'rgba(168,85,247,0.4)':'rgba(0,229,255,0.28)');}
   fftInst=new Chart(document.getElementById('fftChart').getContext('2d'),{type:'bar',data:{labels:df,datasets:[{data:dm,backgroundColor:dc,barPercentage:1.3,categoryPercentage:1,borderWidth:0}]},options:{responsive:true,animation:{duration:400},plugins:{legend:{display:false},tooltip:{backgroundColor:'#131920',borderColor:'#1e2d3d',borderWidth:1,callbacks:{title:i=>i[0].label+' Hz',label:c=>' '+c.raw.toFixed(5)}}},scales:{x:{grid:{display:false},ticks:{maxTicksLimit:10,font:{size:9},color:'#546e85',callback:(v,i)=>parseFloat(df[i])%50<5?df[i]+'Hz':''}},y:{grid:{color:'rgba(30,45,61,0.7)'},ticks:{font:{size:9},color:'#546e85'},min:0}}}});
   document.getElementById('fft-legend').innerHTML=['Dominant freq','2nd harmonic','3rd harmonic','High-freq'].map((l,i)=>{const cs=['var(--red)','var(--orange)','var(--yellow)','var(--purple)'][i];return'<div style="display:flex;align-items:center;gap:4px;font-size:9px;color:'+cs+';font-family:\'IBM Plex Mono\',monospace;"><div style="width:7px;height:7px;border-radius:50%;background:'+cs+'"></div>'+l+'</div>';}).join('');
