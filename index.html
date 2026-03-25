@@ -157,27 +157,27 @@ const CONFIG = {
 </script>
 <style>
 :root{
-  --bg:#f0f4f8;
-  --surface:#ffffff;
-  --surface2:#e8eef5;
-  --surface3:#dce5ef;
-  --border:#c8d6e5;
-  --border2:#b0c4d8;
-  --accent:#0066cc;
-  --accent2:#004499;
+  --bg:#1c2333;
+  --surface:#232d3f;
+  --surface2:#1a2435;
+  --surface3:#151e2d;
+  --border:#2a3a52;
+  --border2:#334560;
+  --accent:#4d9de0;
+  --accent2:#2b7cc4;
   --green:#0a7c4f;
   --yellow:#b36a00;
   --orange:#c0520a;
   --red:#c0392b;
   --purple:#6b3fa0;
-  --text:#1a2535;
-  --muted:#5a7a9a;
-  --dim:#8aacc8;
+  --text:#e8edf5;
+  --muted:#7f93aa;
+  --dim:#3a4f68;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;min-height:100vh;}
 body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(ellipse 60% 40% at 15% 20%,rgba(0,102,204,0.06),transparent 60%),radial-gradient(ellipse 40% 60% at 85% 80%,rgba(0,68,153,0.04),transparent 60%),repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(0,102,204,0.05) 39px,rgba(0,102,204,0.05) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(0,102,204,0.05) 39px,rgba(0,102,204,0.05) 40px);}
-nav{position:fixed;top:0;left:0;right:0;height:54px;background:rgba(255,255,255,0.95);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 28px;gap:20px;z-index:200;}
+nav{position:fixed;top:0;left:0;right:0;height:54px;background:rgba(28,35,51,0.97);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 28px;gap:20px;z-index:200;}
 .logo{display:flex;align-items:center;gap:10px;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:16px;letter-spacing:0.3px;color:var(--text);}
 .logo-mark{width:30px;height:30px;border-radius:7px;background:linear-gradient(135deg,var(--accent2),var(--accent));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;box-shadow:0 0 12px rgba(0,102,204,0.25);}
 .logo-sub{font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;line-height:1;}
