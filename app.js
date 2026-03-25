@@ -360,7 +360,7 @@ function resetApp(){
 // ══ RENDER ══
 function renderResults(){
   const d=nvr;
-  const zC={A:'var(--green)',B:'#60a5fa',C:'var(--yellow)',D:'var(--red)'};
+  const zC={A:'var(--green)',B:'#1a6bbf',C:'var(--yellow)',D:'var(--red)'};
   document.getElementById('results-meta').innerHTML='File: <span>'+d.filename+'</span> &nbsp;·&nbsp; Class: <span>'+d.classRow.machine_type_desc+'</span>';
   const cfL=getCFLabel(parseFloat(d.cf)), kL=getKLabel(parseFloat(d.kurt));
   const tips = {
@@ -410,20 +410,20 @@ function renderResults(){
 }
 
 // ══ CHARTS ══
-Chart.defaults.color='#546e85';Chart.defaults.borderColor='#1e2d3d';Chart.defaults.font.family="'IBM Plex Mono',monospace";
+Chart.defaults.color='#5a7a9a';Chart.defaults.borderColor='#c8d6e5';Chart.defaults.font.family="'IBM Plex Mono',monospace";
 function buildRadar(faults){
   if(radarInst){radarInst.destroy();radarInst=null;}
   const top=faults.slice(0,7);
-  radarInst=new Chart(document.getElementById('radarChart').getContext('2d'),{type:'radar',data:{labels:top.map(f=>f.name.split('—')[0].trim().split(' ').slice(0,3).join(' ')),datasets:[{data:top.map(f=>f.pct),backgroundColor:'rgba(0,229,255,0.1)',borderColor:'rgba(0,229,255,0.65)',borderWidth:2,pointBackgroundColor:top.map((_,i)=>i===0?'#ff3b3b':i===1?'#ff7a00':'rgba(0,229,255,0.8)'),pointRadius:top.map((_,i)=>i===0?5:3),pointBorderColor:'transparent'}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{backgroundColor:'#131920',borderColor:'#1e2d3d',borderWidth:1,callbacks:{label:c=>c.raw+'% severity'}}},scales:{r:{min:0,max:100,grid:{color:'rgba(30,45,61,0.9)'},angleLines:{color:'rgba(30,45,61,0.9)'},ticks:{backdropColor:'transparent',color:'#546e85',font:{size:8}},pointLabels:{color:'#8aa5bc',font:{size:8}}}}}});
+  radarInst=new Chart(document.getElementById('radarChart').getContext('2d'),{type:'radar',data:{labels:top.map(f=>f.name.split('—')[0].trim().split(' ').slice(0,3).join(' ')),datasets:[{data:top.map(f=>f.pct),backgroundColor:'rgba(0,102,204,0.1)',borderColor:'rgba(0,102,204,0.7)',borderWidth:2,pointBackgroundColor:top.map((_,i)=>i===0?'#c0392b':i===1?'#c0520a':'rgba(0,102,204,0.8)'),pointRadius:top.map((_,i)=>i===0?5:3),pointBorderColor:'transparent'}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{backgroundColor:'#1a2535',borderColor:'#0066cc',borderWidth:1,callbacks:{label:c=>c.raw+'% severity'}}},scales:{r:{min:0,max:100,grid:{color:'rgba(0,102,204,0.15)'},angleLines:{color:'rgba(0,102,204,0.15)'},ticks:{backdropColor:'rgba(255,255,255,0.8)',color:'#5a7a9a',font:{size:8}},pointLabels:{color:'#1a2535',font:{size:8}}}}}});
 }
 function buildFFT(fft,fs){
   if(fftInst){fftInst.destroy();fftInst=null;}
   const {freqs,mags}=fft, step=Math.max(1,Math.floor(freqs.length/400));
   const df=[],dm=[],dc=[];
   let dI=0; for(let i=1;i<mags.length;i++){if(mags[i]>mags[dI])dI=i;} const tF=freqs[dI];
-  for(let i=0;i<freqs.length&&freqs[i]<fs*0.45;i+=step){const f=freqs[i];df.push(f.toFixed(1));dm.push(parseFloat(mags[i].toFixed(5)));dc.push(Math.abs(f-tF)<tF*0.15?'rgba(255,59,59,0.75)':Math.abs(f-tF*2)<tF*0.15?'rgba(255,122,0,0.65)':Math.abs(f-tF*3)<tF*0.15?'rgba(255,184,0,0.55)':f>fs*0.35?'rgba(168,85,247,0.4)':'rgba(0,229,255,0.28)');}
-  fftInst=new Chart(document.getElementById('fftChart').getContext('2d'),{type:'bar',data:{labels:df,datasets:[{data:dm,backgroundColor:dc,barPercentage:1.3,categoryPercentage:1,borderWidth:0}]},options:{responsive:true,animation:{duration:400},plugins:{legend:{display:false},tooltip:{backgroundColor:'#131920',borderColor:'#1e2d3d',borderWidth:1,callbacks:{title:i=>i[0].label+' Hz',label:c=>' '+c.raw.toFixed(5)}}},scales:{x:{grid:{display:false},ticks:{maxTicksLimit:10,font:{size:9},color:'#546e85',callback:(v,i)=>parseFloat(df[i])%50<5?df[i]+'Hz':''}},y:{grid:{color:'rgba(30,45,61,0.7)'},ticks:{font:{size:9},color:'#546e85'},min:0}}}});
-  document.getElementById('fft-legend').innerHTML=['Dominant freq','2nd harmonic','3rd harmonic','High-freq'].map((l,i)=>{const cs=['var(--red)','var(--orange)','var(--yellow)','var(--purple)'][i];return'<div style="display:flex;align-items:center;gap:4px;font-size:9px;color:'+cs+';font-family:\'IBM Plex Mono\',monospace;"><div style="width:7px;height:7px;border-radius:50%;background:'+cs+'"></div>'+l+'</div>';}).join('');
+  for(let i=0;i<freqs.length&&freqs[i]<fs*0.45;i+=step){const f=freqs[i];df.push(f.toFixed(1));dm.push(parseFloat(mags[i].toFixed(5)));dc.push(Math.abs(f-tF)<tF*0.15?'rgba(192,57,43,0.85)':Math.abs(f-tF*2)<tF*0.15?'rgba(192,82,10,0.75)':Math.abs(f-tF*3)<tF*0.15?'rgba(179,106,0,0.7)':f>fs*0.35?'rgba(107,63,160,0.55)':'rgba(0,102,204,0.35)');}
+  fftInst=new Chart(document.getElementById('fftChart').getContext('2d'),{type:'bar',data:{labels:df,datasets:[{data:dm,backgroundColor:dc,barPercentage:1.3,categoryPercentage:1,borderWidth:0}]},options:{responsive:true,animation:{duration:400},plugins:{legend:{display:false},tooltip:{backgroundColor:'#1a2535',borderColor:'#0066cc',borderWidth:1,callbacks:{title:i=>i[0].label+' Hz',label:c=>' '+c.raw.toFixed(5)}}},scales:{x:{grid:{display:false},ticks:{maxTicksLimit:10,font:{size:9},color:'#5a7a9a',callback:(v,i)=>parseFloat(df[i])%50<5?df[i]+'Hz':''}},y:{grid:{color:'rgba(0,102,204,0.12)'},ticks:{font:{size:9},color:'#5a7a9a'},min:0}}}});
+  document.getElementById('fft-legend').innerHTML=['Dominant freq','2nd harmonic','3rd harmonic','High-freq'].map((l,i)=>{const cs=['#c0392b','#c0520a','#b36a00','#6b3fa0'][i];return'<div style="display:flex;align-items:center;gap:4px;font-size:9px;color:'+cs+';font-family:\'IBM Plex Mono\',monospace;"><div style="width:7px;height:7px;border-radius:50%;background:'+cs+'"></div>'+l+'</div>';}).join('');
 }
 
 // ══ CLAUDE AI ══
