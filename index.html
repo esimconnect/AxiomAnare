@@ -11,11 +11,11 @@
 <script>
 const CONFIG = {
   iso_machine_classes: [
-    { class_id:"cls_i",    iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Small machines < 15 kW",             power_kw_min:0,   power_kw_max:15,   mounting_type:"rigid"    },
-    { class_id:"cls_ii",   iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Medium machines 15-300 kW rigid",    power_kw_min:15,  power_kw_max:300,  mounting_type:"rigid"    },
-    { class_id:"cls_ii_f", iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Medium machines 15-300 kW flexible", power_kw_min:15,  power_kw_max:300,  mounting_type:"flexible" },
-    { class_id:"cls_iii",  iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Large machines > 300 kW rigid",      power_kw_min:300, power_kw_max:50000,mounting_type:"rigid"    },
-    { class_id:"cls_iv",   iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Large machines > 300 kW flexible",   power_kw_min:300, power_kw_max:50000,mounting_type:"flexible" }
+    { class_id:"cls_i",    display_label:"Class I",        iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Small Machines",          power_kw_desc:"Up to 15 kW",      power_kw_min:0,   power_kw_max:15,   mounting_type:"Rigid Mount"    },
+    { class_id:"cls_ii",   display_label:"Class II",       iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Medium Machines",         power_kw_desc:"15 – 300 kW",      power_kw_min:15,  power_kw_max:300,  mounting_type:"Rigid Mount"    },
+    { class_id:"cls_ii_f", display_label:"Class II (Flex)",iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Medium Machines",         power_kw_desc:"15 – 300 kW",      power_kw_min:15,  power_kw_max:300,  mounting_type:"Flexible Mount" },
+    { class_id:"cls_iii",  display_label:"Class III",      iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Large Machines",          power_kw_desc:"Above 300 kW",     power_kw_min:300, power_kw_max:50000,mounting_type:"Rigid Mount"    },
+    { class_id:"cls_iv",   display_label:"Class IV",       iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Large Machines",          power_kw_desc:"Above 300 kW",     power_kw_min:300, power_kw_max:50000,mounting_type:"Flexible Mount" }
   ],
   iso_severity_zones: [
     { zone_id:"zi_a",  class_id:"cls_i",    zone_label:"A", rms_lower_mm_s:0,    rms_upper_mm_s:0.71,  action_required:"No action required. Newly commissioned or well-maintained.",                     iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.1" },
@@ -40,16 +40,80 @@ const CONFIG = {
     { zone_id:"ziv_d", class_id:"cls_iv",   zone_label:"D", rms_lower_mm_s:22.4, rms_upper_mm_s:99999, action_required:"Dangerous. Immediate shutdown warranted.",                                      iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.4" }
   ],
   fault_frequency_rules: [
-    { rule_id:"r_bpfo",    fault_type:"BPFO - Outer Race",        freq_multiplier:3.5,  harmonic_count:3, bandwidth_pct:0.15, confidence_weight:0.40, iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
-    { rule_id:"r_bpfi",    fault_type:"BPFI - Inner Race",        freq_multiplier:5.5,  harmonic_count:3, bandwidth_pct:0.15, confidence_weight:0.40, iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
-    { rule_id:"r_bsf",     fault_type:"BSF - Rolling Element",    freq_multiplier:2.4,  harmonic_count:2, bandwidth_pct:0.15, confidence_weight:0.30, iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
-    { rule_id:"r_ftf",     fault_type:"FTF - Cage Defect",        freq_multiplier:0.4,  harmonic_count:2, bandwidth_pct:0.20, confidence_weight:0.30, iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
-    { rule_id:"r_imbal",   fault_type:"Mechanical Imbalance",     freq_multiplier:1.0,  harmonic_count:1, bandwidth_pct:0.12, confidence_weight:0.50, iso_reference:"ISO 13379-1:2012 §5.2"         },
-    { rule_id:"r_misalign",fault_type:"Shaft Misalignment",       freq_multiplier:2.0,  harmonic_count:3, bandwidth_pct:0.12, confidence_weight:0.45, iso_reference:"ISO 13379-1:2012 §5.3"         },
-    { rule_id:"r_loose",   fault_type:"Mechanical Looseness",     freq_multiplier:0.5,  harmonic_count:8, bandwidth_pct:0.10, confidence_weight:0.35, iso_reference:"ISO 13379-1:2012 §5.4"         },
-    { rule_id:"r_resonance",fault_type:"Structural Resonance",    freq_multiplier:8.0,  harmonic_count:2, bandwidth_pct:0.25, confidence_weight:0.25, iso_reference:"ISO 13379-1:2012 §5.6"         },
-    { rule_id:"r_elec",    fault_type:"Electrical - Stator/Rotor",freq_multiplier:12.0, harmonic_count:2, bandwidth_pct:0.20, confidence_weight:0.30, iso_reference:"IEC 60034-14:2003 §5.1"        }
+
+    // ── MECHANICAL FAULTS (detectable from vibration) ──────────────────────
+    // category: "mechanical" | requires: "vibration"
+    { rule_id:"r_loose_found", fault_type:"Loose Foundation",      category:"mechanical", requires:"vibration",
+      freq_multiplier:0.5,  harmonic_count:8, bandwidth_pct:0.10, confidence_weight:0.35,
+      detection_note:"Sub-harmonic and multiple harmonics of shaft speed indicate structural looseness",
+      iso_reference:"ISO 13379-1:2012 §5.4" },
+    { rule_id:"r_imbal",       fault_type:"Mechanical Unbalance",  category:"mechanical", requires:"vibration",
+      freq_multiplier:1.0,  harmonic_count:1, bandwidth_pct:0.12, confidence_weight:0.50,
+      detection_note:"Dominant 1× shaft frequency component",
+      iso_reference:"ISO 13379-1:2012 §5.2" },
+    { rule_id:"r_misalign",    fault_type:"Shaft Misalignment",    category:"mechanical", requires:"vibration",
+      freq_multiplier:2.0,  harmonic_count:3, bandwidth_pct:0.12, confidence_weight:0.45,
+      detection_note:"Elevated 2× and 3× shaft frequency harmonics",
+      iso_reference:"ISO 13379-1:2012 §5.3" },
+
+    // ── BEARING FAULTS (detectable from vibration) ─────────────────────────
+    { rule_id:"r_bpfo", fault_type:"Bearing — Outer Race",         category:"bearing",   requires:"vibration",
+      freq_multiplier:3.5,  harmonic_count:3, bandwidth_pct:0.15, confidence_weight:0.40,
+      detection_note:"Ball pass frequency outer race harmonics; elevated kurtosis confirms impacting",
+      iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
+    { rule_id:"r_bpfi", fault_type:"Bearing — Inner Race",         category:"bearing",   requires:"vibration",
+      freq_multiplier:5.5,  harmonic_count:3, bandwidth_pct:0.15, confidence_weight:0.40,
+      detection_note:"Ball pass frequency inner race harmonics with shaft-rate sidebands",
+      iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
+    { rule_id:"r_bsf",  fault_type:"Bearing — Rolling Element",    category:"bearing",   requires:"vibration",
+      freq_multiplier:2.4,  harmonic_count:2, bandwidth_pct:0.15, confidence_weight:0.30,
+      detection_note:"Ball spin frequency — indicates rolling element surface defect",
+      iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
+    { rule_id:"r_ftf",  fault_type:"Bearing — Cage Defect",        category:"bearing",   requires:"vibration",
+      freq_multiplier:0.4,  harmonic_count:2, bandwidth_pct:0.20, confidence_weight:0.30,
+      detection_note:"Fundamental train frequency — indicates cage wear or damage",
+      iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
+
+    // ── ELECTRICAL FAULT INDICATORS (vibration-derived — indirect) ─────────
+    // These are detectable from vibration as the mechanical effects of electrical faults.
+    // Confidence is lower than direct MCSA measurement. Labelled as "vibration-derived".
+    { rule_id:"r_rotor_bar",   fault_type:"Electrical — Rotor Bar",    category:"electrical", requires:"vibration",
+      freq_multiplier:1.0,  harmonic_count:4, bandwidth_pct:0.08, confidence_weight:0.30,
+      detection_note:"Rotor bar defects create amplitude modulation at 1× ± slip frequency. Vibration-derived indicator — confirm with MCSA.",
+      iso_reference:"IEC 60034-14:2003 §5.2" },
+    { rule_id:"r_stator_ecc",  fault_type:"Electrical — Stator Eccentricity", category:"electrical", requires:"vibration",
+      freq_multiplier:2.0,  harmonic_count:2, bandwidth_pct:0.10, confidence_weight:0.25,
+      detection_note:"Air gap variation from stator eccentricity produces vibration at twice line frequency (100/120 Hz). Vibration-derived indicator.",
+      iso_reference:"IEC 60034-14:2003 §5.1" },
+
+    // ── ELECTRICAL FAULTS REQUIRING MCSA/POWER DATA ────────────────────────
+    // These CANNOT be determined from vibration alone. Shown as locked/greyed.
+    { rule_id:"r_volt_unbal",  fault_type:"Voltage Unbalance",          category:"electrical", requires:"mcsa",
+      freq_multiplier:null, harmonic_count:0, bandwidth_pct:0, confidence_weight:0,
+      detection_note:"Requires voltage measurement data (Va, Vb, Vc). Cannot be derived from vibration.",
+      iso_reference:"IEC 60034-14:2003 §5.4" },
+    { rule_id:"r_curr_unbal",  fault_type:"Current Unbalance",          category:"electrical", requires:"mcsa",
+      freq_multiplier:null, harmonic_count:0, bandwidth_pct:0, confidence_weight:0,
+      detection_note:"Requires current measurement data (Ia, Ib, Ic). Cannot be derived from vibration.",
+      iso_reference:"IEC 60034-14:2003 §5.4" },
+    { rule_id:"r_pwr_factor",  fault_type:"Power Factor",               category:"process",    requires:"power",
+      freq_multiplier:null, harmonic_count:0, bandwidth_pct:0, confidence_weight:0,
+      detection_note:"Requires real and reactive power measurements. Cannot be derived from vibration.",
+      iso_reference:"ISO 55001:2014 §8.1" },
+    { rule_id:"r_active_pwr",  fault_type:"Active Power / Efficiency",  category:"process",    requires:"power",
+      freq_multiplier:null, harmonic_count:0, bandwidth_pct:0, confidence_weight:0,
+      detection_note:"Requires watt-meter or power analyser data. Cannot be derived from vibration.",
+      iso_reference:"ISO 55001:2014 §8.1" }
   ],
+
+  // ── data_type_detection — column name patterns that identify input type ──
+  data_type_detection: {
+    vibration: ['accel','acc','vib','vibration','velocity','vel','amplitude','amp','rms','g','mm/s','signal'],
+    mcsa:      ['current','ia','ib','ic','i_a','i_b','i_c','amps','ampere','phase_current'],
+    voltage:   ['voltage','va','vb','vc','v_a','v_b','v_c','volt','v_line','vln'],
+    power:     ['power','kw','watt','active_power','power_factor','pf','reactive','kva','kvars'],
+    frequency: ['freq','frequency','hz','f_line']
+  },
   unit_conversion_factors: [
     { from_unit:"mm/s", to_unit:"mm/s", multiplier:1.0,    offset:0, canonical_flag:1 },
     { from_unit:"m/s",  to_unit:"mm/s", multiplier:1000.0, offset:0, canonical_flag:0 },
@@ -132,9 +196,10 @@ main{padding-top:54px;position:relative;z-index:1;}
 .class-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-top:12px;}
 .class-btn{padding:9px 7px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;text-align:center;transition:all 0.15s;}
 .class-btn:hover{border-color:var(--border2);}.class-btn.selected{border-color:var(--accent);background:rgba(0,102,204,0.1);}
-.cb-id{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;color:var(--accent);margin-bottom:3px;}
-.cb-desc{font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;line-height:1.3;}
-.cb-std{font-size:8px;color:var(--dim);font-family:'IBM Plex Mono',monospace;margin-top:3px;}
+.cb-id{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:800;color:var(--accent2);margin-bottom:4px;letter-spacing:0.2px;}
+.cb-desc{font-size:10px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;line-height:1.4;font-weight:500;}
+.cb-kw{font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:3px;}
+.cb-mount{font-size:9px;color:var(--dim);font-family:'IBM Plex Mono',monospace;margin-top:2px;}
 .dropzone{margin-top:12px;border:2px dashed var(--border2);border-radius:10px;padding:28px 20px;text-align:center;cursor:pointer;transition:all 0.2s;}
 .dropzone:hover{border-color:var(--accent);background:rgba(0,229,255,0.03);}
 .drop-btn{display:inline-flex;align-items:center;gap:7px;padding:10px 24px;border-radius:8px;background:var(--accent);color:#fff;border:none;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.2s;margin-top:4px;}
@@ -220,6 +285,15 @@ main{padding-top:54px;position:relative;z-index:1;}
 .disclaimer-box{margin:12px;padding:11px 13px;background:rgba(255,59,59,0.04);border:1px solid rgba(255,59,59,0.17);border-radius:6px;font-size:10px;line-height:1.5;color:#ff9999;font-family:'IBM Plex Mono',monospace;}
 .fade-in{animation:fadeUp 0.4s ease both;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+/* Data type banner */
+.data-banner{display:none;margin-bottom:12px;padding:10px 16px;border-radius:8px;font-family:'IBM Plex Sans',sans-serif;font-size:12px;line-height:1.5;gap:10px;align-items:flex-start;}
+.data-banner-vibration{background:rgba(0,102,204,0.07);border:1px solid rgba(0,102,204,0.2);color:var(--accent2);}
+.data-banner-mcsa{background:rgba(10,124,79,0.07);border:1px solid rgba(10,124,79,0.2);color:var(--green);}
+.data-banner-combined{background:rgba(107,63,160,0.07);border:1px solid rgba(107,63,160,0.2);color:var(--purple);}
+.data-banner-power{background:rgba(179,106,0,0.07);border:1px solid rgba(179,106,0,0.2);color:var(--yellow);}
+/* Locked fault rows */
+.fault-locked{opacity:0.5;}
+.fault-locked .fault-name{font-style:italic;}
 </style>
 </head>
 <body>
@@ -289,6 +363,7 @@ main{padding-top:54px;position:relative;z-index:1;}
 <div id="results-screen">
   <div class="results-header"><div><div class="results-title">Diagnostic Report</div><div class="results-meta" id="results-meta">—</div></div><button class="btn" id="new-upload-btn">&#11014; New Upload</button></div>
   <div class="ew-banner" id="ew-banner"><div style="font-size:18px;flex-shrink:0;">&#9889;</div><div><div class="ew-title">Early Warning — Pre-Zone Breach Alert</div><div class="ew-desc" id="ew-desc">—</div><div style="margin-top:4px;" id="ew-clause"></div></div></div>
+  <div class="data-banner" id="data-type-banner">&#128268; —</div>
 
   <!-- ROW 1: NVR metrics · ISO Zone/RUL · Radar -->
   <div class="grid-top">

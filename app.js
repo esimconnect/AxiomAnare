@@ -50,9 +50,10 @@ let pendingFile = null, pendingRaw = null;
 function initClassSelector() {
   document.getElementById('class-grid').innerHTML = CONFIG.iso_machine_classes.map(c => `
     <div class="class-btn${c.class_id===selClassId?' selected':''}" data-id="${c.class_id}" onclick="selectClass('${c.class_id}')">
-      <div class="cb-id">${c.class_id.replace('cls_','').toUpperCase()}</div>
+      <div class="cb-id">${c.display_label}</div>
       <div class="cb-desc">${c.machine_type_desc}</div>
-      <div class="cb-std">${c.mounting_type}</div>
+      <div class="cb-kw">${c.power_kw_desc}</div>
+      <div class="cb-mount">${c.mounting_type}</div>
     </div>`).join('');
 }
 window.selectClass = function(id) {
@@ -182,6 +183,9 @@ async function runPipeline(raw, filename) {
   if (!parsed || parsed.values.length < 10) { doneStage(1,'QUARANTINED'); setNote('⚠ Cannot extract numeric data.'); return; }
   const cu = CONFIG.unit_conversion_factors.find(r => r.canonical_flag === 1).to_unit;
   const sr = parsed.sampleRate || CONFIG.default_sample_rate_hz;
+  // Detect what type of data we have from column headers
+  const dataTypes = detectDataTypes(parsed.allHeaders || [parsed.colName]);
+  const dataBanner = getDataTypeBanner(dataTypes);
   let vals;
   if (['g','m/s2','mg'].includes(parsed.unit)) {
     const rf = computeFFT(parsed.values, sr); const hz = detectShaft(rf);
@@ -221,8 +225,12 @@ async function runPipeline(raw, filename) {
   await activateStage(5);
   const fftR = computeFFT(vals, sr);
   const shaftHz = detectShaft(fftR);
-  const allFaults = classifyFaults(fftR, cf, kurt);
-  const faults = allFaults.filter(f => f.pct >= CONFIG.minimum_fault_confidence_pct);
+  const allFaults = classifyFaults(fftR, cf, kurt, dataTypes);
+  // Show: unlocked faults above confidence threshold + all locked faults (greyed out)
+  const faults = [
+    ...allFaults.filter(f => !f.locked && f.pct >= CONFIG.minimum_fault_confidence_pct),
+    ...allFaults.filter(f => f.locked)
+  ];
   doneStage(5, (faults[0]?.name||'—')+' '+(faults[0]?.pct||0)+'%');
 
   // Stage 6 — RUL
@@ -232,6 +240,7 @@ async function runPipeline(raw, filename) {
   setNote('Rendering results…');
 
   nvr = { filename, rms: rms.toFixed(3), peak: peak.toFixed(3), cf: cf.toFixed(2),
+    dataTypes, dataBanner,
     kurt: kurt.toFixed(2), devSc: devSc.toFixed(2), devRow, zoneRow, trendRow,
     earlyWarn, faults: faults.length ? faults : allFaults.slice(0, CONFIG.fault_display_limit),
     fftR, rulR, n, sr, classRow, cu, shaftHz, singleFile: true };
@@ -299,24 +308,102 @@ function detectShaft(fft) {
   return best;
 }
 
+// ══ DATA TYPE DETECTOR ══
+// Inspects column headers to determine what kind of data was uploaded.
+// Returns a set of available data types: 'vibration', 'mcsa', 'voltage', 'power', 'frequency'
+function detectDataTypes(headers) {
+  const available = new Set();
+  const det = CONFIG.data_type_detection;
+  const hl = headers.map(h => h.toLowerCase());
+  Object.entries(det).forEach(([type, patterns]) => {
+    if (hl.some(h => patterns.some(p => h.includes(p)))) available.add(type);
+  });
+  // Always assume vibration if any numeric data present — it's the default input
+  if (available.size === 0) available.add('vibration');
+  return available;
+}
+
+// Returns a human-readable banner message about what data was detected
+function getDataTypeBanner(dataTypes) {
+  const has = t => dataTypes.has(t);
+  if (has('mcsa') && has('vibration')) return { type:'combined', msg:'Vibration + MCSA data detected. Full mechanical and electrical fault analysis available.' };
+  if (has('power') && has('vibration')) return { type:'combined', msg:'Vibration + Power monitoring data detected. Mechanical and process fault analysis available.' };
+  if (has('mcsa')) return { type:'mcsa', msg:'MCSA / electrical data detected. Electrical fault analysis available. Vibration-based faults require acceleration or velocity data.' };
+  if (has('power')) return { type:'power', msg:'Power monitoring data detected. Process fault analysis available.' };
+  return { type:'vibration', msg:'Vibration data detected. Mechanical and bearing fault analysis will run. Electrical and process fault categories require MCSA or power meter data — not shown.' };
+}
+
 // ══ FAULT CLASSIFICATION ══
-function classifyFaults(fft, cf, kurt) {
+function classifyFaults(fft, cf, kurt, dataTypes) {
   const {freqs,mags,sRms} = fft;
   const shaft = detectShaft(fft);
   function bE(fc,bw){const lo=fc*(1-bw),hi=fc*(1+bw);let e=0,n=0;for(let i=0;i<freqs.length;i++){if(freqs[i]>hi)break;if(freqs[i]>=lo){e+=mags[i]**2;n++;}}return n>0?Math.sqrt(e/n):0;}
   const cfB=getCFBonus(cf), kB=getKBonus(kurt);
-  const bearIds=new Set(CONFIG.fault_frequency_rules.filter(r=>r.rule_id.startsWith('r_bpf')||r.rule_id==='r_bsf'||r.rule_id==='r_ftf').map(r=>r.rule_id));
+  const bearIds=new Set(['r_bpfo','r_bpfi','r_bsf','r_ftf']);
   const base=sRms||1;
-  return CONFIG.fault_frequency_rules.map(rule=>{
-    const fc=shaft*rule.freq_multiplier;
-    if(fc>fft.fs/2)return{name:rule.fault_type,pct:2,iso_reference:rule.iso_reference,freq_hz:fc,harmonics_used:0};
-    let tot=0,h2=0;
-    for(let h=1;h<=rule.harmonic_count;h++){const fh=fc*h;if(fh>fft.fs/2)break;tot+=bE(fh,rule.bandwidth_pct);h2++;}
-    if(!h2)return{name:rule.fault_type,pct:2,iso_reference:rule.iso_reference,freq_hz:fc,harmonics_used:0};
-    let sc=Math.round(((tot/h2)/base)*80*rule.confidence_weight);
-    if(bearIds.has(rule.rule_id))sc+=Math.round((cfB+kB)*rule.confidence_weight);
-    return{name:rule.fault_type,pct:Math.min(95,Math.max(2,sc)),iso_reference:rule.iso_reference,freq_hz:fc,harmonics_used:h2};
-  }).sort((a,b)=>b.pct-a.pct);
+
+  return CONFIG.fault_frequency_rules.map(rule => {
+    const req = rule.requires;
+
+    // ── Rules that require data we don't have → locked ──
+    const hasRequired =
+      (req === 'vibration' && dataTypes.has('vibration')) ||
+      (req === 'mcsa'      && (dataTypes.has('mcsa') || dataTypes.has('voltage'))) ||
+      (req === 'power'     && dataTypes.has('power'));
+
+    if (!hasRequired) {
+      return {
+        name: rule.fault_type, category: rule.category,
+        pct: 0, locked: true,
+        lock_reason: rule.detection_note,
+        iso_reference: rule.iso_reference,
+        freq_hz: null, harmonics_used: 0
+      };
+    }
+
+    // ── Vibration-derived electrical indicators ──
+    const isVibDerived = (rule.category === 'electrical' && req === 'vibration');
+
+    // ── Rules with no frequency (shouldn't reach here, but guard) ──
+    if (!rule.freq_multiplier) {
+      return { name:rule.fault_type, category:rule.category, pct:2, locked:false,
+               iso_reference:rule.iso_reference, freq_hz:null, harmonics_used:0 };
+    }
+
+    const fc = shaft * rule.freq_multiplier;
+    if (fc > fft.fs / 2) {
+      return { name:rule.fault_type, category:rule.category, pct:2, locked:false,
+               iso_reference:rule.iso_reference, freq_hz:fc, harmonics_used:0 };
+    }
+
+    let tot=0, h2=0;
+    for(let h=1;h<=rule.harmonic_count;h++){
+      const fh=fc*h; if(fh>fft.fs/2)break;
+      tot+=bE(fh,rule.bandwidth_pct); h2++;
+    }
+    if (!h2) return { name:rule.fault_type, category:rule.category, pct:2, locked:false,
+                      iso_reference:rule.iso_reference, freq_hz:fc, harmonics_used:0 };
+
+    let sc = Math.round(((tot/h2)/base)*80*rule.confidence_weight);
+    if (bearIds.has(rule.rule_id)) sc += Math.round((cfB+kB)*rule.confidence_weight);
+    // Vibration-derived electrical: cap confidence lower — it's indirect
+    const cap = isVibDerived ? 65 : 95;
+
+    return {
+      name: rule.fault_type, category: rule.category,
+      pct: Math.min(cap, Math.max(2, sc)),
+      locked: false,
+      vibration_derived: isVibDerived || false,
+      iso_reference: rule.iso_reference,
+      freq_hz: fc, harmonics_used: h2,
+      detection_note: isVibDerived ? rule.detection_note : null
+    };
+  }).sort((a,b) => {
+    // Locked faults go to end; within each group sort by score
+    if (a.locked && !b.locked) return 1;
+    if (!a.locked && b.locked) return -1;
+    return b.pct - a.pct;
+  });
 }
 
 // ══ UI HELPERS ══
@@ -397,7 +484,39 @@ function renderResults(){
   document.getElementById('trend-badge').className='badge '+(tC[d.trendRow.code]||'b-blue');
   if(d.earlyWarn){document.getElementById('ew-banner').classList.add('show');document.getElementById('ew-desc').textContent=d.devRow.classification+' ('+d.devSc+'σ) + '+d.trendRow.code+' in Zone '+d.zoneRow.zone_label;document.getElementById('ew-clause').innerHTML='<span class="clause">'+CONFIG.early_warning_rule.iso_reference+'</span>';}
   const fp=['var(--red)','var(--orange)','var(--yellow)','var(--accent)','var(--green)','var(--muted)'];
-  document.getElementById('fault-bars').innerHTML=d.faults.slice(0,CONFIG.fault_display_limit).map((f,i)=>'<div class="fault-item"><div class="fault-name" style="color:'+fp[Math.min(i,fp.length-1)]+'">'+f.name+'</div><div class="fault-bar-wrap"><div class="fault-bar-fill" style="background:'+fp[Math.min(i,fp.length-1)]+';" data-w="'+f.pct+'"></div></div><div class="fault-pct" style="color:'+fp[Math.min(i,fp.length-1)]+'">'+f.pct+'%</div></div>').join('');
+  // Data type banner
+  const bannerEl = document.getElementById('data-type-banner');
+  if (bannerEl && d.dataBanner) {
+    bannerEl.textContent = d.dataBanner.msg;
+    bannerEl.style.display = 'flex';
+    bannerEl.className = 'data-banner data-banner-'+d.dataBanner.type;
+  }
+
+  // Fault bars — unlocked faults in colour, locked faults greyed with lock icon
+  const unlockedFaults = d.faults.filter(f => !f.locked);
+  const lockedFaults   = d.faults.filter(f => f.locked);
+
+  const unlockedHtml = unlockedFaults.slice(0, CONFIG.fault_display_limit).map((f,i) => {
+    const col = fp[Math.min(i, fp.length-1)];
+    const derivedTag = f.vibration_derived
+      ? '<span style="font-size:8px;background:rgba(179,106,0,0.12);color:var(--yellow);border-radius:3px;padding:1px 5px;margin-left:5px;font-family:'IBM Plex Mono',monospace;">vibration-derived</span>'
+      : '';
+    return '<div class="fault-item">'
+      + '<div class="fault-name" style="color:'+col+';">'+f.name+derivedTag+'</div>'
+      + '<div class="fault-bar-wrap"><div class="fault-bar-fill" style="background:'+col+';" data-w="'+f.pct+'"></div></div>'
+      + '<div class="fault-pct" style="color:'+col+';">'+f.pct+'%</div>'
+      + '</div>';
+  }).join('');
+
+  const lockedHtml = lockedFaults.slice(0, 4).map(f =>
+    '<div class="fault-item fault-locked">'
+    + '<div class="fault-name" style="color:var(--dim);">🔒 '+f.name+'</div>'
+    + '<div class="fault-bar-wrap"><div style="height:100%;background:var(--surface3);border-radius:3px;width:100%;"></div></div>'
+    + '<div class="fault-pct" style="color:var(--dim);font-size:9px;">N/A</div>'
+    + '</div>'
+  ).join('');
+
+  document.getElementById('fault-bars').innerHTML = unlockedHtml + (lockedFaults.length ? '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:6px;">Additional data required to analyse:</div>' + lockedHtml : '');
   setTimeout(()=>document.querySelectorAll('.fault-bar-fill').forEach(el=>el.style.width=el.dataset.w+'%'),80);
   const top=d.faults[0]||{name:'—',pct:0,iso_reference:'',freq_hz:0,harmonics_used:0};
   document.getElementById('top-fault-badge').textContent=top.name+' '+top.pct+'%';
@@ -406,7 +525,7 @@ function renderResults(){
   document.getElementById('fault-clauses').innerHTML=top.iso_reference?'<span class="clause">'+top.iso_reference+'</span>':'';
   document.getElementById('rpm-badge').textContent='~'+Math.round((d.shaftHz||0)*60)+' RPM est.';
   document.getElementById('disclaimer-box').textContent='⚠ '+CONFIG.chatbot_config.disclaimer_text;
-  buildRadar(d.faults); buildFFT(d.fftR, d.sr);
+  buildRadar(d.faults.filter(f => !f.locked)); buildFFT(d.fftR, d.sr);
 }
 
 // ══ CHARTS ══
