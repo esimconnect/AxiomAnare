@@ -499,7 +499,7 @@ function renderResults(){
   const unlockedHtml = unlockedFaults.slice(0, CONFIG.fault_display_limit).map((f,i) => {
     const col = fp[Math.min(i, fp.length-1)];
     const derivedTag = f.vibration_derived
-      ? '<span style="font-size:8px;background:rgba(179,106,0,0.12);color:var(--yellow);border-radius:3px;padding:1px 5px;margin-left:5px;font-family:'IBM Plex Mono',monospace;">vibration-derived</span>'
+      ? '<span style="font-size:8px;background:rgba(179,106,0,0.12);color:var(--yellow);border-radius:3px;padding:1px 5px;margin-left:5px;font-family:monospace;">vibration-derived</span>'
       : '';
     return '<div class="fault-item">'
       + '<div class="fault-name" style="color:'+col+';">'+f.name+derivedTag+'</div>'
@@ -516,7 +516,7 @@ function renderResults(){
     + '</div>'
   ).join('');
 
-  document.getElementById('fault-bars').innerHTML = unlockedHtml + (lockedFaults.length ? '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:6px;">Additional data required to analyse:</div>' + lockedHtml : '');
+  document.getElementById('fault-bars').innerHTML = unlockedHtml + (lockedFaults.length ? '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:9px;color:var(--muted);font-family:monospace;margin-bottom:6px;">Additional data required to analyse:</div>' + lockedHtml : '');
   setTimeout(()=>document.querySelectorAll('.fault-bar-fill').forEach(el=>el.style.width=el.dataset.w+'%'),80);
   const top=d.faults[0]||{name:'—',pct:0,iso_reference:'',freq_hz:0,harmonics_used:0};
   document.getElementById('top-fault-badge').textContent=top.name+' '+top.pct+'%';
