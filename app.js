@@ -300,6 +300,7 @@ function detectShaft(fft) {
   const {freqs,mags,sRms} = fft;
   const fMin=CONFIG.shaft_freq_search_min_hz, fMax=CONFIG.shaft_freq_search_max_hz, n=CONFIG.harmonic_comb_count, bw=0.08;
   function peak(fc){const lo=fc*(1-bw),hi=fc*(1+bw);let mx=0;for(let i=0;i<freqs.length;i++){if(freqs[i]>hi)break;if(freqs[i]>=lo&&mags[i]>mx)mx=mags[i];}return mx;}
+  let rangeMax=0;for(let j=0;j<freqs.length;j++){if(freqs[j]>=fMin&&freqs[j]<=fMax&&mags[j]>rangeMax)rangeMax=mags[j];}
   const cands=[];
   for(let i=1;i<freqs.length-1;i++){const f=freqs[i];if(f<fMin||f>fMax)continue;if(mags[i]>mags[i-1]&&mags[i]>mags[i+1]&&mags[i]>rangeMax*0.05)cands.push(f);}
   if(!cands.length)return (fMin+fMax)/2;
