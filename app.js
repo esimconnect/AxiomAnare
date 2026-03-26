@@ -582,11 +582,18 @@ async function runPipeline(raw, filename) {
   doneStage(6, 'RUL '+rulR.days+'d +/- '+rulR.ci+'d');
   setNote('Rendering results...');
 
+  // Apply fault-zone override — ISO 13379-1 frequency findings take precedence
+  const override = applyFaultOverride(zoneRow, rulR, faults, parseFloat(kurt.toFixed(2)), parseFloat(cf.toFixed(2)), classRow);
+  const finalZoneRow = override.zoneRow;
+  const finalRulR    = override.rulR;
+
   nvr = { filename, rms: rms.toFixed(3), peak: peak.toFixed(3), cf: cf.toFixed(2),
     dataTypes, dataBanner, machineParams: {...machineParams},
-    kurt: kurt.toFixed(2), devSc: devSc.toFixed(2), devRow, zoneRow, trendRow,
+    kurt: kurt.toFixed(2), devSc: devSc.toFixed(2), devRow,
+    zoneRow: finalZoneRow, trendRow,
     earlyWarn, faults: faults.length ? faults : allFaults.slice(0, CONFIG.fault_display_limit),
-    fftR, rulR, n, sr, classRow, cu, shaftHz, singleFile: true };
+    fftR, rulR: finalRulR, n, sr, classRow, cu, shaftHz, singleFile: true,
+    override };
 
   // Save to Supabase (non-blocking — runs in background)
   saveNVRToSupabase(nvr).catch(e => console.log('Supabase:', e.message));
@@ -924,6 +931,97 @@ function getActiveFaultRules(params) {
   });
 }
 
+// == FAULT-ZONE OVERRIDE ENGINE ==
+// ISO 13379-1:2012 §5.4 — frequency-domain findings take precedence over RMS zone
+// when fault confidence exceeds threshold. The worst finding always governs.
+function applyFaultOverride(zoneRow, rulR, faults, kurt, cf, classRow) {
+  const result = {
+    zoneRow:    { ...zoneRow },
+    rulR:       { ...rulR },
+    overrideActive: false,
+    overrideReason: null,
+    overrideISO:    null,
+    healthScore:    null  // 0-100, lower = worse
+  };
+
+  // Find dominant unlocked fault
+  const unlockedFaults = faults.filter(f => !f.locked);
+  const topFault = unlockedFaults[0];
+  const topPct = topFault?.pct || 0;
+  const topName = topFault?.name || '';
+  const isBearing = topFault?.category === 'bearing';
+  const isMechanical = topFault?.category === 'mechanical';
+
+  // ── Rule 1: Bearing fault override ──
+  // ISO 13379-1:2012 §5.4: bearing fault frequency indicators
+  // take precedence over broadband severity assessment
+  if (isBearing && topPct >= 60) {
+    result.overrideActive = true;
+    // Upgrade zone if currently A or B with high fault score
+    if (zoneRow.zone_label === 'A' || (zoneRow.zone_label === 'B' && topPct >= 80)) {
+      result.zoneRow = {
+        ...zoneRow,
+        zone_label: topPct >= 80 ? 'C' : 'B',
+        action_required: topPct >= 80
+          ? 'BEARING FAULT DETECTED — Corrective maintenance required. RMS underestimates severity for impulsive faults.'
+          : 'BEARING FAULT DETECTED — Schedule inspection. Frequency analysis indicates bearing defect despite low RMS.',
+        urgency: topPct >= 80 ? 'CORRECTIVE' : 'SCHEDULED'
+      };
+      // Shorten RUL based on fault severity
+      const rulFactor = topPct >= 80 ? 0.4 : 0.6;
+      result.rulR = {
+        ...rulR,
+        days: Math.round(rulR.days * rulFactor),
+        ci:   Math.round(rulR.ci   * rulFactor),
+        overridden: true
+      };
+    }
+    result.overrideReason = `Bearing fault detected at ${topPct}% confidence (${topName}) — ISO 13379-1 frequency analysis overrides RMS-based zone assessment`;
+    result.overrideISO = 'ISO 13379-1:2012 §5.4 | ISO 13373-2:2016 §8.3';
+  }
+
+  // ── Rule 2: Kurtosis override ──
+  // ISO 13373-2:2016 §8.3: elevated kurtosis indicates impulsive fault
+  // even when RMS is low
+  if (kurt >= 4.0 && !result.overrideActive) {
+    result.overrideActive = true;
+    result.overrideReason = `Elevated kurtosis (${kurt.toFixed(2)}) indicates impulsive fault activity — ISO 13373-2 §8.3`;
+    result.overrideISO = 'ISO 13373-2:2016 §8.3';
+    if (zoneRow.zone_label === 'A') {
+      result.zoneRow = {
+        ...zoneRow,
+        action_required: 'Elevated kurtosis detected. Impulsive fault activity present despite low RMS. Inspect bearing condition.',
+        urgency: 'SCHEDULED'
+      };
+    }
+  }
+
+  // ── Rule 3: Dominant score override ──
+  // Whenever one fault score is significantly higher than all others,
+  // that score drives the health status regardless of absolute level
+  if (unlockedFaults.length >= 2) {
+    const score1 = unlockedFaults[0]?.pct || 0;
+    const score2 = unlockedFaults[1]?.pct || 0;
+    const dominance = score1 - score2;
+    if (dominance >= 20 && score1 >= 40) {
+      // Clear dominant fault — this drives the diagnosis
+      if (!result.overrideActive) {
+        result.overrideReason = `${topName} is dominant at ${score1}% (${dominance}% above next fault) — ISO 13379-1 Annex A §A.3`;
+        result.overrideISO = 'ISO 13379-1:2012 Annex A §A.3';
+      }
+    }
+  }
+
+  // ── Compute health score 0-100 (100=perfect, 0=critical) ──
+  const zoneScores = { 'A': 95, 'B': 70, 'C': 35, 'D': 5 };
+  const zoneHealth = zoneScores[result.zoneRow.zone_label] || 70;
+  const faultPenalty = Math.min(60, topPct * 0.6);
+  const kurtPenalty  = kurt > 4 ? Math.min(15, (kurt-3)*5) : 0;
+  result.healthScore = Math.max(5, Math.round(zoneHealth - faultPenalty - kurtPenalty));
+
+  return result;
+}
+
 // == FAULT CLASSIFICATION ==
 function classifyFaults(fft, cf, kurt, dataTypes, knownShaftHz, faultRules) {
   const {freqs,mags,sRms} = fft;
@@ -995,18 +1093,26 @@ function classifyFaults(fft, cf, kurt, dataTypes, knownShaftHz, faultRules) {
 
     // Band Energy Ratio scoring — industry standard approach
     // Compare fault band energy against background bands at same spacing
-    // If fault band is not higher than background, no fault present
     const bw = rule.bandwidth_pct;
-    // Sample background energy at 3 adjacent non-fault bands
-    const bgBand1 = bE(fc * 0.7, bw);  // below fault frequency
-    const bgBand2 = bE(fc * 1.3, bw);  // above fault frequency
-    const bgBand3 = bE(fc * 0.5, bw);  // further below
+    const bgBand1 = bE(fc * 0.7, bw);
+    const bgBand2 = bE(fc * 1.3, bw);
+    const bgBand3 = bE(fc * 0.5, bw);
     const bgMean = (bgBand1 + bgBand2 + bgBand3) / 3 || base;
-    // Band energy ratio: how much louder is the fault band vs background?
     const ber = tot / (bgMean || base);
-    // Score: BER of 1 = no fault (0%), BER of 3 = possible (30%), BER of 8+ = strong fault (80%+)
-    // This means a healthy machine scores near 0% on all faults
-    const relScore = Math.min(90, Math.max(2, Math.round((ber - 1) * 15 * rule.confidence_weight)));
+    let relScore = Math.min(90, Math.max(2, Math.round((ber - 1) * 15 * rule.confidence_weight)));
+
+    // ── Loose Foundation special rule ──
+    // ISO 13379-1:2012 §5.4: loose foundation produces sub-harmonics (0.5x shaft)
+    // Normal motors also produce shaft harmonics — require sub-harmonic evidence
+    if (rule.rule_id === 'r_loose_foundation') {
+      const subHarmonic = bE(shaft * 0.5, 0.1);  // 0.5x shaft
+      const subHarmonicRatio = subHarmonic / (bgMean || base);
+      // Only score high if sub-harmonic is present (ratio > 1.5)
+      if (subHarmonicRatio < 1.5) {
+        relScore = Math.min(relScore, 25); // cap at 25% without sub-harmonic
+      }
+    }
+
     let sc = Math.round(relScore);
     if (bearIds.has(rule.rule_id)) sc += Math.round((cfB+kB)*rule.confidence_weight*0.5);
     // Vibration-derived electrical: cap confidence lower  -  it's indirect
@@ -1113,6 +1219,27 @@ function renderResults(){
     bannerEl.textContent = d.dataBanner.msg;
     bannerEl.style.display = 'flex';
     bannerEl.className = 'data-banner data-banner-'+d.dataBanner.type;
+  }
+
+  // Fault override warning banner
+  let overrideBanner = document.getElementById('override-banner');
+  if (!overrideBanner) {
+    overrideBanner = document.createElement('div');
+    overrideBanner.id = 'override-banner';
+    overrideBanner.style.cssText = 'display:none;padding:10px 16px;background:rgba(220,50,50,0.15);border:1px solid rgba(220,50,50,0.4);border-radius:8px;font-family:"IBM Plex Mono",monospace;font-size:11px;color:#e87070;margin-bottom:12px;line-height:1.5;';
+    const dataBanner = document.getElementById('data-type-banner');
+    if (dataBanner && dataBanner.parentNode) {
+      dataBanner.parentNode.insertBefore(overrideBanner, dataBanner.nextSibling);
+    }
+  }
+  if (d.override && d.override.overrideActive) {
+    overrideBanner.style.display = 'block';
+    overrideBanner.innerHTML = '&#9888;&nbsp;<strong>FAULT OVERRIDE ACTIVE</strong> — '
+      + d.override.overrideReason
+      + '&nbsp;&nbsp;<span style="opacity:0.6;font-size:10px;">'
+      + (d.override.overrideISO || '') + '</span>';
+  } else {
+    overrideBanner.style.display = 'none';
   }
 
   // Fault bars  -  unlocked faults in colour, locked faults greyed with lock icon
@@ -1237,6 +1364,13 @@ async function streamClaude(){
   const fd=d.faults.slice(0,CONFIG.fault_display_limit).map(f=>'- '+f.name+': '+f.pct+'% | freq: '+(f.freq_hz?f.freq_hz.toFixed(1)+' Hz':'N/A')+' | harmonics: '+(f.harmonics_used||0)+' | '+f.iso_reference).join('\n');
   const prompt=[
     'You are AxiomAssist  -  domain-ringfenced to vibration analysis, condition monitoring, rotating machinery, and maintenance engineering ONLY.',
+    d.override && d.override.overrideActive ? [
+      '','=== ⚠ FAULT OVERRIDE ACTIVE ===',
+      d.override.overrideReason,
+      'ISO Reference: ' + (d.override.overrideISO||''),
+      'Health assessment is fault-driven, not RMS-driven per ' + (d.override.overrideISO||''),
+      ''
+    ].join('\n') : '',
     '','=== MACHINE ===',
     d.classRow.machine_type_desc+' | '+d.classRow.iso_standard_ref+' | '+d.classRow.mounting_type+' mount',
     d.machineParams && d.machineParams.paramsEntered ? [
