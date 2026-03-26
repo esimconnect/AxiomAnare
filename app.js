@@ -708,7 +708,7 @@ function getDataTypeBanner(dataTypes) {
 
 // == ACTIVE FAULT RULES — merges user bearing params with CONFIG defaults ==
 function getActiveFaultRules(params) {
-  return rules.map(rule => {
+  return CONFIG.fault_frequency_rules.map(rule => {
     const r = {...rule}; // copy
     // Override multipliers if user provided bearing geometry
     if (params.bpfoMult && rule.rule_id === 'r_bpfo') r.freq_multiplier = params.bpfoMult;
