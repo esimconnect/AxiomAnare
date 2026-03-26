@@ -1234,8 +1234,8 @@ function renderResults(){
   }
   if (d.override && d.override.overrideActive) {
     overrideBanner.style.display = 'block';
-    overrideBanner.innerHTML = '&#9888;&nbsp;<strong>FAULT OVERRIDE ACTIVE</strong> — '
-      + d.override.overrideReason
+    overrideBanner.innerHTML = '&#9888;&nbsp;'
+      + d.override.overrideReason.replace('Bearing fault detected at', 'Bearing fault detected —').replace(' — ISO 13379-1 frequency analysis overrides RMS-based zone assessment','')
       + '&nbsp;&nbsp;<span style="opacity:0.6;font-size:10px;">'
       + (d.override.overrideISO || '') + '</span>';
   } else {
@@ -1275,7 +1275,7 @@ function renderResults(){
         + '<span style="font-size:13px;margin-top:1px;">&#9888;</span>'
         + '<div style="flex:1;">'
         + '<div style="font-size:11px;color:var(--yellow);font-weight:600;">' + f.name + ' — ' + f.pct + '% indicators</div>'
-        + '<div style="font-size:10px;color:var(--muted);margin-top:3px;line-height:1.4;">Verify hold-down bolts, grout and baseplate integrity. Loose foundation accelerates bearing wear — address before bearing replacement.</div>'
+        + '<div style="font-size:10px;color:var(--muted);margin-top:3px;line-height:1.4;">Verify hold-down bolts, grout and baseplate integrity. Recommend inspection of hold-down bolts, grout and baseplate integrity before bearing replacement. Not a confirmed diagnosis — loose foundation can accelerate bearing wear and cause premature recurrence if not investigated.</div>'
         + '<div style="font-size:9px;color:var(--dim);margin-top:3px;">ISO 13379-1:2012 Annex B §B.2</div>'
         + '</div></div>';
     }).join('');
@@ -1299,7 +1299,7 @@ function renderResults(){
   const rpmSource = d.machineParams && d.machineParams.rpm ? 'nameplate' : 'est.';
   document.getElementById('rpm-badge').textContent='~'+Math.round((d.shaftHz||0)*60)+' RPM '+rpmSource;
   document.getElementById('disclaimer-box').textContent='(!) '+CONFIG.chatbot_config.disclaimer_text;
-  buildRadar(d.faults.filter(f => !f.locked && f.category !== 'root_cause')); buildFFT(d.fftR, d.sr);
+  buildRadar(d.faults.filter(f => !f.locked)); buildFFT(d.fftR, d.sr);
 }
 
 // == CHARTS ==
@@ -1392,7 +1392,7 @@ async function streamClaude(){
   const prompt=[
     'You are AxiomAssist  -  domain-ringfenced to vibration analysis, condition monitoring, rotating machinery, and maintenance engineering ONLY.',
     d.override && d.override.overrideActive ? [
-      '','=== ⚠ FAULT OVERRIDE ACTIVE ===',
+      '','=== ⚠ BEARING FAULT SEVERITY OVERRIDE ===',
       d.override.overrideReason,
       'ISO Reference: ' + (d.override.overrideISO||''),
       'Health assessment is fault-driven, not RMS-driven per ' + (d.override.overrideISO||''),
@@ -1421,7 +1421,7 @@ async function streamClaude(){
     '','=== FAULT CLASSIFICATION ===',fd,
     '','=== ROOT CAUSE INDICATORS ===',
     rcfd,
-    rootCauseList.length ? 'IMPORTANT: If bearing or mechanical faults are present, mention these root cause indicators as possible contributing conditions that should be investigated and corrected to prevent recurrence. Reference ISO 13379-1:2012 Annex B.' : '',
+    rootCauseList.length ? 'IMPORTANT: Do NOT diagnose these as confirmed root causes. Instead include a brief investigative prompt in Section 2: recommend inspection of the indicated condition (e.g. hold-down bolts, baseplate, grout) as it may contribute to fault recurrence. Use language like "Loose foundation indicators are present — recommend inspection before bearing replacement to prevent recurrence." Reference ISO 13379-1:2012 Annex B §B.2.' : '',
     '','=== DATA QUALITY FLAGS ===',
     flags.length?flags.map(f=>'(!) '+f).join('\n'):' -  No flags.',
     '','=== ANTI-HALLUCINATION RULES ===',
