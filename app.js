@@ -47,7 +47,7 @@ async function loadBearingLibrary() {
 // Save NVR record to Supabase after analysis
 async function saveNVRToSupabase(nvr) {
   try {
-    const top = nvr.faults && nvr.faults[0];
+    const top = nvr.faults && (nvr.faults.find(f => !f.locked && f.category !== 'root_cause') || nvr.faults[0]);
     const record = {
       filename:        nvr.filename,
       file_format:     nvr.filename.split('.').pop(),
@@ -194,7 +194,7 @@ const CONFIG = {
 
     // -- MECHANICAL FAULTS (detectable from vibration) ----------------------
     // category: "mechanical" | requires: "vibration"
-    { rule_id:"r_loose_found", fault_type:"Loose Foundation",      category:"mechanical", requires:"vibration",
+    { rule_id:"r_loose_found", fault_type:"Loose Foundation",      category:"root_cause", requires:"vibration",
       freq_multiplier:0.5,  harmonic_count:8, bandwidth_pct:0.10, confidence_weight:0.35,
       detection_note:"Sub-harmonic and multiple harmonics of shaft speed indicate structural looseness",
       iso_reference:"ISO 13379-1:2012 S5.4" },
@@ -946,7 +946,7 @@ function applyFaultOverride(zoneRow, rulR, faults, kurt, cf, classRow) {
 
   // Find dominant unlocked fault
   const unlockedFaults = faults.filter(f => !f.locked);
-  const topFault = unlockedFaults[0];
+  const topFault = unlockedFaults.find(f => f.category !== 'root_cause') || unlockedFaults[0];
   const topPct = topFault?.pct || 0;
   const topName = topFault?.name || '';
   const isBearing = topFault?.category === 'bearing';
@@ -1242,9 +1242,10 @@ function renderResults(){
     overrideBanner.style.display = 'none';
   }
 
-  // Fault bars  -  unlocked faults in colour, locked faults greyed with lock icon
-  const unlockedFaults = d.faults.filter(f => !f.locked);
-  const lockedFaults   = d.faults.filter(f => f.locked);
+  // Fault bars — split into primary faults and root cause indicators
+  const unlockedFaults    = d.faults.filter(f => !f.locked && f.category !== 'root_cause');
+  const rootCauseFaults   = d.faults.filter(f => !f.locked && f.category === 'root_cause');
+  const lockedFaults      = d.faults.filter(f => f.locked);
 
   const unlockedHtml = unlockedFaults.slice(0, CONFIG.fault_display_limit).map((f,i) => {
     const col = fp[Math.min(i, fp.length-1)];
@@ -1266,9 +1267,31 @@ function renderResults(){
     + '</div>'
   ).join('');
 
-  document.getElementById('fault-bars').innerHTML = unlockedHtml + (lockedFaults.length ? '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:9px;color:var(--muted);font-family:IBM Plex Mono,monospace;margin-bottom:6px;">Additional data required to analyse:</div>' + lockedHtml : '');
+  // Root cause contributing conditions section
+  function buildRootCauseHtml(faults) {
+    if (!faults.length) return '';
+    var items = faults.map(function(f) {
+      return '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;padding:8px 10px;background:rgba(255,165,0,0.06);border:1px solid rgba(255,165,0,0.2);border-radius:6px;">'
+        + '<span style="font-size:13px;margin-top:1px;">&#9888;</span>'
+        + '<div style="flex:1;">'
+        + '<div style="font-size:11px;color:var(--yellow);font-weight:600;">' + f.name + ' — ' + f.pct + '% indicators</div>'
+        + '<div style="font-size:10px;color:var(--muted);margin-top:3px;line-height:1.4;">Verify hold-down bolts, grout and baseplate integrity. Loose foundation accelerates bearing wear — address before bearing replacement.</div>'
+        + '<div style="font-size:9px;color:var(--dim);margin-top:3px;">ISO 13379-1:2012 Annex B §B.2</div>'
+        + '</div></div>';
+    }).join('');
+    return '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">'
+      + '<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">Possible Contributing Conditions <span style="font-size:9px;font-weight:400;margin-left:8px;color:var(--dim);">ISO 13379-1 Annex B</span></div>'
+      + items + '</div>';
+  }
+  var rootCauseHtml = buildRootCauseHtml(rootCauseFaults);
+
+  document.getElementById('fault-bars').innerHTML = unlockedHtml
+    + (lockedFaults.length ? '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:9px;color:var(--muted);font-family:IBM Plex Mono,monospace;margin-bottom:6px;">Additional data required to analyse:</div>' + lockedHtml : '')
+    + rootCauseHtml;
   setTimeout(()=>document.querySelectorAll('.fault-bar-fill').forEach(el=>el.style.width=el.dataset.w+'%'),80);
-  const top=d.faults[0]||{name:' - ',pct:0,iso_reference:'',freq_hz:0,harmonics_used:0};
+  // Top fault excludes root cause — primary fault drives the badge
+  const primaryFaults = d.faults.filter(f => !f.locked && f.category !== 'root_cause');
+  const top = primaryFaults[0] || d.faults[0] || {name:' - ',pct:0,iso_reference:'',freq_hz:0,harmonics_used:0};
   document.getElementById('top-fault-badge').textContent=top.name+' '+top.pct+'%';
   document.getElementById('top-fault-badge').className='badge '+(top.pct>60?'b-red':top.pct>40?'b-orange':'b-yellow');
   document.getElementById('driving-feature').textContent='Shaft ~'+(d.shaftHz||0).toFixed(1)+' Hz . Kurt '+d.kurt+' . CF '+d.cf+' . '+(top.harmonics_used||0)+' harmonics';
