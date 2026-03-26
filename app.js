@@ -1,3 +1,102 @@
+// ══ SUPABASE CONFIG ══
+const SUPABASE_URL = 'https://duedtedevbnrflfbnzba.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1ZWR0ZWRldmJucmZsZmJuemJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0OTIzNzIsImV4cCI6MjA5MDA2ODM3Mn0.u_ngs7Fct7xQof90C-aPLMKeMcrqtS-yccUgI7r2FrE';
+
+// Supabase REST API helper — no SDK needed, pure fetch
+const SB = {
+  async get(table, params='') {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
+    });
+    return r.ok ? r.json() : null;
+  },
+  async post(table, body) {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(body)
+    });
+    return r.ok ? r.json() : null;
+  }
+};
+
+// Load bearing library from Supabase — falls back to local CONFIG if offline
+async function loadBearingLibrary() {
+  try {
+    const rows = await SB.get('bearing_library', 'select=bearing_model,bpfo_mult,bpfi_mult,bsf_mult,ftf_mult,ball_count,manufacturer');
+    if (rows && rows.length > 0) {
+      rows.forEach(r => {
+        BEARING_LIBRARY[r.bearing_model] = {
+          bpfo: r.bpfo_mult, bpfi: r.bpfi_mult,
+          bsf: r.bsf_mult,  ftf: r.ftf_mult,
+          balls: r.ball_count, note: r.manufacturer
+        };
+      });
+      console.log('Bearing library loaded from Supabase:', rows.length, 'bearings');
+    }
+  } catch(e) {
+    console.log('Bearing library: using local CONFIG (Supabase offline)');
+  }
+}
+
+// Save NVR record to Supabase after analysis
+async function saveNVRToSupabase(nvr) {
+  try {
+    const top = nvr.faults && nvr.faults[0];
+    const record = {
+      filename:        nvr.filename,
+      file_format:     nvr.filename.split('.').pop(),
+      sample_count:    nvr.n,
+      sample_rate_hz:  nvr.sr,
+      rms_mms:         parseFloat(nvr.rms),
+      peak_mms:        parseFloat(nvr.peak),
+      crest_factor:    parseFloat(nvr.cf),
+      kurtosis:        parseFloat(nvr.kurt),
+      deviation_sigma: parseFloat(nvr.devSc),
+      iso_zone:        nvr.zoneRow?.zone_label,
+      trend_code:      nvr.trendRow?.code,
+      rul_days:        nvr.rulR?.days,
+      rul_ci_days:     nvr.rulR?.ci,
+      shaft_hz:        nvr.shaftHz,
+      top_fault:       top?.name,
+      top_fault_pct:   top?.pct,
+      machine_class:   nvr.classRow?.display_label,
+      load_pct:        nvr.machineParams?.loadPct || null,
+      contributed_to_silo: true
+    };
+    const saved = await SB.post('nvr_records', record);
+    if (saved) {
+      console.log('NVR saved to Supabase:', saved[0]?.id);
+      // Also save to cumulative silo if fault detected
+      if (top && top.pct > 20 && !top.locked) {
+        await SB.post('fault_signatures', {
+          machine_class:   record.machine_class,
+          equipment_type:  nvr.machineParams?.equipType || 'unknown',
+          fault_type:      top.name,
+          fault_category:  top.category,
+          confidence_pct:  top.pct,
+          iso_zone:        record.iso_zone,
+          shaft_hz:        record.shaft_hz,
+          rms_mms:         record.rms_mms,
+          kurtosis:        record.kurtosis,
+          crest_factor:    record.crest_factor,
+          freq_hz:         top.freq_hz,
+          harmonics_used:  top.harmonics_used,
+          bearing_model:   nvr.machineParams?.bearingModel || null,
+          load_pct:        record.load_pct
+        });
+      }
+    }
+  } catch(e) {
+    console.log('Supabase save failed (offline mode):', e.message);
+  }
+}
+
 // ══ BEARING LIBRARY — common industrial bearings with pre-computed fault multipliers ══
 // Source: SKF/FAG/NSK published bearing geometry specifications
 // Multipliers: BPFO = (n/2)*(1-(Bd/Pd)*cos(a)) | BPFI = (n/2)*(1+(Bd/Pd)*cos(a))
@@ -211,6 +310,8 @@ const CONFIG = {
 // AxiomAnare  -  Diagnostic Engine
 // All logic runs after DOM is fully loaded
 document.addEventListener('DOMContentLoaded', function () {
+  // Load bearing library from Supabase on startup
+  loadBearingLibrary();
 
 // == CONFIG LOOKUP HELPERS ==
 function getZonesForClass(id) {
@@ -411,7 +512,14 @@ async function runPipeline(raw, filename) {
   const cu = CONFIG.unit_conversion_factors.find(r => r.canonical_flag === 1).to_unit;
   const sr = parsed.sampleRate || CONFIG.default_sample_rate_hz;
   // If user provided nameplate RPM, use it directly — skip FFT shaft detection uncertainty
+  // Re-read form values fresh at run time — captures any unsubmitted input
+  const rpmInput = document.getElementById('p-rpm');
+  if (rpmInput && rpmInput.value) {
+    const rpmVal = parseFloat(rpmInput.value);
+    if (isFinite(rpmVal) && rpmVal > 0) machineParams.rpm = rpmVal;
+  }
   const knownShaftHz = machineParams.rpm ? machineParams.rpm / 60.0 : null;
+  if (knownShaftHz) console.log('Using nameplate shaft Hz:', knownShaftHz.toFixed(3), '(', machineParams.rpm, 'RPM)');
   // Detect what type of data we have from column headers
   const dataTypes = detectDataTypes(parsed.allHeaders || [parsed.colName]);
   const dataBanner = getDataTypeBanner(dataTypes);
@@ -453,7 +561,9 @@ async function runPipeline(raw, filename) {
   // Stage 5  -  Fault Classification
   await activateStage(5);
   const fftR = computeFFT(vals, sr);
-  const shaftHz = detectShaft(fftR);
+  // Use nameplate RPM if provided — physics is exact, no detection needed
+  const shaftHz = knownShaftHz || detectShaft(fftR);
+  if (knownShaftHz) console.log('Shaft locked to nameplate:', shaftHz.toFixed(3), 'Hz');
   // Yield to UI thread before heavy fault classification
   await new Promise(r => setTimeout(r, 50));
   // Use user-provided bearing multipliers if available, otherwise CONFIG defaults
@@ -478,6 +588,8 @@ async function runPipeline(raw, filename) {
     earlyWarn, faults: faults.length ? faults : allFaults.slice(0, CONFIG.fault_display_limit),
     fftR, rulR, n, sr, classRow, cu, shaftHz, singleFile: true };
 
+  // Save to Supabase (non-blocking — runs in background)
+  saveNVRToSupabase(nvr).catch(e => console.log('Supabase:', e.message));
   await new Promise(r => setTimeout(r, 250));
   document.getElementById('processing-screen').style.display = 'none';
   document.getElementById('results-screen').style.display = 'block';
@@ -801,7 +913,7 @@ function getDataTypeBanner(dataTypes) {
 
 // == ACTIVE FAULT RULES — merges user bearing params with CONFIG defaults ==
 function getActiveFaultRules(params) {
-  return CONFIG.fault_frequency_rules.map(rule => {
+  return rules.map(rule => {
     const r = {...rule}; // copy
     // Override multipliers if user provided bearing geometry
     if (params.bpfoMult && rule.rule_id === 'r_bpfo') r.freq_multiplier = params.bpfoMult;
@@ -1026,7 +1138,8 @@ function renderResults(){
   document.getElementById('top-fault-badge').className='badge '+(top.pct>60?'b-red':top.pct>40?'b-orange':'b-yellow');
   document.getElementById('driving-feature').textContent='Shaft ~'+(d.shaftHz||0).toFixed(1)+' Hz . Kurt '+d.kurt+' . CF '+d.cf+' . '+(top.harmonics_used||0)+' harmonics';
   document.getElementById('fault-clauses').innerHTML=top.iso_reference?'<span class="clause">'+top.iso_reference+'</span>':'';
-  document.getElementById('rpm-badge').textContent='~'+Math.round((d.shaftHz||0)*60)+' RPM est.';
+  const rpmSource = d.machineParams && d.machineParams.rpm ? 'nameplate' : 'est.';
+  document.getElementById('rpm-badge').textContent='~'+Math.round((d.shaftHz||0)*60)+' RPM '+rpmSource;
   document.getElementById('disclaimer-box').textContent='(!) '+CONFIG.chatbot_config.disclaimer_text;
   buildRadar(d.faults.filter(f => !f.locked)); buildFFT(d.fftR, d.sr);
 }
