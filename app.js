@@ -452,9 +452,10 @@ async function runPipeline(raw, filename) {
 
   // Stage 5  -  Fault Classification
   await activateStage(5);
-  await new Promise(r => setTimeout(r, 50));
   const fftR = computeFFT(vals, sr);
   const shaftHz = detectShaft(fftR);
+  // Yield to UI thread before heavy fault classification
+  await new Promise(r => setTimeout(r, 50));
   // Use user-provided bearing multipliers if available, otherwise CONFIG defaults
   const activeFaultRules = getActiveFaultRules(machineParams);
   const allFaults = classifyFaults(fftR, cf, kurt, dataTypes, knownShaftHz, activeFaultRules);
@@ -560,54 +561,145 @@ window.onParamChange = function() {
 };
 
 // == MAT FILE PARSER ==
-// Handles MATLAB Level 5 .mat files (CWRU and similar instrument exports)
-// Uses mat-for-js library to parse binary format
+// Self-contained MATLAB Level 5 MAT-file parser
+// No external dependencies — handles CWRU and standard instrument exports
+// Spec: https://www.mathworks.com/help/pdf_doc/matlab/matfile_format.pdf
 function parseMat(arrayBuffer) {
   try {
-    if (typeof mat4js === 'undefined') {
-      throw new Error('mat-for-js library not loaded. Check CDN connection.');
+    const buf = arrayBuffer;
+    const view = new DataView(buf);
+    const bytes = new Uint8Array(buf);
+
+    // Verify MAT file header (first 116 bytes = description text)
+    const header = String.fromCharCode(...bytes.slice(0,116)).trim();
+    if (!header.includes('MATLAB')) throw new Error('Not a valid MATLAB .mat file');
+
+    // Byte 126-127: version (0x0100) + endian indicator (MI = little endian)
+    const littleEndian = (view.getUint16(126, true) === 0x4D49) ? false : true;
+    // Most CWRU files are little-endian (PCWIN)
+    const le = true;
+
+    let offset = 128; // data starts after 128-byte header
+    const variables = {};
+
+    // Parse data elements
+    while (offset < buf.byteLength - 8) {
+      const dataType = view.getUint32(offset, le);
+      const numBytes = view.getUint32(offset + 4, le);
+      offset += 8;
+
+      if (numBytes === 0 || dataType === 0) break;
+      if (offset + numBytes > buf.byteLength) break;
+
+      // miMATRIX = 14
+      if (dataType === 14) {
+        try {
+          const varEnd = offset + numBytes;
+          let pos = offset;
+
+          // Array flags sub-element
+          const flagsType = view.getUint32(pos, le);
+          const flagsBytes = view.getUint32(pos+4, le);
+          const arrayClass = bytes[pos+9] & 0xFF; // mxDOUBLE_CLASS=6, mxSINGLE_CLASS=7
+          pos += 8 + flagsBytes;
+          pos = Math.ceil(pos/8)*8; // pad to 8 bytes
+
+          // Dimensions sub-element
+          const dimType = view.getUint32(pos, le);
+          const dimBytes = view.getUint32(pos+4, le);
+          pos += 8;
+          const dims = [];
+          for (let d=0; d<dimBytes/4; d++) dims.push(view.getInt32(pos+d*4, le));
+          pos += dimBytes;
+          pos = Math.ceil(pos/8)*8;
+
+          // Array name sub-element
+          const nameType = view.getUint32(pos, le);
+          const nameBytes = view.getUint32(pos+4, le);
+          pos += 8;
+          let varName = '';
+          for (let n=0; n<nameBytes; n++) {
+            const c = bytes[pos+n];
+            if (c > 0) varName += String.fromCharCode(c);
+          }
+          pos += nameBytes;
+          pos = Math.ceil(pos/8)*8;
+
+          // Real data sub-element
+          if (pos < varEnd) {
+            const realType = view.getUint32(pos, le);
+            const realBytes = view.getUint32(pos+4, le);
+            pos += 8;
+
+            const totalElements = dims.reduce((a,b)=>a*b, 1);
+            const values = new Float64Array(totalElements);
+
+            if (arrayClass === 6 && realType === 9) {
+              // mxDOUBLE_CLASS, miDOUBLE
+              for (let i=0; i<totalElements && i<realBytes/8; i++) {
+                values[i] = view.getFloat64(pos + i*8, le);
+              }
+            } else if (arrayClass === 7 && realType === 7) {
+              // mxSINGLE_CLASS, miSINGLE
+              for (let i=0; i<totalElements && i<realBytes/4; i++) {
+                values[i] = view.getFloat32(pos + i*4, le);
+              }
+            } else if (realType === 9) {
+              // miDOUBLE with any class
+              for (let i=0; i<totalElements && i<realBytes/8; i++) {
+                values[i] = view.getFloat64(pos + i*8, le);
+              }
+            }
+
+            if (varName && totalElements > 10) {
+              variables[varName] = Array.from(values);
+            }
+          }
+        } catch(innerErr) {
+          // Skip malformed element
+        }
+      }
+
+      // Advance to next element (pad to 8 bytes)
+      offset += numBytes;
+      if (numBytes % 8 !== 0) offset += 8 - (numBytes % 8);
     }
-    const matData = mat4js.read(arrayBuffer);
-    if (!matData || !matData.data) throw new Error('Empty or invalid .mat file');
 
-    const vars = matData.data;
-    const keys = Object.keys(vars);
-    console.log('MAT variables found:', keys);
+    const keys = Object.keys(variables);
+    console.log('MAT variables parsed:', keys, 'sizes:', keys.map(k=>variables[k].length));
 
-    // CWRU naming: X097_DE_time (Drive End), X097_FE_time (Fan End), X097_BA_time (Base)
-    // Priority: Drive End > Fan End > Base > any numeric array
-    const deKey = keys.find(k => k.includes('DE_time') || k.includes('_de_') || k.toLowerCase().includes('drive'));
-    const feKey = keys.find(k => k.includes('FE_time') || k.includes('_fe_') || k.toLowerCase().includes('fan'));
-    const baKey = keys.find(k => k.includes('BA_time') || k.includes('_ba_'));
-    const rpmKey = keys.find(k => k.toLowerCase().includes('rpm') || k.toLowerCase().includes('speed'));
+    if (keys.length === 0) throw new Error('No numeric arrays found in MAT file');
 
-    // Pick best vibration channel
-    const chosenKey = deKey || feKey || baKey ||
-      keys.find(k => Array.isArray(vars[k]) && vars[k].length > 100);
+    // CWRU channel priority: Drive End > Fan End > Base > largest array
+    const deKey  = keys.find(k => /DE_time|_de_time/i.test(k));
+    const feKey  = keys.find(k => /FE_time|_fe_time/i.test(k));
+    const baKey  = keys.find(k => /BA_time|_ba_time/i.test(k));
+    const rpmKey = keys.find(k => /rpm|speed/i.test(k));
 
-    if (!chosenKey) throw new Error('No vibration data array found in .mat file. Keys: '+keys.join(', '));
+    // Fallback: pick largest array (most likely to be vibration waveform)
+    const largestKey = keys.reduce((a,b) => variables[a].length >= variables[b].length ? a : b);
+    const chosenKey = deKey || feKey || baKey || largestKey;
 
-    const raw = vars[chosenKey];
-    const values = Array.isArray(raw) ? raw.flat() : Array.from(raw);
-    const numValues = values.filter(v => typeof v === 'number' && isFinite(v));
+    const values = variables[chosenKey].filter(v => isFinite(v));
+    if (values.length < 100) throw new Error('Too few samples in '+chosenKey+': '+values.length);
 
-    if (numValues.length < 100) throw new Error('Too few numeric samples in '+chosenKey+': '+numValues.length);
+    const rpm = rpmKey ? variables[rpmKey][0] : null;
+    const channelType = deKey?'Drive End':feKey?'Fan End':baKey?'Base':'Primary';
 
-    // Detect sample rate from filename or default to 12000 (CWRU standard)
-    const rpm = rpmKey ? parseFloat(vars[rpmKey]) : null;
+    console.log('Using channel:', chosenKey, '| Samples:', values.length, '| Type:', channelType);
 
     return {
-      values: numValues,
+      values,
       colName: chosenKey,
-      unit: 'g',          // CWRU data is in g (accelerometer)
-      sampleRate: 12000,  // CWRU standard: 12kHz DE, 12kHz FE
+      unit: 'g',
+      sampleRate: 12000,
       allHeaders: keys,
       rpmDetected: rpm,
       channelUsed: chosenKey,
-      channelType: deKey ? 'Drive End' : feKey ? 'Fan End' : 'Base'
+      channelType
     };
   } catch(e) {
-    console.error('MAT parse error:', e);
+    console.error('MAT parse error:', e.message);
     return null;
   }
 }
@@ -709,7 +801,7 @@ function getDataTypeBanner(dataTypes) {
 
 // == ACTIVE FAULT RULES — merges user bearing params with CONFIG defaults ==
 function getActiveFaultRules(params) {
-  return CONFIG.fault_frequency_rules.map(rule => {
+  return rules.map(rule => {
     const r = {...rule}; // copy
     // Override multipliers if user provided bearing geometry
     if (params.bpfoMult && rule.rule_id === 'r_bpfo') r.freq_multiplier = params.bpfoMult;
@@ -727,18 +819,27 @@ function classifyFaults(fft, cf, kurt, dataTypes, knownShaftHz, faultRules) {
   const shaft = knownShaftHz || detectShaft(fft);
   const rules = faultRules || CONFIG.fault_frequency_rules;
   // Peak magnitude in band — more sensitive to tonal fault peaks
-  function findIdx(t){let lo=0,hi=freqs.length-1;while(lo<hi){const mid=(lo+hi)>>1;if(freqs[mid]<t)lo=mid+1;else hi=mid;}return lo;} function bE(fc,bw){const lo=fc*(1-bw),hi=fc*(1+bw);const start=findIdx(lo);let mx=0;for(let i=start;i<freqs.length&&freqs[i]<=hi;i++){if(mags[i]>mx)mx=mags[i];}return mx;}
+  // Binary search to find band start index — O(log n) instead of O(n)
+  function findIdx(target){let lo=0,hi=freqs.length-1;while(lo<hi){const mid=(lo+hi)>>1;if(freqs[mid]<target)lo=mid+1;else hi=mid;}return lo;}
+  function bE(fc,bw){
+    const lo=fc*(1-bw),hi=fc*(1+bw);
+    const start=findIdx(lo);
+    let mx=0;
+    for(let i=start;i<freqs.length&&freqs[i]<=hi;i++){if(mags[i]>mx)mx=mags[i];}
+    return mx;
+  }
   const cfB=getCFBonus(cf), kB=getKBonus(kurt);
   const bearIds=new Set(['r_bpfo','r_bpfi','r_bsf','r_ftf']);
   // Peak spectral magnitude — more stable normalisation than RMS
   // Use spectral RMS as base — prevents noise from inflating scores
   // specPeak/sRms = SNR — high SNR means strong tonal fault present
   let specPeak=0; for(let i=0;i<mags.length;i++){if(mags[i]>specPeak)specPeak=mags[i];}
+  // Mean magnitude = noise floor reference — fault bands must be above this to score
   const meanMag = mags.reduce((a,b)=>a+b,0)/mags.length;
   const base = meanMag||sRms||1;
-  const snr = specPeak/base; // signal-to-noise ratio
+  const snr = specPeak/base;
 
-  return CONFIG.fault_frequency_rules.map(rule => {
+  return rules.map(rule => {
     const req = rule.requires;
 
     // -- Rules that require data we don't have -> locked --
@@ -780,11 +881,14 @@ function classifyFaults(fft, cf, kurt, dataTypes, knownShaftHz, faultRules) {
     if (!h2) return { name:rule.fault_type, category:rule.category, pct:2, locked:false,
                       iso_reference:rule.iso_reference, freq_hz:fc, harmonics_used:0 };
 
-    // SNR factor: machines with high noise floor get lower fault scores
-    // snr>8 = strong tonal fault (full score); snr<2 = mostly noise (low score)
-    const snrFactor = Math.min(1.0, Math.max(0.1, (snr-2)/6));
-    let sc = Math.round((tot/base) * snrFactor * 150 * rule.confidence_weight);
-    if (bearIds.has(rule.rule_id)) sc += Math.round((cfB+kB)*rule.confidence_weight*snrFactor);
+    // Relative score: how much higher is this fault band vs the noise floor?
+    // ratio > 5 = fault frequency clearly above noise = possible fault
+    // ratio < 2 = fault frequency indistinguishable from noise = no fault
+    const ratio = tot / base;
+    // Scale: ratio of 2 = ~10%, ratio of 10 = ~50%, ratio of 30 = ~90%
+    const relScore = Math.min(92, Math.max(2, Math.round((ratio - 1) * 5 * rule.confidence_weight * 100) / 10));
+    let sc = Math.round(relScore);
+    if (bearIds.has(rule.rule_id)) sc += Math.round((cfB+kB)*rule.confidence_weight*0.3);
     // Vibration-derived electrical: cap confidence lower  -  it's indirect
     const cap = isVibDerived ? 65 : 95;
 
