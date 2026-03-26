@@ -1384,7 +1384,11 @@ async function streamClaude(){
   if(d.faults[0]&&d.faults[0].pct<40)flags.push('LOW_CONFIDENCE: Top fault '+d.faults[0].pct+'%  -  use indicative language only.');
   const zA=getZonesForClass(selClassId)[0];
   if(parseFloat(d.rms)<zA.rms_upper_mm_s)flags.push('ZONE_A: Machine in Zone A. Routine monitoring only  -  do not over-diagnose.');
-  const fd=d.faults.slice(0,CONFIG.fault_display_limit).map(f=>'- '+f.name+': '+f.pct+'% | freq: '+(f.freq_hz?f.freq_hz.toFixed(1)+' Hz':'N/A')+' | harmonics: '+(f.harmonics_used||0)+' | '+f.iso_reference).join('\n');
+  // Primary faults only (exclude root cause from main fault list)
+  const primaryFaultList = d.faults.filter(f => !f.locked && f.category !== 'root_cause');
+  const rootCauseList    = d.faults.filter(f => !f.locked && f.category === 'root_cause');
+  const fd = primaryFaultList.slice(0,CONFIG.fault_display_limit).map(f=>'- '+f.name+': '+f.pct+'% | freq: '+(f.freq_hz?f.freq_hz.toFixed(1)+' Hz':'N/A')+' | harmonics: '+(f.harmonics_used||0)+' | '+f.iso_reference).join('\n');
+  const rcfd = rootCauseList.length ? rootCauseList.map(f=>'- '+f.name+': '+f.pct+'% indicators | '+f.iso_reference).join('\n') : 'None detected';
   const prompt=[
     'You are AxiomAssist  -  domain-ringfenced to vibration analysis, condition monitoring, rotating machinery, and maintenance engineering ONLY.',
     d.override && d.override.overrideActive ? [
@@ -1415,6 +1419,9 @@ async function streamClaude(){
     'Monitoring: '+mi.interval_desc+' ('+mi.iso_reference+')',
     'Shaft: '+(d.shaftHz?d.shaftHz.toFixed(1):'?')+' Hz (~'+Math.round((d.shaftHz||0)*60)+' RPM)',
     '','=== FAULT CLASSIFICATION ===',fd,
+    '','=== ROOT CAUSE INDICATORS ===',
+    rcfd,
+    rootCauseList.length ? 'IMPORTANT: If bearing or mechanical faults are present, mention these root cause indicators as possible contributing conditions that should be investigated and corrected to prevent recurrence. Reference ISO 13379-1:2012 Annex B.' : '',
     '','=== DATA QUALITY FLAGS ===',
     flags.length?flags.map(f=>'(!) '+f).join('\n'):' -  No flags.',
     '','=== ANTI-HALLUCINATION RULES ===',
@@ -1425,7 +1432,7 @@ async function streamClaude(){
     '5. Always quote RUL CI. State it cannot replace engineering judgement.',
     '','=== REPORT  -  6 SECTIONS ===',
     '1. DIAGNOSTIC SUMMARY  -  Zone, RMS, trend, limitations.',
-    '2. PRIMARY FAULT ANALYSIS  -  Interpret top fault(s), qualify confidence, cite ISO 13379-1 clause.',
+    '2. PRIMARY FAULT ANALYSIS  -  Interpret top fault(s), qualify confidence, cite ISO 13379-1 clause. If root cause indicators are present, mention them as possible contributing conditions per ISO 13379-1 Annex B.',
     '3. SEVERITY ASSESSMENT  -  Interpret zone, cite exact ISO clause from NVR record.',
     '4. RECOMMENDED ACTIONS  -  Immediate/Short-term/Long-term. Each must cite an ISO clause.',
     '5. MONITORING GUIDANCE  -  Interval and parameters. Cite ISO 13373-1 clause.',
