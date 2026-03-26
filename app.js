@@ -1373,6 +1373,18 @@ function buildFFT(fft,fs){
 }
 
 // == CLAUDE AI ==
+// Strip Severity Assessment section from Claude output
+// Claude tends to generate this from training data despite instructions
+function stripSeverityAssessment(text) {
+  // Remove everything between "SEVERITY ASSESSMENT" and the next numbered section
+  // Pattern: 3. SEVERITY ASSESSMENT ... 4. (or end)
+  return text
+    .replace(/\d+\.\s*SEVERITY ASSESSMENT[\s\S]*?(?=\d+\.\s*RECOMMENDED|\d+\.\s*MONITORING|\d+\.\s*RUL|$)/gi,
+      '')
+    .replace(/\n{3,}/g, '\n\n') // clean up extra blank lines left behind
+    .trim();
+}
+
 async function streamClaude(){
   const d=nvr;
   document.getElementById('stream-thinking').style.display='flex';
@@ -1444,7 +1456,10 @@ async function streamClaude(){
     if(!resp.ok)throw new Error(await resp.text());
     const reader=resp.body.getReader(),dec=new TextDecoder();let buf='';
     const rt=document.getElementById('reco-text');
-    while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const ls=buf.split('\n');buf=ls.pop();for(const l of ls){if(!l.startsWith('data:'))continue;const dat=l.slice(5).trim();if(dat==='[DONE]')break;try{const e=JSON.parse(dat);if(e.type==='content_block_delta'&&e.delta?.type==='text_delta'){rt.textContent+=e.delta.text;rt.scrollIntoView({behavior:'smooth',block:'nearest'});}}catch{}}}
+    while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const ls=buf.split('\n');buf=ls.pop();for(const l of ls){if(!l.startsWith('data:'))continue;const dat=l.slice(5).trim();if(dat==='[DONE]')break;try{const e=JSON.parse(dat);if(e.type==='content_block_delta'&&e.delta?.type==='text_delta'){const newText = rt.textContent + e.delta.text;
+            // Post-process: strip Severity Assessment section (zone table) from output
+            rt.textContent = stripSeverityAssessment(newText);
+            rt.scrollIntoView({behavior:'smooth',block:'nearest'});}}catch{}}}
   }catch(err){
     document.getElementById('stream-thinking').style.display='none';
     await typeText(document.getElementById('reco-text'), buildFallback(nvr));
