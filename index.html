@@ -10,7 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
+<script src="https://cdn.jsdelivr.net/npm/mat-for-js@1.1.0/dist/readmat.min.js"></script>
 <!-- CONFIG in app.js -->
 <style>
 :root{
@@ -359,7 +359,20 @@ main{padding-top:54px;position:relative;z-index:1;}
       <div class="card-body">
         <div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;">Severity Zone</div>
         <div class="zone-row"><div class="zone-seg z-A" data-z="A">A</div><div class="zone-seg z-B" data-z="B">B</div><div class="zone-seg z-C" data-z="C">C</div><div class="zone-seg z-D" data-z="D">D</div></div>
-        <div id="zone-desc" style="font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:11px;line-height:1.5;"></div>
+        <div id="zone-desc" style="font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:8px;line-height:1.5;"></div>
+        <div onclick="var l=document.getElementById('zone-legend');l.style.display=l.style.display==='none'?'block':'none'"
+             style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--accent);cursor:pointer;display:inline-flex;align-items:center;gap:5px;margin-bottom:10px;">
+          &#9432; Zone Reference Legend
+        </div>
+        <div id="zone-legend" style="display:none;margin-bottom:10px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;line-height:1.9;">
+            <div><span style="color:var(--green);font-weight:700;">Zone A</span> &nbsp;0 – 2.3 mm/s &nbsp;&middot;&nbsp; No action required.</div>
+            <div><span style="color:#1a6bbf;font-weight:700;">Zone B</span> &nbsp;2.3 – 7.1 mm/s &nbsp;&middot;&nbsp; Satisfactory. Plan maintenance.</div>
+            <div><span style="color:var(--yellow);font-weight:700;">Zone C</span> &nbsp;7.1 – 11.2 mm/s &nbsp;&middot;&nbsp; Unsatisfactory. Corrective action required.</div>
+            <div><span style="color:var(--red);font-weight:700;">Zone D</span> &nbsp;&gt;11.2 mm/s &nbsp;&middot;&nbsp; Dangerous. Shutdown warranted.</div>
+            <div style="margin-top:5px;color:var(--dim);font-size:9px;">ISO 10816-3:2009 Table 1 §5.1–5.4 &nbsp;&middot;&nbsp; Class II shown. Thresholds vary by machine class.</div>
+          </div>
+        </div>
         <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:3px;">
           <div>
             <div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;"><span class="tip">RUL Estimate<span class="tip-box"><strong>Remaining Useful Life (RUL)</strong><br>A statistical estimate of how many days before this machine is likely to need corrective maintenance, based on its current zone and condition indicators. Always shown with a confidence interval (±days).<span class="tip-iso">ISO 13381-1:2015 §5.2</span></span></span></div>
