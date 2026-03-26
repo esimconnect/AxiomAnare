@@ -1,160 +1,17 @@
 <!DOCTYPE html>
+<!-- AxiomAnare v2.1 - ASCII clean build -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AxiomAnare — Vibration Diagnostic Engine</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Barlow+Condensed:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script>
-const CONFIG = {
-  iso_machine_classes: [
-    { class_id:"cls_i",    display_label:"Class I",        iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Small Machines",          power_kw_desc:"Up to 15 kW",      power_kw_min:0,   power_kw_max:15,   mounting_type:"Rigid Mount"    },
-    { class_id:"cls_ii",   display_label:"Class II",       iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Medium Machines",         power_kw_desc:"15 – 300 kW",      power_kw_min:15,  power_kw_max:300,  mounting_type:"Rigid Mount"    },
-    { class_id:"cls_ii_f", display_label:"Class II (Flex)",iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Medium Machines",         power_kw_desc:"15 – 300 kW",      power_kw_min:15,  power_kw_max:300,  mounting_type:"Flexible Mount" },
-    { class_id:"cls_iii",  display_label:"Class III",      iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Large Machines",          power_kw_desc:"Above 300 kW",     power_kw_min:300, power_kw_max:50000,mounting_type:"Rigid Mount"    },
-    { class_id:"cls_iv",   display_label:"Class IV",       iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Large Machines",          power_kw_desc:"Above 300 kW",     power_kw_min:300, power_kw_max:50000,mounting_type:"Flexible Mount" }
-  ],
-  iso_severity_zones: [
-    { zone_id:"zi_a",  class_id:"cls_i",    zone_label:"A", rms_lower_mm_s:0,    rms_upper_mm_s:0.71,  action_required:"No action required. Newly commissioned or well-maintained.",                     iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.1" },
-    { zone_id:"zi_b",  class_id:"cls_i",    zone_label:"B", rms_lower_mm_s:0.71, rms_upper_mm_s:1.8,   action_required:"Satisfactory for continuous operation.",                                        iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.2" },
-    { zone_id:"zi_c",  class_id:"cls_i",    zone_label:"C", rms_lower_mm_s:1.8,  rms_upper_mm_s:4.5,   action_required:"Unsatisfactory for long-term operation. Corrective action required.",            iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.3" },
-    { zone_id:"zi_d",  class_id:"cls_i",    zone_label:"D", rms_lower_mm_s:4.5,  rms_upper_mm_s:99999, action_required:"Dangerous. Risk of machine damage. Immediate shutdown warranted.",               iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.4" },
-    { zone_id:"zii_a", class_id:"cls_ii",   zone_label:"A", rms_lower_mm_s:0,    rms_upper_mm_s:2.3,   action_required:"No action required. Newly commissioned or well-maintained.",                     iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.1" },
-    { zone_id:"zii_b", class_id:"cls_ii",   zone_label:"B", rms_lower_mm_s:2.3,  rms_upper_mm_s:7.1,   action_required:"Satisfactory for continuous operation. Maintenance planning recommended.",        iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.2" },
-    { zone_id:"zii_c", class_id:"cls_ii",   zone_label:"C", rms_lower_mm_s:7.1,  rms_upper_mm_s:11.2,  action_required:"Unsatisfactory - acceptable for short periods only. Corrective action required.", iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.3" },
-    { zone_id:"zii_d", class_id:"cls_ii",   zone_label:"D", rms_lower_mm_s:11.2, rms_upper_mm_s:99999, action_required:"Dangerous. Risk of machine damage. Immediate shutdown warranted.",               iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.4" },
-    { zone_id:"ziif_a",class_id:"cls_ii_f", zone_label:"A", rms_lower_mm_s:0,    rms_upper_mm_s:3.5,   action_required:"No action required.",                                                           iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.1" },
-    { zone_id:"ziif_b",class_id:"cls_ii_f", zone_label:"B", rms_lower_mm_s:3.5,  rms_upper_mm_s:11.2,  action_required:"Satisfactory for continuous operation.",                                        iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.2" },
-    { zone_id:"ziif_c",class_id:"cls_ii_f", zone_label:"C", rms_lower_mm_s:11.2, rms_upper_mm_s:18.0,  action_required:"Unsatisfactory - corrective action required.",                                  iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.3" },
-    { zone_id:"ziif_d",class_id:"cls_ii_f", zone_label:"D", rms_lower_mm_s:18.0, rms_upper_mm_s:99999, action_required:"Dangerous. Immediate shutdown warranted.",                                      iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.4" },
-    { zone_id:"ziii_a",class_id:"cls_iii",  zone_label:"A", rms_lower_mm_s:0,    rms_upper_mm_s:3.5,   action_required:"No action required.",                                                           iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.1" },
-    { zone_id:"ziii_b",class_id:"cls_iii",  zone_label:"B", rms_lower_mm_s:3.5,  rms_upper_mm_s:11.2,  action_required:"Satisfactory for continuous operation.",                                        iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.2" },
-    { zone_id:"ziii_c",class_id:"cls_iii",  zone_label:"C", rms_lower_mm_s:11.2, rms_upper_mm_s:18.0,  action_required:"Unsatisfactory - corrective action required.",                                  iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.3" },
-    { zone_id:"ziii_d",class_id:"cls_iii",  zone_label:"D", rms_lower_mm_s:18.0, rms_upper_mm_s:99999, action_required:"Dangerous. Immediate shutdown warranted.",                                      iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.4" },
-    { zone_id:"ziv_a", class_id:"cls_iv",   zone_label:"A", rms_lower_mm_s:0,    rms_upper_mm_s:3.5,   action_required:"No action required.",                                                           iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.1" },
-    { zone_id:"ziv_b", class_id:"cls_iv",   zone_label:"B", rms_lower_mm_s:3.5,  rms_upper_mm_s:14.0,  action_required:"Satisfactory for continuous operation.",                                        iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.2" },
-    { zone_id:"ziv_c", class_id:"cls_iv",   zone_label:"C", rms_lower_mm_s:14.0, rms_upper_mm_s:22.4,  action_required:"Unsatisfactory - corrective action required.",                                  iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.3" },
-    { zone_id:"ziv_d", class_id:"cls_iv",   zone_label:"D", rms_lower_mm_s:22.4, rms_upper_mm_s:99999, action_required:"Dangerous. Immediate shutdown warranted.",                                      iso_clause_ref:"ISO 10816-3:2009 Table 1 §5.4" }
-  ],
-  fault_frequency_rules: [
-
-    // ── MECHANICAL FAULTS (detectable from vibration) ──────────────────────
-    // category: "mechanical" | requires: "vibration"
-    { rule_id:"r_loose_found", fault_type:"Loose Foundation",      category:"mechanical", requires:"vibration",
-      freq_multiplier:0.5,  harmonic_count:8, bandwidth_pct:0.10, confidence_weight:0.35,
-      detection_note:"Sub-harmonic and multiple harmonics of shaft speed indicate structural looseness",
-      iso_reference:"ISO 13379-1:2012 §5.4" },
-    { rule_id:"r_imbal",       fault_type:"Mechanical Unbalance",  category:"mechanical", requires:"vibration",
-      freq_multiplier:1.0,  harmonic_count:1, bandwidth_pct:0.12, confidence_weight:0.50,
-      detection_note:"Dominant 1× shaft frequency component",
-      iso_reference:"ISO 13379-1:2012 §5.2" },
-    { rule_id:"r_misalign",    fault_type:"Shaft Misalignment",    category:"mechanical", requires:"vibration",
-      freq_multiplier:2.0,  harmonic_count:3, bandwidth_pct:0.12, confidence_weight:0.45,
-      detection_note:"Elevated 2× and 3× shaft frequency harmonics",
-      iso_reference:"ISO 13379-1:2012 §5.3" },
-
-    // ── BEARING FAULTS (detectable from vibration) ─────────────────────────
-    { rule_id:"r_bpfo", fault_type:"Bearing — Outer Race",         category:"bearing",   requires:"vibration",
-      freq_multiplier:3.5,  harmonic_count:3, bandwidth_pct:0.15, confidence_weight:0.40,
-      detection_note:"Ball pass frequency outer race harmonics; elevated kurtosis confirms impacting",
-      iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
-    { rule_id:"r_bpfi", fault_type:"Bearing — Inner Race",         category:"bearing",   requires:"vibration",
-      freq_multiplier:5.5,  harmonic_count:3, bandwidth_pct:0.15, confidence_weight:0.40,
-      detection_note:"Ball pass frequency inner race harmonics with shaft-rate sidebands",
-      iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
-    { rule_id:"r_bsf",  fault_type:"Bearing — Rolling Element",    category:"bearing",   requires:"vibration",
-      freq_multiplier:2.4,  harmonic_count:2, bandwidth_pct:0.15, confidence_weight:0.30,
-      detection_note:"Ball spin frequency — indicates rolling element surface defect",
-      iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
-    { rule_id:"r_ftf",  fault_type:"Bearing — Cage Defect",        category:"bearing",   requires:"vibration",
-      freq_multiplier:0.4,  harmonic_count:2, bandwidth_pct:0.20, confidence_weight:0.30,
-      detection_note:"Fundamental train frequency — indicates cage wear or damage",
-      iso_reference:"ISO 13379-1:2012 Annex A §A.3" },
-
-    // ── ELECTRICAL FAULT INDICATORS (vibration-derived — indirect) ─────────
-    // These are detectable from vibration as the mechanical effects of electrical faults.
-    // Confidence is lower than direct MCSA measurement. Labelled as "vibration-derived".
-    { rule_id:"r_rotor_bar",   fault_type:"Electrical — Rotor Bar",    category:"electrical", requires:"vibration",
-      freq_multiplier:1.0,  harmonic_count:4, bandwidth_pct:0.08, confidence_weight:0.30,
-      detection_note:"Rotor bar defects create amplitude modulation at 1× ± slip frequency. Vibration-derived indicator — confirm with MCSA.",
-      iso_reference:"IEC 60034-14:2003 §5.2" },
-    { rule_id:"r_stator_ecc",  fault_type:"Electrical — Stator Eccentricity", category:"electrical", requires:"vibration",
-      freq_multiplier:2.0,  harmonic_count:2, bandwidth_pct:0.10, confidence_weight:0.25,
-      detection_note:"Air gap variation from stator eccentricity produces vibration at twice line frequency (100/120 Hz). Vibration-derived indicator.",
-      iso_reference:"IEC 60034-14:2003 §5.1" },
-
-    // ── ELECTRICAL FAULTS REQUIRING MCSA/POWER DATA ────────────────────────
-    // These CANNOT be determined from vibration alone. Shown as locked/greyed.
-    { rule_id:"r_volt_unbal",  fault_type:"Voltage Unbalance",          category:"electrical", requires:"mcsa",
-      freq_multiplier:null, harmonic_count:0, bandwidth_pct:0, confidence_weight:0,
-      detection_note:"Requires voltage measurement data (Va, Vb, Vc). Cannot be derived from vibration.",
-      iso_reference:"IEC 60034-14:2003 §5.4" },
-    { rule_id:"r_curr_unbal",  fault_type:"Current Unbalance",          category:"electrical", requires:"mcsa",
-      freq_multiplier:null, harmonic_count:0, bandwidth_pct:0, confidence_weight:0,
-      detection_note:"Requires current measurement data (Ia, Ib, Ic). Cannot be derived from vibration.",
-      iso_reference:"IEC 60034-14:2003 §5.4" },
-    { rule_id:"r_pwr_factor",  fault_type:"Power Factor",               category:"process",    requires:"power",
-      freq_multiplier:null, harmonic_count:0, bandwidth_pct:0, confidence_weight:0,
-      detection_note:"Requires real and reactive power measurements. Cannot be derived from vibration.",
-      iso_reference:"ISO 55001:2014 §8.1" },
-    { rule_id:"r_active_pwr",  fault_type:"Active Power / Efficiency",  category:"process",    requires:"power",
-      freq_multiplier:null, harmonic_count:0, bandwidth_pct:0, confidence_weight:0,
-      detection_note:"Requires watt-meter or power analyser data. Cannot be derived from vibration.",
-      iso_reference:"ISO 55001:2014 §8.1" }
-  ],
-
-  // ── data_type_detection — column name patterns that identify input type ──
-  data_type_detection: {
-    vibration: ['accel','acc','vib','vibration','velocity','vel','amplitude','amp','rms','g','mm/s','signal'],
-    mcsa:      ['current','ia','ib','ic','i_a','i_b','i_c','amps','ampere','phase_current'],
-    voltage:   ['voltage','va','vb','vc','v_a','v_b','v_c','volt','v_line','vln'],
-    power:     ['power','kw','watt','active_power','power_factor','pf','reactive','kva','kvars'],
-    frequency: ['freq','frequency','hz','f_line']
-  },
-  unit_conversion_factors: [
-    { from_unit:"mm/s", to_unit:"mm/s", multiplier:1.0,    offset:0, canonical_flag:1 },
-    { from_unit:"m/s",  to_unit:"mm/s", multiplier:1000.0, offset:0, canonical_flag:0 },
-    { from_unit:"in/s", to_unit:"mm/s", multiplier:25.4,   offset:0, canonical_flag:0 },
-    { from_unit:"g",    to_unit:"mm/s", multiplier:null,   offset:0, canonical_flag:0 },
-    { from_unit:"m/s2", to_unit:"mm/s", multiplier:null,   offset:0, canonical_flag:0 },
-    { from_unit:"mg",   to_unit:"g",    multiplier:0.001,  offset:0, canonical_flag:0 }
-  ],
-  baseline_deviation_thresholds: [
-    { classification:"Within Baseline",       sd_lower:0,   sd_upper:1.0, iso_reference:"ISO 13373-2:2016 §8.1" },
-    { classification:"Minor Deviation",       sd_lower:1.0, sd_upper:2.0, iso_reference:"ISO 13373-2:2016 §8.1" },
-    { classification:"Significant Deviation", sd_lower:2.0, sd_upper:3.5, iso_reference:"ISO 13373-2:2016 §8.1" },
-    { classification:"Step-Change",           sd_lower:3.5, sd_upper:9999,iso_reference:"ISO 13373-2:2016 §8.1" }
-  ],
-  trend_state_rules: [
-    { code:"SWB", label:"Stable Within Baseline",       slope_lower:-0.04, slope_upper:0.04,  sd_trigger:null, description:"Regression slope negligible.",                                   iso_reference:"ISO 13373-2:2016 §8.2" },
-    { code:"DDU", label:"Deviating - Direction Unclear", slope_lower:null,  slope_upper:null,  sd_trigger:1.0,  description:"Single snapshot - trend direction cannot be established.",     iso_reference:"ISO 13373-2:2016 §8.2" },
-    { code:"PRS", label:"Progressing - Steady",         slope_lower:0.04,  slope_upper:0.15,  sd_trigger:null, description:"Positive slope sustained. Maintenance planning recommended.", iso_reference:"ISO 13373-2:2016 §8.2" },
-    { code:"PRA", label:"Progressing - Accelerating",   slope_lower:0.15,  slope_upper:9999,  sd_trigger:null, description:"Slope steepening. Corrective action required.",                iso_reference:"ISO 13373-2:2016 §8.2" },
-    { code:"RGI", label:"Regressing - Improving",       slope_lower:-9999, slope_upper:-0.04, sd_trigger:null, description:"Consistent downward trend. Monitor to confirm.",               iso_reference:"ISO 13373-2:2016 §8.2" },
-    { code:"SCO", label:"Step-Change Outside Baseline",  slope_lower:null,  slope_upper:null,  sd_trigger:3.5,  description:"Sudden departure. Manual review required.",                   iso_reference:"ISO 13373-2:2016 §8.2" }
-  ],
-  early_warning_rule: { trigger_deviation_classes:["Significant Deviation","Step-Change"], trigger_trend_states:["PRS","PRA"], trigger_zones:["A","B"], iso_reference:"ISO 13379-1:2012 §6.4" },
-  rul_zone_base_days: [ { zone:"A", base_days:365, iso_reference:"ISO 13381-1:2015 §5.2" }, { zone:"B", base_days:180, iso_reference:"ISO 13381-1:2015 §5.2" }, { zone:"C", base_days:60, iso_reference:"ISO 13381-1:2015 §5.2" }, { zone:"D", base_days:7, iso_reference:"ISO 13381-1:2015 §5.2" } ],
-  rul_trend_modifiers: [ { trend_code:"SWB", multiplier:1.00 }, { trend_code:"DDU", multiplier:0.90 }, { trend_code:"PRS", multiplier:0.65 }, { trend_code:"PRA", multiplier:0.40 }, { trend_code:"RGI", multiplier:1.30 }, { trend_code:"SCO", multiplier:0.20 } ],
-  rul_ci_fraction: 0.22,
-  kurtosis_thresholds: [ { label:"Normal", lower:0, upper:3.0, score_bonus:0, iso_reference:"ISO 13373-2:2016 §7.4" }, { label:"Minor impacting", lower:3.0, upper:4.0, score_bonus:15, iso_reference:"ISO 13373-2:2016 §7.4" }, { label:"Elevated", lower:4.0, upper:6.0, score_bonus:30, iso_reference:"ISO 13373-2:2016 §7.4" }, { label:"High impacting", lower:6.0, upper:9999, score_bonus:50, iso_reference:"ISO 13373-2:2016 §7.4" } ],
-  crest_factor_thresholds: [ { label:"Normal", lower:0, upper:3.5, score_bonus:0, iso_reference:"ISO 13373-2:2016 §7.3" }, { label:"Elevated", lower:3.5, upper:5.0, score_bonus:10, iso_reference:"ISO 13373-2:2016 §7.3" }, { label:"High", lower:5.0, upper:9999, score_bonus:20, iso_reference:"ISO 13373-2:2016 §7.3" } ],
-  monitoring_intervals: [ { condition:"zone_D", interval_desc:"Continuous until shutdown", iso_reference:"ISO 13373-1:2002 §7.3" }, { condition:"zone_C", interval_desc:"Daily", iso_reference:"ISO 13373-1:2002 §7.3" }, { condition:"trend_PRA", interval_desc:"Every 3 days", iso_reference:"ISO 13373-1:2002 §7.3" }, { condition:"trend_PRS", interval_desc:"Weekly", iso_reference:"ISO 13373-1:2002 §7.3" }, { condition:"zone_B_or_below", interval_desc:"Monthly", iso_reference:"ISO 13373-1:2002 §7.3" } ],
-  minimum_fault_confidence_pct: 15,
-  fault_display_limit: 6,
-  ddu_min_samples: 500,
-  rul_bar_scale_days: null,
-  default_sample_rate_hz: 1000,
-  shaft_freq_search_min_hz: 5,
-  shaft_freq_search_max_hz: 200,
-  harmonic_comb_count: 4,
-  gravity_mm_s2: 9806.65,
-  chatbot_config: { model_version:"claude-sonnet-4-20250514", max_output_tokens:1000, disclaimer_text:"AI-GENERATED ANALYSIS - IMPORTANT NOTICE: This output is intended to assist qualified maintenance and reliability engineers. It does not constitute a certified engineering determination. All corrective actions must be reviewed and authorised by a suitably qualified professional. Kairos Ventures Pte Ltd accepts no liability for any decision arising from reliance on this output without independent qualified engineering review." }
-};
-</script>
+<script src="https://cdn.jsdelivr.net/npm/mat-for-js@1.1.0/dist/readmat.min.js"></script>
+<!-- CONFIG in app.js -->
 <style>
 :root{
   --bg:#1c2333;
@@ -165,18 +22,18 @@ const CONFIG = {
   --border2:#334560;
   --accent:#4d9de0;
   --accent2:#2b7cc4;
-  --green:#0a7c4f;
-  --yellow:#b36a00;
-  --orange:#c0520a;
-  --red:#c0392b;
-  --purple:#6b3fa0;
+  --green:#2ecc71;
+  --yellow:#f39c12;
+  --orange:#e67e22;
+  --red:#e74c3c;
+  --purple:#9b59b6;
   --text:#e8edf5;
   --muted:#7f93aa;
   --dim:#3a4f68;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;min-height:100vh;}
-body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(ellipse 60% 40% at 15% 20%,rgba(0,102,204,0.06),transparent 60%),radial-gradient(ellipse 40% 60% at 85% 80%,rgba(0,68,153,0.04),transparent 60%),repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(0,102,204,0.05) 39px,rgba(0,102,204,0.05) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(0,102,204,0.05) 39px,rgba(0,102,204,0.05) 40px);}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(ellipse 60% 40% at 15% 20%,rgba(77,157,224,0.07),transparent 60%),radial-gradient(ellipse 40% 60% at 85% 80%,rgba(43,124,196,0.05),transparent 60%),repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(77,157,224,0.04) 39px,rgba(77,157,224,0.04) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(77,157,224,0.04) 39px,rgba(77,157,224,0.04) 40px);}
 nav{position:fixed;top:0;left:0;right:0;height:54px;background:rgba(28,35,51,0.97);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 28px;gap:20px;z-index:200;}
 .logo{display:flex;align-items:center;gap:10px;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:16px;letter-spacing:0.3px;color:var(--text);}
 .logo-mark{width:30px;height:30px;border-radius:7px;background:linear-gradient(135deg,var(--accent2),var(--accent));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;box-shadow:0 0 12px rgba(0,102,204,0.25);}
@@ -195,19 +52,19 @@ main{padding-top:54px;position:relative;z-index:1;}
 .step-note{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);margin-left:auto;text-align:right;}
 .class-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-top:12px;}
 .class-btn{padding:9px 7px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;text-align:center;transition:all 0.15s;}
-.class-btn:hover{border-color:var(--border2);}.class-btn.selected{border-color:var(--accent);background:rgba(0,102,204,0.1);}
-.cb-id{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:800;color:var(--accent2);margin-bottom:4px;letter-spacing:0.2px;}
+.class-btn:hover{border-color:var(--border2);}.class-btn.selected{border-color:var(--accent);background:rgba(77,157,224,0.15);}
+.cb-id{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:800;color:var(--accent2);margin-bottom:4px;letter-spacing:0.2px;display:block;}
 .cb-desc{font-size:10px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;line-height:1.4;font-weight:500;}
 .cb-kw{font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:3px;}
 .cb-mount{font-size:9px;color:var(--dim);font-family:'IBM Plex Mono',monospace;margin-top:2px;}
 .dropzone{margin-top:12px;border:2px dashed var(--border2);border-radius:10px;padding:28px 20px;text-align:center;cursor:pointer;transition:all 0.2s;}
 .dropzone:hover{border-color:var(--accent);background:rgba(0,229,255,0.03);}
 .drop-btn{display:inline-flex;align-items:center;gap:7px;padding:10px 24px;border-radius:8px;background:var(--accent);color:#fff;border:none;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.2s;margin-top:4px;}
-.drop-btn:hover{background:var(--accent2);transform:translateY(-1px);}
+.drop-btn:hover{background:#2b7cc4;transform:translateY(-1px);}
 .fmt-tag{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(0,102,204,0.25);color:var(--accent);background:rgba(0,102,204,0.07);}
 .run-card{margin-top:14px;padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;display:flex;align-items:center;gap:14px;}
 .run-btn{display:flex;align-items:center;gap:8px;padding:13px 30px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:0.5px;transition:all 0.2s;white-space:nowrap;flex-shrink:0;}
-.run-btn:hover{background:var(--accent2);transform:translateY(-1px);box-shadow:0 8px 24px rgba(0,102,204,0.25);}
+.run-btn:hover{background:#2b7cc4;transform:translateY(-1px);box-shadow:0 8px 24px rgba(77,157,224,0.3);}
 .iso-strip{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;max-width:700px;}
 .iso-badge{font-family:'IBM Plex Mono',monospace;font-size:9px;padding:3px 9px;border-radius:5px;background:rgba(0,102,204,0.08);border:1px solid rgba(0,102,204,0.2);color:var(--accent);}
 #processing-screen{display:none;min-height:calc(100vh - 54px);flex-direction:column;align-items:center;justify-content:center;padding:40px;gap:18px;}
@@ -247,10 +104,10 @@ main{padding-top:54px;position:relative;z-index:1;}
 .tip{position:relative;cursor:help;border-bottom:1px dashed rgba(0,102,204,0.4);}
 .tip:hover .tip-box{display:block;}
 .tip-box{display:none;position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);
-  background:#1a2535;border:1px solid #0066cc;border-radius:8px;padding:10px 13px;
-  font-family:'IBM Plex Sans',sans-serif;font-size:11px;font-weight:400;color:#e8eef5;
+  background:#151e2d;border:1px solid #4d9de0;border-radius:8px;padding:10px 13px;
+  font-family:'IBM Plex Sans',sans-serif;font-size:11px;font-weight:400;color:#e8edf5;
   line-height:1.55;white-space:normal;width:260px;z-index:999;pointer-events:none;
-  box-shadow:0 8px 24px rgba(0,0,0,0.25);}
+  box-shadow:0 8px 24px rgba(0,0,0,0.5);}
 .tip-box strong{color:var(--accent);font-weight:600;}
 .tip-box .tip-iso{display:block;margin-top:5px;font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:11px;overflow:hidden;}
@@ -285,6 +142,25 @@ main{padding-top:54px;position:relative;z-index:1;}
 .disclaimer-box{margin:12px;padding:11px 13px;background:rgba(255,59,59,0.04);border:1px solid rgba(255,59,59,0.17);border-radius:6px;font-size:10px;line-height:1.5;color:#ff9999;font-family:'IBM Plex Mono',monospace;}
 .fade-in{animation:fadeUp 0.4s ease both;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+/* Machine parameter form */
+.param-form{margin-top:14px;display:none;flex-direction:column;gap:10px;}
+.param-form.open{display:flex;}
+.param-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.param-group{display:flex;flex-direction:column;gap:5px;}
+.param-label{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;}
+.param-label span{color:var(--accent);font-size:9px;margin-left:5px;}
+.param-input{background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 11px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text);outline:none;transition:border-color 0.2s;width:100%;}
+.param-input:focus{border-color:var(--accent);}
+.param-input::placeholder{color:var(--dim);}
+.param-select{background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 11px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text);outline:none;width:100%;cursor:pointer;}
+.param-select:focus{border-color:var(--accent);}
+.param-toggle{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:all 0.2s;margin-top:4px;}
+.param-toggle:hover{border-color:var(--accent);}
+.param-toggle-icon{font-size:14px;}
+.param-toggle-text{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent);}
+.param-toggle-sub{font-size:10px;color:var(--muted);margin-left:auto;}
+.bearing-lookup{margin-top:6px;padding:8px 11px;background:rgba(77,157,224,0.08);border:1px solid rgba(77,157,224,0.2);border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--accent);display:none;}
+.param-accuracy{display:flex;align-items:center;gap:6px;margin-top:8px;padding:7px 11px;background:rgba(46,204,113,0.08);border:1px solid rgba(46,204,113,0.2);border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--green);}
 /* Data type banner */
 .data-banner{display:none;margin-bottom:12px;padding:10px 16px;border-radius:8px;font-family:'IBM Plex Sans',sans-serif;font-size:12px;line-height:1.5;gap:10px;align-items:flex-start;}
 .data-banner-vibration{background:rgba(0,102,204,0.07);border:1px solid rgba(0,102,204,0.2);color:var(--accent2);}
@@ -313,19 +189,110 @@ main{padding-top:54px;position:relative;z-index:1;}
       <div class="step-header"><div class="step-num" id="step1-num">1</div><div class="step-label">Select Machine Class</div><div class="step-note">Sets all ISO 10816-3 zone thresholds</div></div>
       <div class="class-grid" id="class-grid"></div>
     </div>
+    <!-- Step 2: Machine Parameters (new) -->
+    <div class="step-card" id="step2-card">
+      <div class="step-header">
+        <div class="step-num" id="step2-num">2</div>
+        <div class="step-label">Machine Parameters</div>
+        <div class="step-note">Optional — improves fault detection accuracy</div>
+      </div>
+      <!-- Toggle to expand -->
+      <div class="param-toggle" id="param-toggle" onclick="toggleParams()">
+        <div class="param-toggle-icon">&#9881;</div>
+        <div>
+          <div class="param-toggle-text">Enter machine details for improved accuracy</div>
+          <div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:2px;">Nameplate RPM · Bearing model · Measurement point</div>
+        </div>
+        <div class="param-toggle-sub" id="param-toggle-sub">&#9660; Expand</div>
+      </div>
+      <!-- Parameter form (hidden by default) -->
+      <div class="param-form" id="param-form">
+        <!-- Row 1: Equipment type + RPM -->
+        <div class="param-row">
+          <div class="param-group">
+            <div class="param-label">Equipment Type</div>
+            <select class="param-select" id="p-equip-type" onchange="onParamChange()">
+              <option value="">-- Select --</option>
+              <option value="pump">Pump</option>
+              <option value="motor">Electric Motor</option>
+              <option value="compressor">Compressor</option>
+              <option value="fan">Fan / Blower</option>
+              <option value="gearbox">Gearbox</option>
+              <option value="turbine">Turbine</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="param-group">
+            <div class="param-label">Nameplate Speed <span>From motor nameplate</span></div>
+            <input class="param-input" id="p-rpm" type="number" placeholder="e.g. 1480" min="100" max="50000" oninput="onParamChange()">
+          </div>
+        </div>
+        <!-- Row 2: Bearing model -->
+        <div class="param-group">
+          <div class="param-label">Bearing Model Number <span>Optional — enables exact fault frequencies</span></div>
+          <input class="param-input" id="p-bearing" type="text" placeholder="e.g. SKF 6205-2RS, FAG 6308, NSK 6204" oninput="onBearingInput(this.value)">
+          <div class="bearing-lookup" id="bearing-lookup">&#128269; Looking up bearing geometry...</div>
+        </div>
+        <!-- Row 3: Measurement point + axis -->
+        <div class="param-row">
+          <div class="param-group">
+            <div class="param-label">Measurement Point</div>
+            <select class="param-select" id="p-meas-point" onchange="onParamChange()">
+              <option value="bearing_housing">Bearing Housing (recommended)</option>
+              <option value="motor_casing">Motor Casing</option>
+              <option value="gearbox_housing">Gearbox Housing</option>
+              <option value="foundation">Foundation / Baseplate</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="param-group">
+            <div class="param-label">Measurement Axis</div>
+            <select class="param-select" id="p-axis" onchange="onParamChange()">
+              <option value="H">Horizontal (most common)</option>
+              <option value="V">Vertical</option>
+              <option value="A">Axial</option>
+            </select>
+          </div>
+        </div>
+        <!-- Row 4: Load + last maintenance -->
+        <div class="param-row">
+          <div class="param-group">
+            <div class="param-label">Machine Load at Measurement <span>Optional</span></div>
+            <select class="param-select" id="p-load">
+              <option value="">Unknown</option>
+              <option value="25">~25% load</option>
+              <option value="50">~50% load</option>
+              <option value="75">~75% load</option>
+              <option value="100">Full load (100%)</option>
+            </select>
+          </div>
+          <div class="param-group">
+            <div class="param-label">Last Maintenance <span>Optional</span></div>
+            <input class="param-input" id="p-last-maint" type="date">
+          </div>
+        </div>
+        <!-- Accuracy indicator -->
+        <div class="param-accuracy" id="param-accuracy" style="display:none;">
+          <span>&#10003;</span>
+          <span id="param-accuracy-text">Parameters entered — fault detection accuracy improved</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: File Upload (renumbered from 2) -->
     <div class="step-card">
-      <div class="step-header"><div class="step-num" id="step2-num">2</div><div class="step-label">Select Vibration Data File</div><div class="step-note">CSV · TSV · XLSX · XLS · JSON · TXT</div></div>
+      <div class="step-header"><div class="step-num" id="step3-num">3</div><div class="step-label">Select Vibration Data File</div><div class="step-note">CSV · TSV · XLSX · XLS · JSON · TXT · MAT</div></div>
       <div class="dropzone" id="dropzone" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor=''" ondrop="onDrop(event);this.style.borderColor=''" onclick="document.getElementById('fileInput').click()">
         <div id="drop-glyph" style="font-size:30px;margin-bottom:10px;">&#128194;</div>
         <div id="drop-title" style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;margin-bottom:6px;">Drop file here or click to browse</div>
         <div id="drop-sub" style="font-size:11px;color:var(--muted);margin-bottom:14px;">Any column layout — auto-detected</div>
         <button id="select-btn" class="drop-btn" onclick="event.stopPropagation();document.getElementById('fileInput').click()">&#11014; Browse File</button>
-        <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:5px;margin-top:14px;"><span class="fmt-tag">.csv</span><span class="fmt-tag">.tsv</span><span class="fmt-tag">.xlsx</span><span class="fmt-tag">.xls</span><span class="fmt-tag">.json</span><span class="fmt-tag">.txt</span></div>
+        <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:5px;margin-top:14px;"><span class="fmt-tag">.csv</span><span class="fmt-tag">.tsv</span><span class="fmt-tag">.xlsx</span><span class="fmt-tag">.xls</span><span class="fmt-tag">.json</span><span class="fmt-tag">.txt</span><span class="fmt-tag">.mat</span></div>
       </div>
-      <input type="file" id="fileInput" accept=".csv,.tsv,.xlsx,.xls,.json,.txt" style="display:none">
+      <input type="file" id="fileInput" accept=".csv,.tsv,.xlsx,.xls,.json,.txt,.mat" style="display:none">
     </div>
     <div class="step-card" id="step3-card" style="display:none;border-color:rgba(0,102,204,0.4);background:rgba(0,102,204,0.04);">
-      <div class="step-header"><div class="step-num" style="background:var(--accent);color:var(--bg);border-color:var(--accent);font-size:13px;">3</div><div class="step-label">Run Diagnostic Analysis</div><div class="step-note" id="step3-note">—</div></div>
+      <div class="step-header"><div class="step-num" style="background:var(--accent);color:var(--bg);border-color:var(--accent);font-size:13px;">4</div><div class="step-label">Run Diagnostic Analysis</div><div class="step-note" id="step3-note">—</div></div>
       <div class="run-card">
         <div style="font-size:22px;">&#128196;</div>
         <div style="flex:1;min-width:0;">
