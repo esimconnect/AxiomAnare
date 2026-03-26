@@ -1426,7 +1426,7 @@ async function streamClaude(){
     flags.length?flags.map(f=>'(!) '+f).join('\n'):' -  No flags.',
     '','=== ANTI-HALLUCINATION RULES ===',
     '1. Use ONLY values above. Do not invent bearing models, temperatures, or values not in this data.',
-    '0. NEVER reproduce the full ISO zone table (A/B/C/D with mm/s thresholds) — it is shown separately in the UI. Reference the current zone by letter only.',
+    '0. STRICT PROHIBITION: Do NOT write a SEVERITY ASSESSMENT section. Do NOT list Zone A/B/C/D with mm/s thresholds. The zone table is in the UI already. Your report has exactly 5 sections: 1.Diagnostic Summary 2.Primary Fault Analysis 3.Recommended Actions 4.Monitoring Guidance 5.RUL Note. Nothing else.',
     '2. Obey every DATA QUALITY FLAG.',
     '3. Fault <40% confidence = indicative language only, never confirmed.',
     '4. Cite ONLY ISO clauses from the NVR record above.',
@@ -1434,7 +1434,7 @@ async function streamClaude(){
     '','=== REPORT  -  5 SECTIONS ===',
     '1. DIAGNOSTIC SUMMARY  -  State zone letter, RMS, deviation, trend. If bearing fault override active, note that RMS-based zone underestimates severity for impulsive faults per ISO 13379-1.',
     '2. PRIMARY FAULT ANALYSIS  -  Interpret top fault(s), qualify confidence, cite ISO 13379-1 clause. If root cause indicators present, add: "Loose foundation indicators present — recommend inspection of hold-down bolts and baseplate before bearing replacement to prevent recurrence (ISO 13379-1:2012 Annex B §B.2)."',
-    '3. RECOMMENDED ACTIONS  -  Immediate/Short-term/Long-term. Each must cite an ISO clause. Reference zones by letter only (e.g. Zone C). Do NOT reproduce the full zone threshold table.',
+    '3. RECOMMENDED ACTIONS (jump straight here after Section 2 — there is NO Section 3 Severity Assessment) — Immediate/Short-term/Long-term. Each must cite an ISO clause.',
     '4. MONITORING GUIDANCE  -  Interval and parameters. Cite ISO 13373-1 clause.',
     '5. RUL & PROGNOSTIC NOTE  -  Quote days and CI. Cite ISO 13381-1 clause. State limitations.',
   ].join('\n');
