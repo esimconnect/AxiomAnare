@@ -1299,7 +1299,7 @@ function renderResults(){
   const rpmSource = d.machineParams && d.machineParams.rpm ? 'nameplate' : 'est.';
   document.getElementById('rpm-badge').textContent='~'+Math.round((d.shaftHz||0)*60)+' RPM '+rpmSource;
   document.getElementById('disclaimer-box').textContent='(!) '+CONFIG.chatbot_config.disclaimer_text;
-  buildRadar(d.faults.filter(f => !f.locked)); buildFFT(d.fftR, d.sr);
+  buildRadar(d.faults.filter(f => !f.locked && f.category !== 'root_cause')); buildFFT(d.fftR, d.sr);
 }
 
 // == CHARTS ==
