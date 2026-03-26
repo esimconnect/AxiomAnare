@@ -452,6 +452,7 @@ async function runPipeline(raw, filename) {
 
   // Stage 5  -  Fault Classification
   await activateStage(5);
+  await new Promise(r => setTimeout(r, 50));
   const fftR = computeFFT(vals, sr);
   const shaftHz = detectShaft(fftR);
   // Use user-provided bearing multipliers if available, otherwise CONFIG defaults
@@ -654,7 +655,7 @@ function parseData(raw) {
 
 // == FFT ==
 function computeFFT(signal, fs) {
-  const N = Math.pow(2, Math.floor(Math.log2(Math.min(signal.length, 8192))));
+  const N = Math.pow(2, Math.floor(Math.log2(Math.min(signal.length, 4096))));
   const w = signal.slice(0,N).map((v,i) => v*(0.5-0.5*Math.cos(2*Math.PI*i/(N-1))));
   function fft(re,im){const n=re.length;if(n<=1)return;const ee=[],eo=[],ie=[],io=[];for(let i=0;i<n/2;i++){ee.push(re[2*i]);eo.push(re[2*i+1]);ie.push(im[2*i]);io.push(im[2*i+1]);}fft(ee,ie);fft(eo,io);for(let k=0;k<n/2;k++){const a=-2*Math.PI*k/n,c=Math.cos(a),s=Math.sin(a),tr=c*eo[k]-s*io[k],ti=c*io[k]+s*eo[k];re[k]=ee[k]+tr;im[k]=ie[k]+ti;re[k+n/2]=ee[k]-tr;im[k+n/2]=ie[k]-ti;}}
   const re=[...w],im=new Array(N).fill(0); fft(re,im);
@@ -726,14 +727,15 @@ function classifyFaults(fft, cf, kurt, dataTypes, knownShaftHz, faultRules) {
   const shaft = knownShaftHz || detectShaft(fft);
   const rules = faultRules || CONFIG.fault_frequency_rules;
   // Peak magnitude in band — more sensitive to tonal fault peaks
-  function bE(fc,bw){const lo=fc*(1-bw),hi=fc*(1+bw);let mx=0;for(let i=0;i<freqs.length;i++){if(freqs[i]>hi)break;if(freqs[i]>=lo&&mags[i]>mx)mx=mags[i];}return mx;}
+  function findIdx(t){let lo=0,hi=freqs.length-1;while(lo<hi){const mid=(lo+hi)>>1;if(freqs[mid]<t)lo=mid+1;else hi=mid;}return lo;} function bE(fc,bw){const lo=fc*(1-bw),hi=fc*(1+bw);const start=findIdx(lo);let mx=0;for(let i=start;i<freqs.length&&freqs[i]<=hi;i++){if(mags[i]>mx)mx=mags[i];}return mx;}
   const cfB=getCFBonus(cf), kB=getKBonus(kurt);
   const bearIds=new Set(['r_bpfo','r_bpfi','r_bsf','r_ftf']);
   // Peak spectral magnitude — more stable normalisation than RMS
   // Use spectral RMS as base — prevents noise from inflating scores
   // specPeak/sRms = SNR — high SNR means strong tonal fault present
   let specPeak=0; for(let i=0;i<mags.length;i++){if(mags[i]>specPeak)specPeak=mags[i];}
-  const base = sRms||1;
+  const meanMag = mags.reduce((a,b)=>a+b,0)/mags.length;
+  const base = meanMag||sRms||1;
   const snr = specPeak/base; // signal-to-noise ratio
 
   return CONFIG.fault_frequency_rules.map(rule => {
