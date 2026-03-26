@@ -913,7 +913,7 @@ function getDataTypeBanner(dataTypes) {
 
 // == ACTIVE FAULT RULES — merges user bearing params with CONFIG defaults ==
 function getActiveFaultRules(params) {
-  return CONFIG.fault_frequency_rules.map(rule => {
+  return rules.map(rule => {
     const r = {...rule}; // copy
     // Override multipliers if user provided bearing geometry
     if (params.bpfoMult && rule.rule_id === 'r_bpfo') r.freq_multiplier = params.bpfoMult;
@@ -951,7 +951,7 @@ function classifyFaults(fft, cf, kurt, dataTypes, knownShaftHz, faultRules) {
   const base = meanMag||sRms||1;
   const snr = specPeak/base;
 
-  return CONFIG.fault_frequency_rules.map(rule => {
+  return rules.map(rule => {
     const req = rule.requires;
 
     // -- Rules that require data we don't have -> locked --
@@ -993,14 +993,22 @@ function classifyFaults(fft, cf, kurt, dataTypes, knownShaftHz, faultRules) {
     if (!h2) return { name:rule.fault_type, category:rule.category, pct:2, locked:false,
                       iso_reference:rule.iso_reference, freq_hz:fc, harmonics_used:0 };
 
-    // Relative score: how much higher is this fault band vs the noise floor?
-    // ratio > 5 = fault frequency clearly above noise = possible fault
-    // ratio < 2 = fault frequency indistinguishable from noise = no fault
-    const ratio = tot / base;
-    // Scale: ratio of 2 = ~10%, ratio of 10 = ~50%, ratio of 30 = ~90%
-    const relScore = Math.min(92, Math.max(2, Math.round((ratio - 1) * 5 * rule.confidence_weight * 100) / 10));
+    // Band Energy Ratio scoring — industry standard approach
+    // Compare fault band energy against background bands at same spacing
+    // If fault band is not higher than background, no fault present
+    const bw = rule.bandwidth_pct;
+    // Sample background energy at 3 adjacent non-fault bands
+    const bgBand1 = bE(fc * 0.7, bw);  // below fault frequency
+    const bgBand2 = bE(fc * 1.3, bw);  // above fault frequency
+    const bgBand3 = bE(fc * 0.5, bw);  // further below
+    const bgMean = (bgBand1 + bgBand2 + bgBand3) / 3 || base;
+    // Band energy ratio: how much louder is the fault band vs background?
+    const ber = tot / (bgMean || base);
+    // Score: BER of 1 = no fault (0%), BER of 3 = possible (30%), BER of 8+ = strong fault (80%+)
+    // This means a healthy machine scores near 0% on all faults
+    const relScore = Math.min(90, Math.max(2, Math.round((ber - 1) * 15 * rule.confidence_weight)));
     let sc = Math.round(relScore);
-    if (bearIds.has(rule.rule_id)) sc += Math.round((cfB+kB)*rule.confidence_weight*0.3);
+    if (bearIds.has(rule.rule_id)) sc += Math.round((cfB+kB)*rule.confidence_weight*0.5);
     // Vibration-derived electrical: cap confidence lower  -  it's indirect
     const cap = isVibDerived ? 65 : 95;
 
