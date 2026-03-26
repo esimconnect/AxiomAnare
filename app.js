@@ -913,7 +913,7 @@ function getDataTypeBanner(dataTypes) {
 
 // == ACTIVE FAULT RULES — merges user bearing params with CONFIG defaults ==
 function getActiveFaultRules(params) {
-  return rules.map(rule => {
+  return CONFIG.fault_frequency_rules.map(rule => {
     const r = {...rule}; // copy
     // Override multipliers if user provided bearing geometry
     if (params.bpfoMult && rule.rule_id === 'r_bpfo') r.freq_multiplier = params.bpfoMult;
@@ -951,7 +951,7 @@ function classifyFaults(fft, cf, kurt, dataTypes, knownShaftHz, faultRules) {
   const base = meanMag||sRms||1;
   const snr = specPeak/base;
 
-  return rules.map(rule => {
+  return CONFIG.fault_frequency_rules.map(rule => {
     const req = rule.requires;
 
     // -- Rules that require data we don't have -> locked --
