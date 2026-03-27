@@ -1243,20 +1243,46 @@ function classifyFaults(fft, cf, kurt, dataTypes, knownShaftHz, faultRules) {
 
     // ── Outer Race load-zone modulation check ──
     // Physics: OR fault in load zone → amplitude modulated at shaft rate (1×)
-    // OR fault outside load zone → no modulation (CWRU @6:00 = centered in load zone)
-    // BPFO should NOT have sidebands unless fault is in load zone
-    // This differentiates OR from background noise at BPFO frequency
+    // Guard: if BSF (ball fault) energy is elevated, suppress BPFO boost
+    // — prevents ball fault from being mistaken for outer race
     if (rule.rule_id === 'r_bpfo') {
-      const bpfoSideband = Math.max(
-        bE(fc - shaft, 0.06),
-        bE(fc + shaft, 0.06)
-      );
-      const bpfoSidebandRatio = bpfoSideband / (bgMean || base);
-      // For CWRU @6:00 (load zone centered) — expect some modulation
-      // Boost BPFO score if load-zone modulation is present
-      if (bpfoSidebandRatio > 1.1) {
-        const loadBoost = Math.min(15, Math.round((bpfoSidebandRatio - 1.0) * 8));
-        relScore = Math.min(90, relScore + loadBoost);
+      // Check if BSF frequency has elevated energy (would indicate ball fault not OR)
+      const bsfRule = faultRules ? faultRules.find(r => r.rule_id === 'r_bsf') : null;
+      const bsfFc = bsfRule ? shaft * bsfRule.freq_multiplier : shaft * 2.357;
+      const bsfEnergy = bE(bsfFc, 0.10);
+      const bsfRatio = bsfEnergy / (bgMean || base);
+      // Only apply BPFO boost if BSF is not also elevated
+      // — if both elevated, ambiguous — let raw BER decide
+      if (bsfRatio < 2.0) {
+        const bpfoSideband = Math.max(
+          bE(fc - shaft, 0.06),
+          bE(fc + shaft, 0.06)
+        );
+        const bpfoSidebandRatio = bpfoSideband / (bgMean || base);
+        if (bpfoSidebandRatio > 1.2) {
+          const loadBoost = Math.min(12, Math.round((bpfoSidebandRatio - 1.2) * 8));
+          relScore = Math.min(90, relScore + loadBoost);
+        }
+      }
+    }
+
+    // ── BSF cage modulation check ──
+    // Ball fault physics: BSF modulated at FTF (cage rotation frequency)
+    // Sidebands at BSF ± FTF and BSF ± 2×FTF (ISO 13379-1 Annex A §A.3.4)
+    // This is the definitive signature for rolling element faults
+    if (rule.rule_id === 'r_bsf') {
+      const ftfRule = faultRules ? faultRules.find(r => r.rule_id === 'r_ftf') : null;
+      const ftfFc = ftfRule ? shaft * ftfRule.freq_multiplier : shaft * 0.398;
+      const bsfSideband1L = bE(fc - ftfFc, 0.08);
+      const bsfSideband1R = bE(fc + ftfFc, 0.08);
+      const bsfSideband2L = bE(fc - 2*ftfFc, 0.08);
+      const bsfSideband2R = bE(fc + 2*ftfFc, 0.08);
+      const maxBsfSideband = Math.max(bsfSideband1L, bsfSideband1R, bsfSideband2L, bsfSideband2R);
+      const bsfSidebandRatio = maxBsfSideband / (bgMean || base);
+      if (bsfSidebandRatio > 1.1) {
+        // FTF sidebands confirmed — boost BSF score
+        const bsfBoost = Math.min(20, Math.round((bsfSidebandRatio - 1.0) * 12));
+        relScore = Math.min(90, relScore + bsfBoost);
       }
     }
 
@@ -1273,9 +1299,10 @@ function classifyFaults(fft, cf, kurt, dataTypes, knownShaftHz, faultRules) {
     if (rule.rule_id === 'r_loose_foundation') {
       const subHarmonic = bE(shaft * 0.5, 0.1);  // 0.5x shaft
       const subHarmonicRatio = subHarmonic / (bgMean || base);
-      // Only score high if sub-harmonic is present (ratio > 1.5)
-      if (subHarmonicRatio < 1.5) {
-        relScore = Math.min(relScore, 25); // cap at 25% without sub-harmonic
+      // Require BOTH sub-harmonic AND minimum BER to confirm loose foundation
+      // Normal shaft harmonics always present — need additional evidence
+      if (subHarmonicRatio < 2.0 || ber < 3.0) {
+        relScore = Math.min(relScore, 18); // cap tightly without sub-harmonic evidence
       }
     }
 
