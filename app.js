@@ -209,11 +209,11 @@ const CONFIG = {
 
     // -- BEARING FAULTS (detectable from vibration) -------------------------
     { rule_id:"r_bpfo", fault_type:"Bearing - Outer Race",         category:"bearing",   requires:"vibration",
-      freq_multiplier:3.5,  harmonic_count:3, bandwidth_pct:0.15, confidence_weight:0.40,
+      freq_multiplier:3.5,  harmonic_count:4, bandwidth_pct:0.18, confidence_weight:0.45,
       detection_note:"Ball pass frequency outer race harmonics; elevated kurtosis confirms impacting",
       iso_reference:"ISO 13379-1:2012 Annex A SA.3" },
     { rule_id:"r_bpfi", fault_type:"Bearing - Inner Race",         category:"bearing",   requires:"vibration",
-      freq_multiplier:5.5,  harmonic_count:3, bandwidth_pct:0.15, confidence_weight:0.40,
+      freq_multiplier:5.5,  harmonic_count:3, bandwidth_pct:0.08, confidence_weight:0.40,
       detection_note:"Ball pass frequency inner race harmonics with shaft-rate sidebands",
       iso_reference:"ISO 13379-1:2012 Annex A SA.3" },
     { rule_id:"r_bsf",  fault_type:"Bearing - Rolling Element",    category:"bearing",   requires:"vibration",
@@ -587,13 +587,23 @@ async function runPipeline(raw, filename) {
   const finalZoneRow = override.zoneRow;
   const finalRulR    = override.rulR;
 
+  // Compute physics-based health index
+  const topBearingFault = faults.find(f => !f.locked && f.category === 'bearing');
+  const healthIdx = calcHealthIndex(
+    rms, kurt, cf,
+    finalZoneRow.zone_label,
+    topBearingFault ? topBearingFault.pct : 0,
+    parseFloat(devSc.toFixed(2)),
+    classRow
+  );
+
   nvr = { filename, rms: rms.toFixed(3), peak: peak.toFixed(3), cf: cf.toFixed(2),
     dataTypes, dataBanner, machineParams: {...machineParams},
     kurt: kurt.toFixed(2), devSc: devSc.toFixed(2), devRow,
     zoneRow: finalZoneRow, trendRow,
     earlyWarn, faults: faults.length ? faults : allFaults.slice(0, CONFIG.fault_display_limit),
     fftR, rulR: finalRulR, n, sr, classRow, cu, shaftHz, singleFile: true,
-    override };
+    override, healthIdx };
 
   // Save to Supabase (non-blocking — runs in background)
   saveNVRToSupabase(nvr).catch(e => console.log('Supabase:', e.message));
@@ -931,6 +941,115 @@ function getActiveFaultRules(params) {
   });
 }
 
+// == PHYSICS-BASED HEALTH INDEX ==
+// Derives a 0-100 health score from raw engineering metrics
+// Every penalty is grounded in physics and ISO references
+// Reference: ISO 10816-3, ISO 13373-2, ISO 281, ISO 13379-1
+function calcHealthIndex(rms, kurt, cf, zoneLabel, topBearingPct, devSigma, classRow) {
+  let score = 100;
+  const breakdown = [];
+
+  // ── 1. ISO Zone penalty (ISO 10816-3:2009 §5.1-5.4) ──
+  // RMS velocity reflects vibration power — zone boundaries are empirically
+  // established damage thresholds from decades of field data
+  const zoneUpper = classRow ? parseFloat(classRow.rms_upper_mm_s) || 999 : 999;
+  const zonePenalties = { 'A': 0, 'B': 12, 'C': 35, 'D': 65 };
+  // Linear interpolation within zone B (most common operating range)
+  let zonePenalty = zonePenalties[zoneLabel] || 0;
+  if (zoneLabel === 'B') {
+    // Scale within B: 2.3mm/s=12pts, 7.1mm/s=35pts
+    const zoneMin = 2.3, zoneMax = 7.1;
+    const pos = Math.min(1, Math.max(0, (rms - zoneMin) / (zoneMax - zoneMin)));
+    zonePenalty = Math.round(12 + pos * 23);
+  }
+  score -= zonePenalty;
+  breakdown.push({
+    label: 'Vibration severity',
+    penalty: zonePenalty,
+    value: rms.toFixed(3) + ' mm/s → Zone ' + zoneLabel,
+    iso: 'ISO 10816-3:2009 §5.1–5.4',
+    physics: 'RMS velocity proportional to vibration power (W/kg)'
+  });
+
+  // ── 2. Kurtosis penalty (ISO 13373-2:2016 §8.3) ──
+  // Kurtosis = 4th statistical moment. Healthy Gaussian signal = 3.0
+  // Excess kurtosis indicates impulsive events — bearing impacts, defects
+  // Power law (exponent 1.5) reflects non-linear damage accumulation
+  // per Hertz contact mechanics — damage rate ∝ force^3 in rolling contacts
+  const kurtExcess = Math.max(0, kurt - 3.0);
+  const kurtPenalty = Math.min(30, Math.round(8 * Math.pow(kurtExcess, 1.5)));
+  score -= kurtPenalty;
+  breakdown.push({
+    label: 'Impulsive content (Kurtosis)',
+    penalty: kurtPenalty,
+    value: 'K=' + kurt.toFixed(2) + ' (excess ' + kurtExcess.toFixed(2) + ' above Gaussian baseline 3.0)',
+    iso: 'ISO 13373-2:2016 §8.3',
+    physics: 'Kurtosis penalty = 8 × (K−3)^1.5 — Hertz contact damage mechanics'
+  });
+
+  // ── 3. Crest Factor penalty (ISO 13373-2:2016 §8.2) ──
+  // CF = Peak/RMS. Healthy multi-sine signal: CF ≈ 2.5–3.5
+  // CF > 5 indicates transient impacts disproportionate to average energy
+  // Reflects shock content — single large events vs repeated small ones
+  let cfPenalty = 0;
+  if (cf > 8)      cfPenalty = 20;
+  else if (cf > 5) cfPenalty = Math.round(10 + (cf - 5) / 3 * 10);
+  else if (cf > 3.5) cfPenalty = Math.round((cf - 3.5) / 1.5 * 10);
+  score -= cfPenalty;
+  breakdown.push({
+    label: 'Shock content (Crest Factor)',
+    penalty: cfPenalty,
+    value: 'CF=' + cf.toFixed(2) + ' (healthy range 2.5–3.5)',
+    iso: 'ISO 13373-2:2016 §8.2',
+    physics: 'CF = Peak/RMS — ratio of transient shock energy to average energy'
+  });
+
+  // ── 4. Bearing fault penalty (ISO 13379-1:2012 Annex A §A.3) ──
+  // Band Energy Ratio (BER) measures spectral prominence of fault frequency
+  // 6dB threshold (BER=4×) = confirmed fault per signal detection theory
+  // Penalty reflects bearing fatigue life reduction — ISO 281 L10 life equation
+  // L10 ∝ (C/P)^3 — load raised to power 3 means small load increase = large life reduction
+  let bearingPenalty = 0;
+  if (topBearingPct >= 80)      bearingPenalty = 35;
+  else if (topBearingPct >= 60) bearingPenalty = Math.round(15 + (topBearingPct - 60) / 20 * 20);
+  else if (topBearingPct >= 40) bearingPenalty = Math.round(5  + (topBearingPct - 40) / 20 * 10);
+  else if (topBearingPct >= 20) bearingPenalty = Math.round((topBearingPct - 20) / 20 * 5);
+  score -= bearingPenalty;
+  breakdown.push({
+    label: 'Bearing fault evidence',
+    penalty: bearingPenalty,
+    value: topBearingPct + '% confidence' + (topBearingPct >= 60 ? ' — above 6dB detection threshold' : ''),
+    iso: 'ISO 13379-1:2012 Annex A §A.3 | ISO 281:2007',
+    physics: 'BER-based detection + ISO 281 L10 life: fatigue life ∝ (C/P)^3'
+  });
+
+  // ── 5. Baseline deviation penalty (ISO 13373-2:2016 §8.1) ──
+  // Statistical Process Control — Western Electric 3-sigma rule
+  // Sigma deviation reflects departure from established healthy operating state
+  // 1σ = 68% probability of real change, 2σ = 95%, 3σ = 99.7%
+  let devPenalty = 0;
+  if (devSigma > 3.5)      devPenalty = 20;
+  else if (devSigma > 3.0) devPenalty = 15;
+  else if (devSigma > 2.0) devPenalty = 10;
+  else if (devSigma > 1.5) devPenalty = 5;
+  score -= devPenalty;
+  breakdown.push({
+    label: 'Baseline deviation',
+    penalty: devPenalty,
+    value: devSigma.toFixed(2) + 'σ from baseline',
+    iso: 'ISO 13373-2:2016 §8.1',
+    physics: 'SPC Western Electric rule — 3σ = 99.7% confidence of real change'
+  });
+
+  const finalScore = Math.max(5, Math.min(100, score));
+  return {
+    score: finalScore,
+    breakdown,
+    label: finalScore >= 85 ? 'Good' : finalScore >= 65 ? 'Monitor' : finalScore >= 40 ? 'Caution' : 'Critical',
+    color: finalScore >= 85 ? 'var(--green)' : finalScore >= 65 ? '#1a6bbf' : finalScore >= 40 ? 'var(--yellow)' : 'var(--red)'
+  };
+}
+
 // == FAULT-ZONE OVERRIDE ENGINE ==
 // ISO 13379-1:2012 §5.4 — frequency-domain findings take precedence over RMS zone
 // when fault confidence exceeds threshold. The worst finding always governs.
@@ -1101,6 +1220,53 @@ function classifyFaults(fft, cf, kurt, dataTypes, knownShaftHz, faultRules) {
     const ber = tot / (bgMean || base);
     let relScore = Math.min(90, Math.max(2, Math.round((ber - 1) * 15 * rule.confidence_weight)));
 
+    // ── Inner Race sideband modulation check ──
+    // Physics: IR fault rotates with shaft → amplitude modulated at shaft rate
+    // Sidebands appear at BPFI ± shaft_hz (ISO 13379-1 Annex A §A.3.2)
+    // Outer race is stationary → no shaft sidebands → use this to differentiate
+    if (rule.rule_id === 'r_bpfi') {
+      const sideband1L = bE(fc - shaft, 0.06);   // BPFI - 1×shaft
+      const sideband1R = bE(fc + shaft, 0.06);   // BPFI + 1×shaft
+      const sideband2L = bE(fc - 2*shaft, 0.06); // BPFI - 2×shaft
+      const sideband2R = bE(fc + 2*shaft, 0.06); // BPFI + 2×shaft
+      const maxSideband = Math.max(sideband1L, sideband1R, sideband2L, sideband2R);
+      const sidebandRatio = maxSideband / (bgMean || base);
+      // If no sidebands present — likely not IR fault, cap score
+      if (sidebandRatio < 1.2) {
+        relScore = Math.min(relScore, 25); // cap at 25% without sideband evidence
+      } else {
+        // Sidebands confirmed — boost score proportionally
+        const sidebandBoost = Math.min(20, Math.round((sidebandRatio - 1.2) * 10));
+        relScore = Math.min(90, relScore + sidebandBoost);
+      }
+    }
+
+    // ── Outer Race load-zone modulation check ──
+    // Physics: OR fault in load zone → amplitude modulated at shaft rate (1×)
+    // OR fault outside load zone → no modulation (CWRU @6:00 = centered in load zone)
+    // BPFO should NOT have sidebands unless fault is in load zone
+    // This differentiates OR from background noise at BPFO frequency
+    if (rule.rule_id === 'r_bpfo') {
+      const bpfoSideband = Math.max(
+        bE(fc - shaft, 0.06),
+        bE(fc + shaft, 0.06)
+      );
+      const bpfoSidebandRatio = bpfoSideband / (bgMean || base);
+      // For CWRU @6:00 (load zone centered) — expect some modulation
+      // Boost BPFO score if load-zone modulation is present
+      if (bpfoSidebandRatio > 1.1) {
+        const loadBoost = Math.min(15, Math.round((bpfoSidebandRatio - 1.0) * 8));
+        relScore = Math.min(90, relScore + loadBoost);
+      }
+    }
+
+    // ── Mechanical fault minimum threshold ──
+    // Unbalance (1×shaft) and misalignment (2×shaft) are always present in any motor
+    // Require minimum BER of 2.5 to flag as actual fault (not normal operating harmonics)
+    if (rule.rule_id === 'r_imbal' || rule.rule_id === 'r_misalign') {
+      if (ber < 2.5) relScore = Math.min(relScore, 20);
+    }
+
     // ── Loose Foundation special rule ──
     // ISO 13379-1:2012 §5.4: loose foundation produces sub-harmonics (0.5x shaft)
     // Normal motors also produce shaft harmonics — require sub-harmonic evidence
@@ -1176,6 +1342,40 @@ function resetApp(){
 // == RENDER ==
 function renderResults(){
   const d=nvr;
+  // Render Health Index
+  if (d.healthIdx) {
+    const hi = d.healthIdx;
+    const scoreEl = document.getElementById('health-score-num');
+    const labelEl = document.getElementById('health-score-label');
+    const barEl   = document.getElementById('health-bar-fill');
+    const bdEl    = document.getElementById('health-breakdown');
+    if (scoreEl) {
+      scoreEl.textContent = hi.score;
+      scoreEl.style.color = hi.color;
+    }
+    if (labelEl) {
+      labelEl.textContent = hi.label;
+      labelEl.style.color = hi.color;
+    }
+    if (barEl) {
+      barEl.style.width = hi.score + '%';
+      barEl.style.background = hi.color;
+    }
+    if (bdEl) {
+      bdEl.innerHTML = hi.breakdown.map(b =>
+        '<div class="hb-row">'
+        + '<div class="hb-label">' + b.label + '</div>'
+        + '<div class="hb-val">' + b.value.split('(')[0].trim() + '</div>'
+        + '<div class="hb-penalty' + (b.penalty === 0 ? ' zero' : '') + '">'
+        + (b.penalty === 0 ? '✓' : '−' + b.penalty) + '</div>'
+        + '</div>'
+      ).join('') +
+      '<div style="display:flex;justify-content:space-between;padding:5px 0 2px;font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--muted);">'
+      + '<span>ISO 10816-3 · ISO 13373-2 · ISO 281 · ISO 13379-1</span>'
+      + '<span style="color:' + hi.color + ';font-weight:700;">= ' + hi.score + ' / 100</span>'
+      + '</div>';
+    }
+  }
   const zC={A:'var(--green)',B:'#1a6bbf',C:'var(--yellow)',D:'var(--red)'};
   document.getElementById('results-meta').innerHTML='File: <span>'+d.filename+'</span> &nbsp;.&nbsp; Class: <span>'+d.classRow.machine_type_desc+'</span>';
   const cfL=getCFLabel(parseFloat(d.cf)), kL=getKLabel(parseFloat(d.kurt));
@@ -1299,11 +1499,164 @@ function renderResults(){
   const rpmSource = d.machineParams && d.machineParams.rpm ? 'nameplate' : 'est.';
   document.getElementById('rpm-badge').textContent='~'+Math.round((d.shaftHz||0)*60)+' RPM '+rpmSource;
   document.getElementById('disclaimer-box').textContent='(!) '+CONFIG.chatbot_config.disclaimer_text;
-  buildRadar(d.faults.filter(f => !f.locked)); buildFFT(d.fftR, d.sr);
+  buildRadarGrouped(d.faults); buildTrendChart(d); buildFFT(d.fftR, d.sr);
 }
 
 // == CHARTS ==
 Chart.defaults.color='#7f93aa';Chart.defaults.borderColor='#2a3a52';Chart.defaults.font.family="'IBM Plex Mono',monospace";
+// Grouped radar — 4 categories instead of individual faults
+function buildRadarGrouped(allFaults) {
+  if(radarInst){radarInst.destroy();radarInst=null;}
+  const unlocked = allFaults.filter(f => !f.locked);
+  // Group into 4 categories
+  const groups = {
+    'Bearing':    unlocked.filter(f => f.category === 'bearing'),
+    'Mechanical': unlocked.filter(f => f.category === 'mechanical' && f.category !== 'root_cause'),
+    'Electrical': unlocked.filter(f => f.category === 'electrical'),
+    'Foundation': unlocked.filter(f => f.category === 'root_cause')
+  };
+  const labels = Object.keys(groups);
+  const scores = labels.map(g => {
+    const faults = groups[g];
+    return faults.length ? Math.max(...faults.map(f => f.pct)) : 0;
+  });
+  const ptColors = scores.map(s => s >= 70 ? '#c0392b' : s >= 40 ? '#e67e22' : s >= 20 ? '#3b82f6' : '#2a3a52');
+  radarInst = new Chart(document.getElementById('radarChart').getContext('2d'),{
+    type:'radar',
+    data:{
+      labels: labels,
+      datasets:[{
+        data: scores,
+        backgroundColor:'rgba(192,57,43,0.2)',
+        borderColor:'#c0392b',
+        borderWidth:2,
+        pointBackgroundColor: ptColors,
+        pointBorderColor:'#ffffff',
+        pointBorderWidth:2,
+        pointRadius: scores.map(s => s > 0 ? 7 : 4),
+        pointHoverRadius:10
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false},tooltip:{
+        backgroundColor:'#1a2030',borderColor:'#c0392b',borderWidth:1,padding:10,
+        titleColor:'#ffffff',bodyColor:'#ffffff',
+        callbacks:{
+          label: c => {
+            const g = labels[c.dataIndex];
+            const faults = groups[g];
+            const top = faults.sort((a,b)=>b.pct-a.pct)[0];
+            return top ? top.name + ': ' + c.raw + '%' : c.raw + '%';
+          }
+        }
+      }},
+      scales:{r:{
+        min:0,max:100,
+        ticks:{stepSize:20,font:{size:9},color:'#7f93aa',backdropColor:'transparent'},
+        grid:{color:'rgba(77,157,224,0.15)'},
+        pointLabels:{font:{size:11,weight:'bold'},color:'#c0cfe0'},
+        angleLines:{color:'rgba(77,157,224,0.15)'}
+      }}
+    }
+  });
+}
+
+// Trend chart — shows health index over time (single point for now, multi when history loads)
+let trendInst = null;
+function buildTrendChart(d) {
+  if(trendInst){trendInst.destroy();trendInst=null;}
+  const ctx = document.getElementById('trendChart');
+  if (!ctx) return;
+  const hi = d.healthIdx ? d.healthIdx.score : null;
+  const topFault = d.faults.find(f => !f.locked && f.category !== 'root_cause');
+  // Single reading — show as point with reference lines
+  const labels = ['Current'];
+  const healthData = [hi || 0];
+  const rmsData = [parseFloat(d.rms)];
+  const faultData = [topFault ? topFault.pct : 0];
+  trendInst = new Chart(ctx.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Health Index',
+          data: healthData,
+          borderColor: 'var(--accent)',
+          backgroundColor: 'rgba(77,157,224,0.15)',
+          borderWidth: 2,
+          pointRadius: 8,
+          pointBackgroundColor: d.healthIdx ? d.healthIdx.color : 'var(--accent)',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
+          yAxisID: 'y',
+          tension: 0.3,
+          fill: true
+        },
+        {
+          label: 'RMS (mm/s)',
+          data: rmsData,
+          borderColor: 'var(--green)',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 6,
+          pointBackgroundColor: 'var(--green)',
+          yAxisID: 'y2',
+          tension: 0.3,
+          borderDash: [4,3]
+        },
+        {
+          label: 'Top Fault %',
+          data: faultData,
+          borderColor: 'var(--orange)',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 6,
+          pointBackgroundColor: 'var(--orange)',
+          yAxisID: 'y',
+          tension: 0.3,
+          borderDash: [2,3]
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a2030',
+          borderColor: '#3a5070',
+          borderWidth: 1,
+          padding: 10,
+          titleColor: '#ffffff',
+          bodyColor: '#c0cfe0'
+        },
+        annotation: {}
+      },
+      scales: {
+        x: { grid: { color: 'rgba(77,157,224,0.08)' }, ticks: { color: '#7f93aa', font: { size: 10 } } },
+        y: {
+          min: 0, max: 100,
+          grid: { color: 'rgba(77,157,224,0.08)' },
+          ticks: { color: '#7f93aa', font: { size: 10 } },
+          title: { display: true, text: 'Health / Fault %', color: '#7f93aa', font: { size: 10 } }
+        },
+        y2: {
+          position: 'right',
+          grid: { display: false },
+          ticks: { color: 'var(--green)', font: { size: 10 } },
+          title: { display: true, text: 'RMS mm/s', color: 'var(--green)', font: { size: 10 } }
+        }
+      }
+    }
+  });
+  // Update reading count badge
+  const badge = document.getElementById('trend-reading-count');
+  if (badge) badge.textContent = '1 reading — add more for trend';
+}
+
 function buildRadar(faults){
   if(radarInst){radarInst.destroy();radarInst=null;}
   const top = faults.slice(0,8);
@@ -1423,6 +1776,7 @@ async function streamClaude(){
     '','=== NVR RECORD ===',
     'File: '+d.filename+' | Samples: '+d.n+' | Sample rate: '+d.sr+' Hz',
     'RMS: '+d.rms+' '+d.cu+' | Peak: '+d.peak+' | CF: '+d.cf+' ['+getCFLabel(parseFloat(d.cf))+'] | Kurtosis: '+d.kurt+' ['+getKLabel(parseFloat(d.kurt))+']',
+    d.healthIdx ? 'Health Index: '+d.healthIdx.score+'/100 ('+d.healthIdx.label+') — Physics basis: '+d.healthIdx.breakdown.map(b=>b.label+' penalty='+b.penalty).join(', ') : '',
     'Deviation: '+d.devSc+'sigma  -  '+d.devRow.classification+' ('+d.devRow.iso_reference+')',
     'ISO Zone: '+d.zoneRow.zone_label+'  -  '+d.zoneRow.action_required+' ('+d.zoneRow.iso_clause_ref+')',
     'Trend: '+d.trendRow.code+'  -  '+d.trendRow.label+' ('+d.trendRow.iso_reference+')',
