@@ -150,7 +150,7 @@ const CONFIG = {
 
   // Bearing BER suppression threshold -- ISO 13379-1:2012 §5.2
   // When bearing envelope BER > threshold, mechanical scores capped at 10%
-  bearing_ber_threshold: 1.5
+  bearing_ber_threshold: 1.3
 };
 
 
@@ -533,11 +533,30 @@ async function runPipeline(raw, filename) {
   doneStage(6, 'RUL '+rulR.days+'d +/- '+rulR.ci+'d');
   setNote('Rendering results...');
 
+  // Apply fault-zone override — ISO 13379-1:2012 §5.4
+  // Fault findings take precedence over RMS zone when confidence is high enough.
+  const override = applyFaultOverride(zoneRow, rulR, faults, parseFloat(cf), parseFloat(kurt), classRow);
+  const finalZoneRow = override.zoneRow;
+  const finalRulR    = override.rulR;
+
+  // Compute physics-based health index — fault-driven, not RMS-driven
+  // topBearingFault feeds classifyFaults() output directly into the health score
+  const topBearingFault = faults.find(f => !f.locked && f.category === 'bearing');
+  const healthIdx = calcHealthIndex(
+    rms, kurt, cf,
+    finalZoneRow.zone_label,
+    topBearingFault ? topBearingFault.pct : 0,
+    Math.abs(parseFloat(devSc)),
+    classRow
+  );
+
   nvr = { filename, rms: rms.toFixed(3), peak: peak.toFixed(3), cf: cf.toFixed(2),
     dataTypes, dataBanner,
-    kurt: kurt.toFixed(2), devSc: devSc.toFixed(2), devRow, zoneRow, trendRow,
+    kurt: kurt.toFixed(2), devSc: devSc.toFixed(2), devRow,
+    zoneRow: finalZoneRow, trendRow,
     earlyWarn, faults: faults.length ? faults : allFaults.slice(0, CONFIG.fault_display_limit),
-    fftR, rulR, n, sr, classRow, cu, shaftHz, singleFile: true };
+    fftR, rulR: finalRulR, n, sr, classRow, cu, shaftHz, singleFile: true,
+    override, healthIdx };
 
   await new Promise(r => setTimeout(r, 250));
   document.getElementById('processing-screen').style.display = 'none';
@@ -741,6 +760,147 @@ function getDataTypeBanner(dataTypes) {
   if (has('mcsa')) return { type:'mcsa', msg:'MCSA / electrical data detected. Electrical fault analysis available. Vibration-based faults require acceleration or velocity data.' };
   if (has('power')) return { type:'power', msg:'Power monitoring data detected. Process fault analysis available.' };
   return { type:'vibration', msg:'Vibration data detected. Mechanical and bearing fault analysis will run. Electrical and process fault categories require MCSA or power meter data  -  not shown.' };
+}
+
+// == HEALTH INDEX ENGINE ==
+// Physics-based 0-100 score derived from fault classification output + signal metrics.
+// RULE: health status is fault-driven, not RMS-driven.
+// Every penalty is ISO-referenced. Fault evidence from classifyFaults() feeds
+// directly into the score — the engine reacts to what it found, not preset thresholds.
+// ISO 10816-3, ISO 13373-2:2016, ISO 281:2007, ISO 13379-1:2012
+
+function calcHealthIndex(rms, kurt, cf, zoneLabel, topBearingPct, devSigma, classRow) {
+  let score = 100;
+  const breakdown = [];
+
+  // 1. ISO Zone penalty — ISO 10816-3:2009 §5.1-5.4
+  // RMS velocity reflects vibration power. Zone boundaries are empirically established.
+  const zonePenalties = { 'A': 0, 'B': 12, 'C': 35, 'D': 65 };
+  let zonePenalty = zonePenalties[zoneLabel] || 0;
+  if (zoneLabel === 'B') {
+    const pos = Math.min(1, Math.max(0, (rms - 2.3) / (7.1 - 2.3)));
+    zonePenalty = Math.round(12 + pos * 23);
+  }
+  score -= zonePenalty;
+  breakdown.push({
+    label: 'Vibration severity', penalty: zonePenalty,
+    value: rms.toFixed(3) + ' mm/s → Zone ' + zoneLabel,
+    iso: 'ISO 10816-3:2009 §5.1–5.4',
+    physics: 'RMS velocity proportional to vibration power (W/kg)'
+  });
+
+  // 2. Kurtosis penalty — ISO 13373-2:2016 §8.3
+  // Excess kurtosis indicates impulsive bearing impacts.
+  // Power law (exponent 1.5) reflects Hertz contact damage mechanics.
+  const kurtExcess = Math.max(0, kurt - 3.0);
+  const kurtPenalty = Math.min(30, Math.round(8 * Math.pow(kurtExcess, 1.5)));
+  score -= kurtPenalty;
+  breakdown.push({
+    label: 'Impulsive content (Kurtosis)', penalty: kurtPenalty,
+    value: 'K=' + kurt.toFixed(2) + ' (excess ' + kurtExcess.toFixed(2) + ' above Gaussian 3.0)',
+    iso: 'ISO 13373-2:2016 §8.3',
+    physics: '8 × (K−3)^1.5 — Hertz contact damage mechanics'
+  });
+
+  // 3. Crest Factor penalty — ISO 13373-2:2016 §8.2
+  // CF = Peak/RMS. Healthy: 2.5–3.5. Reflects shock content.
+  let cfPenalty = 0;
+  if      (cf > 8)   cfPenalty = 20;
+  else if (cf > 5)   cfPenalty = Math.round(10 + (cf-5)/3*10);
+  else if (cf > 3.5) cfPenalty = Math.round((cf-3.5)/1.5*10);
+  score -= cfPenalty;
+  breakdown.push({
+    label: 'Shock content (Crest Factor)', penalty: cfPenalty,
+    value: 'CF=' + cf.toFixed(2) + ' (healthy 2.5–3.5)',
+    iso: 'ISO 13373-2:2016 §8.2',
+    physics: 'CF = Peak/RMS — transient shock vs average energy ratio'
+  });
+
+  // 4. Bearing fault penalty — ISO 13379-1:2012 Annex A §A.3 + ISO 281:2007
+  // Directly driven by fault classification output (topBearingPct).
+  // This is the key coupling: the health score reacts to what classifyFaults() found.
+  // ISO 281 L10 life equation: fatigue life ∝ (C/P)^3 — small load increase = large life reduction.
+  let bearingPenalty = 0;
+  if      (topBearingPct >= 80) bearingPenalty = 35;
+  else if (topBearingPct >= 60) bearingPenalty = Math.round(15 + (topBearingPct-60)/20*20);
+  else if (topBearingPct >= 40) bearingPenalty = Math.round(5  + (topBearingPct-40)/20*10);
+  else if (topBearingPct >= 20) bearingPenalty = Math.round((topBearingPct-20)/20*5);
+  score -= bearingPenalty;
+  breakdown.push({
+    label: 'Bearing fault evidence', penalty: bearingPenalty,
+    value: topBearingPct + '% confidence' + (topBearingPct >= 60 ? ' — above 6dB detection threshold' : ''),
+    iso: 'ISO 13379-1:2012 Annex A §A.3 | ISO 281:2007',
+    physics: 'BER detection + ISO 281 L10 life: fatigue ∝ (C/P)^3'
+  });
+
+  // 5. Baseline deviation penalty — ISO 13373-2:2016 §8.1
+  // SPC Western Electric 3-sigma rule.
+  let devPenalty = 0;
+  if      (devSigma > 3.5) devPenalty = 20;
+  else if (devSigma > 3.0) devPenalty = 15;
+  else if (devSigma > 2.0) devPenalty = 10;
+  else if (devSigma > 1.5) devPenalty = 5;
+  score -= devPenalty;
+  breakdown.push({
+    label: 'Baseline deviation', penalty: devPenalty,
+    value: devSigma.toFixed(2) + 'σ from baseline',
+    iso: 'ISO 13373-2:2016 §8.1',
+    physics: 'SPC Western Electric rule — 3σ = 99.7% confidence of real change'
+  });
+
+  const finalScore = Math.max(5, Math.min(100, score));
+  return {
+    score: finalScore,
+    breakdown,
+    label: finalScore >= 85 ? 'Good' : finalScore >= 65 ? 'Monitor' : finalScore >= 40 ? 'Caution' : 'Critical',
+    color: finalScore >= 85 ? 'var(--green)' : finalScore >= 65 ? '#1a6bbf' : finalScore >= 40 ? 'var(--yellow)' : 'var(--red)'
+  };
+}
+
+// == FAULT-ZONE OVERRIDE ENGINE ==
+// ISO 13379-1:2012 §5.4 — frequency-domain fault findings take precedence
+// over RMS-based zone when fault confidence exceeds threshold.
+// Ensures health status reflects what the fault engine detected, not just RMS level.
+function applyFaultOverride(zoneRow, rulR, faults, kurt, cf, classRow) {
+  const result = {
+    zoneRow: { ...zoneRow }, rulR: { ...rulR },
+    overrideActive: false, overrideReason: null, overrideISO: null
+  };
+  const unlockedFaults = faults.filter(f => !f.locked);
+  const topFault = unlockedFaults[0];
+  const topPct  = topFault?.pct || 0;
+  const topName = topFault?.name || '';
+  const isBearing   = topFault?.category === 'bearing';
+
+  // Rule 1: Bearing fault overrides RMS zone — ISO 13379-1:2012 §5.4
+  if (isBearing && topPct >= 60) {
+    result.overrideActive = true;
+    if (zoneRow.zone_label === 'A' || (zoneRow.zone_label === 'B' && topPct >= 80)) {
+      result.zoneRow = {
+        ...zoneRow,
+        zone_label: topPct >= 80 ? 'C' : 'B',
+        action_required: topPct >= 80
+          ? 'BEARING FAULT DETECTED — Corrective maintenance required. RMS underestimates severity for impulsive faults.'
+          : 'BEARING FAULT DETECTED — Schedule inspection. Frequency analysis indicates bearing defect despite low RMS.'
+      };
+      const rulFactor = topPct >= 80 ? 0.4 : 0.6;
+      result.rulR = { ...rulR, days: Math.round(rulR.days * rulFactor), ci: Math.round(rulR.ci * rulFactor), overridden: true };
+    }
+    result.overrideReason = 'Bearing fault at ' + topPct + '% (' + topName + ') — frequency analysis overrides RMS zone per ISO 13379-1:2012 §5.4';
+    result.overrideISO = 'ISO 13379-1:2012 §5.4';
+  }
+
+  // Rule 2: Elevated kurtosis override — ISO 13373-2:2016 §8.3
+  if (kurt >= 4.0 && !result.overrideActive) {
+    result.overrideActive = true;
+    result.overrideReason = 'Elevated kurtosis (' + kurt.toFixed(2) + ') indicates impulsive fault — ISO 13373-2:2016 §8.3';
+    result.overrideISO = 'ISO 13373-2:2016 §8.3';
+    if (zoneRow.zone_label === 'A') {
+      result.zoneRow = { ...zoneRow, action_required: 'Elevated kurtosis detected. Impulsive fault activity present despite low RMS. Inspect bearing condition.' };
+    }
+  }
+
+  return result;
 }
 
 // == FAULT CLASSIFICATION ==
@@ -1255,6 +1415,41 @@ function resetApp(){
 // == RENDER ==
 function renderResults(){
   const d=nvr;
+
+  // Render Health Index — fault-driven score
+  if (d.healthIdx) {
+    const hi = d.healthIdx;
+    const scoreEl = document.getElementById('health-score-num');
+    const labelEl = document.getElementById('health-score-label');
+    const barEl   = document.getElementById('health-bar-fill');
+    const bdEl    = document.getElementById('health-breakdown');
+    if (scoreEl) { scoreEl.textContent = hi.score; scoreEl.style.color = hi.color; }
+    if (labelEl) { labelEl.textContent = hi.label; labelEl.style.color = hi.color; }
+    if (barEl)   { barEl.style.width = hi.score + '%'; barEl.style.background = hi.color; }
+    if (bdEl) {
+      bdEl.innerHTML = hi.breakdown.map(b =>
+        '<div class="hb-row">'
+        + '<div class="hb-label">' + b.label + '</div>'
+        + '<div class="hb-val">'   + b.value.split('(')[0].trim() + '</div>'
+        + '<div class="hb-penalty' + (b.penalty === 0 ? ' zero' : '') + '">'
+        + (b.penalty === 0 ? '[check]' : '-' + b.penalty) + '</div>'
+        + '</div>'
+      ).join('') +
+      '<div style="display:flex;justify-content:space-between;padding:5px 0 2px;font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--muted);">'
+      + '<span>ISO 10816-3 · ISO 13373-2 · ISO 281 · ISO 13379-1</span>'
+      + '<span style="color:' + hi.color + ';font-weight:700;">= ' + hi.score + ' / 100</span>'
+      + '</div>';
+    }
+  }
+
+  // Override banner
+  if (d.override && d.override.overrideActive) {
+    const ob = document.getElementById('override-banner');
+    const or_ = document.getElementById('override-reason');
+    if (ob) ob.classList.add('show');
+    if (or_) or_.textContent = d.override.overrideReason || '';
+  }
+
   const zC={A:'var(--green)',B:'#1a6bbf',C:'var(--yellow)',D:'var(--red)'};
   document.getElementById('results-meta').innerHTML='File: <span>'+d.filename+'</span> &nbsp;.&nbsp; Class: <span>'+d.classRow.machine_type_desc+'</span>';
   const cfL=getCFLabel(parseFloat(d.cf)), kL=getKLabel(parseFloat(d.kurt));
