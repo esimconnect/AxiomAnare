@@ -844,6 +844,7 @@ async function runPipeline(raw, filename) {
     singleFile: history.length < 3,
     historyCount: history.length,
     assetName: machineParams.assetName || null,
+    machineParams: {...machineParams},
     _history: history };
 
   await new Promise(r => setTimeout(r, 250));
@@ -1846,7 +1847,8 @@ Chart.defaults.color='#7f93aa';Chart.defaults.borderColor='#2a3a52';Chart.defaul
 
 // == TREND CHART ============================================================
 let trendInst = null;
-let trendTab = 'rms';  // 'rms' or 'health'
+let trendTab = 'rms';
+window._lastTrendArgs = null;
 
 window.switchTrendTab = function(tab) {
   trendTab = tab;
@@ -1854,38 +1856,48 @@ window.switchTrendTab = function(tab) {
   if (window._lastTrendArgs) buildTrendChart(...window._lastTrendArgs);
 };
 
+const TREND_COLOURS = ['#4d9de0','#2ecc71','#f39c12','#e74c3c','#9b59b6','#1abc9c','#e67e22','#00bcd4','#ff5722','#cddc39'];
+
 function buildTrendChart(d, history) {
   window._lastTrendArgs = [d, history];
   if (trendInst) { trendInst.destroy(); trendInst = null; }
   const ctx = document.getElementById('trendChart');
   if (!ctx) return;
 
-  // Build chronological dataset from history + current reading
-  let labels = [], rmsVals = [], healthVals = [], faultVals = [];
-
   const formatDate = (iso) => {
-    // Handle both full ISO and date-only strings
-    const d = new Date(iso.includes('T') ? iso : iso + 'T12:00:00Z');
-    return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'2-digit' });
+    if (!iso) return '—';
+    const dt = new Date(iso.includes('T') ? iso : iso + 'T12:00:00Z');
+    return dt.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'2-digit' });
   };
 
+  // Build one dataset per reading (history + current)
+  // Each reading = one named line with a single point on its date
+  const allReadings = [];
   if (history && history.length > 0) {
-    const hist = [...history].reverse();
-    hist.forEach(r => {
-      labels.push(formatDate(r.recorded_at));
-      rmsVals.push(parseFloat(r.rms_mms) || 0);
-      healthVals.push(r.health_score !== null && r.health_score !== undefined ? parseFloat(r.health_score) : null);
-      faultVals.push(r.top_fault_pct || 0);
+    [...history].reverse().forEach(r => {
+      allReadings.push({
+        label: (r.filename || 'Reading') + ' · ' + formatDate(r.recorded_at),
+        date:  formatDate(r.recorded_at),
+        rms:   parseFloat(r.rms_mms) || 0,
+        health: r.health_score !== null && r.health_score !== undefined ? parseFloat(r.health_score) : null,
+        fault: r.top_fault_pct || 0,
+        isBaseline: !!r.is_baseline
+      });
     });
   }
-  // Add current reading
+  // Current reading
   const curDate = (d.machineParams && d.machineParams.measDate) ? d.machineParams.measDate : new Date().toISOString().split('T')[0];
-  labels.push(formatDate(curDate));
-  rmsVals.push(parseFloat(d.rms));
-  healthVals.push(d.healthIdx ? d.healthIdx.score : null);
-  faultVals.push(d.faults.find(f=>!f.locked&&f.pct>0)?.pct || 0);
+  allReadings.push({
+    label: d.filename + ' · ' + formatDate(curDate) + ' (now)',
+    date:  formatDate(curDate),
+    rms:   parseFloat(d.rms),
+    health: d.healthIdx ? d.healthIdx.score : null,
+    fault: d.faults.find(f=>!f.locked&&f.pct>0)?.pct || 0,
+    isBaseline: false,
+    isCurrent: true
+  });
 
-  const count = labels.length;
+  const count = allReadings.length;
   const badge = document.getElementById('trend-reading-count');
   if (badge) badge.textContent = count + ' reading' + (count===1?'':'s') + (count<3?' — need 3+ for trend':'');
   const chartBadge = document.getElementById('trend-chart-badge');
@@ -1895,81 +1907,77 @@ function buildTrendChart(d, history) {
     chartBadge.className = 'badge ' + (tC[d.trendRow.code] || 'b-blue');
   }
 
-  // Zone reference lines for RMS tab
-  const zoneA = d.classRow ? d.classRow.zones?.[0]?.rms_upper_mm_s : 2.3;
+  // All readings share the same x-axis (dates as labels)
+  const allDates = [...new Set(allReadings.map(r => r.date))];
 
   const isRMS = trendTab === 'rms';
 
+  // One dataset per reading — single point on its date, null elsewhere
+  const datasets = allReadings.map((r, i) => {
+    const colour = r.isBaseline ? '#4d9de0' : TREND_COLOURS[i % TREND_COLOURS.length];
+    const data = allDates.map(dt => dt === r.date ? (isRMS ? r.rms : r.health) : null);
+    return {
+      label: r.label,
+      data,
+      borderColor: colour,
+      backgroundColor: colour + '22',
+      pointBackgroundColor: r.isCurrent ? '#ffffff' : colour,
+      pointBorderColor: colour,
+      pointBorderWidth: r.isBaseline ? 3 : 2,
+      pointRadius: r.isCurrent ? 8 : 6,
+      pointStyle: r.isBaseline ? 'star' : 'circle',
+      borderWidth: 1.5,
+      borderDash: r.isBaseline ? [] : [4,3],
+      tension: 0,
+      spanGaps: false
+    };
+  });
+
+  // Also add a trend line (connect all points)
+  const trendLineData = allDates.map(dt => {
+    const match = allReadings.find(r => r.date === dt);
+    return match ? (isRMS ? match.rms : match.health) : null;
+  });
+  datasets.unshift({
+    label: 'Trend',
+    data: trendLineData,
+    borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'transparent',
+    pointRadius: 0,
+    borderWidth: 1,
+    borderDash: [2,4],
+    tension: 0.35,
+    spanGaps: true,
+    order: 10
+  });
+
   trendInst = new Chart(ctx.getContext('2d'), {
     type: 'line',
-    data: {
-      labels,
-      datasets: isRMS ? [
-        {
-          label: 'RMS mm/s',
-          data: rmsVals,
-          borderColor: '#4d9de0',
-          backgroundColor: 'rgba(77,157,224,0.10)',
-          borderWidth: 2.5,
-          pointRadius: rmsVals.map((_,i) => i===rmsVals.length-1?7:5),
-          pointBackgroundColor: rmsVals.map((_,i) => i===rmsVals.length-1?'#ffffff':'#4d9de0'),
-          pointBorderColor: rmsVals.map((_,i) => i===rmsVals.length-1?'#4d9de0':'#1a2030'),
-          pointBorderWidth: 2,
-          tension: 0.35,
-          fill: true
-        },
-        {
-          label: 'Top Fault Score',
-          data: faultVals,
-          borderColor: '#e67e22',
-          backgroundColor: 'transparent',
-          borderWidth: 1.5,
-          borderDash: [4,3],
-          pointRadius: 3,
-          pointBackgroundColor: '#e67e22',
-          tension: 0.35,
-          yAxisID: 'y2'
-        }
-      ] : [
-        {
-          label: 'Health Index',
-          data: healthVals,
-          borderColor: '#2ecc71',
-          backgroundColor: 'rgba(46,204,113,0.10)',
-          borderWidth: 2.5,
-          pointRadius: healthVals.map((_,i) => i===healthVals.length-1?7:5),
-          pointBackgroundColor: healthVals.map((v,i) => {
-            if (i===healthVals.length-1) return '#ffffff';
-            if (v===null) return '#2ecc71';
-            return v>=85?'#2ecc71':v>=65?'#4d9de0':v>=40?'#f39c12':'#e74c3c';
-          }),
-          pointBorderColor: healthVals.map((_,i) => i===healthVals.length-1?'#2ecc71':'#1a2030'),
-          pointBorderWidth: 2,
-          tension: 0.35,
-          fill: true,
-          spanGaps: true
-        }
-      ]
-    },
+    data: { labels: allDates, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { display: false },
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: {
+            color: '#7f93aa', font: { size: 9 },
+            filter: item => item.text !== 'Trend',
+            boxWidth: 12, padding: 10
+          }
+        },
         tooltip: {
-          backgroundColor: '#1a2030',
-          borderColor: '#3a5070',
-          borderWidth: 1,
-          padding: 10,
-          titleColor: '#ffffff',
-          bodyColor: '#c0cfe0',
+          backgroundColor: '#1a2030', borderColor: '#3a5070', borderWidth: 1,
+          padding: 10, titleColor: '#ffffff', bodyColor: '#c0cfe0',
+          filter: item => item.dataset.label !== 'Trend' && item.raw !== null,
           callbacks: {
             label: c => {
-              if (c.dataset.label === 'RMS mm/s') return ' RMS: ' + (c.raw||0).toFixed(3) + ' mm/s';
-              if (c.dataset.label === 'Top Fault Score') return ' Fault: ' + faultIndicatorLabel(c.raw||0);
-              if (c.dataset.label === 'Health Index') return ' Health: ' + (c.raw!==null?c.raw+'/100':'N/A');
-              return c.dataset.label + ': ' + c.raw;
+              if (c.raw === null) return null;
+              return isRMS
+                ? ' ' + c.dataset.label.split(' · ')[0] + ': ' + (c.raw||0).toFixed(3) + ' mm/s'
+                : ' ' + c.dataset.label.split(' · ')[0] + ': ' + c.raw + '/100';
             }
           }
         }
@@ -1988,13 +1996,7 @@ function buildTrendChart(d, history) {
           grid: { color: 'rgba(77,157,224,0.08)' },
           ticks: { color: '#7f93aa', font: { size: 9 } },
           title: { display: true, text: 'Health Index (0-100)', color: '#7f93aa', font: { size: 9 } }
-        },
-        y2: isRMS ? {
-          position: 'right',
-          grid: { display: false },
-          ticks: { color: '#e67e22', font: { size: 9 } },
-          title: { display: true, text: 'Fault Score', color: '#e67e22', font: { size: 9 } }
-        } : undefined
+        }
       }
     }
   });
