@@ -1,4 +1,28 @@
+# Python scripts (local fix utilities — not part of the app)
+fix.py
+fix_radar.py
+*.py
+
+# Backup / old versions
+app.old.js
+app.old
+*.old
+*.bak
+
+# MATLAB data files (large, locally stored)
+*.mat
 Data Set/
+
+# PowerPoint test results (local documentation)
 *.pptx
-*.sql
-~$*
+
+# PDF datasheets (large binary, not app code)
+*.pdf
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
