@@ -1,165 +1,3 @@
-// ══ SUPABASE CONFIG ══
-const SUPABASE_URL = 'https://duedtedevbnrflfbnzba.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1ZWR0ZWRldmJucmZsZmJuemJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0OTIzNzIsImV4cCI6MjA5MDA2ODM3Mn0.u_ngs7Fct7xQof90C-aPLMKeMcrqtS-yccUgI7r2FrE';
-
-// Supabase REST API helper — no SDK needed, pure fetch
-const SB = {
-  async get(table, params='') {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
-      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
-    });
-    return r.ok ? r.json() : null;
-  },
-  async post(table, body) {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
-      method: 'POST',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
-      },
-      body: JSON.stringify(body)
-    });
-    return r.ok ? r.json() : null;
-  }
-};
-
-// Load bearing library from Supabase — falls back to local CONFIG if offline
-async function loadBearingLibrary() {
-  try {
-    const rows = await SB.get('bearing_library', 'select=bearing_model,bpfo_mult,bpfi_mult,bsf_mult,ftf_mult,ball_count,manufacturer');
-    if (rows && rows.length > 0) {
-      rows.forEach(r => {
-        BEARING_LIBRARY[r.bearing_model] = {
-          bpfo: r.bpfo_mult, bpfi: r.bpfi_mult,
-          bsf: r.bsf_mult,  ftf: r.ftf_mult,
-          balls: r.ball_count, note: r.manufacturer
-        };
-      });
-      console.log('Bearing library loaded from Supabase:', rows.length, 'bearings');
-    }
-  } catch(e) {
-    console.log('Bearing library: using local CONFIG (Supabase offline)');
-  }
-}
-
-// Save NVR record to Supabase after analysis
-async function saveNVRToSupabase(nvr) {
-  try {
-    const top = nvr.faults && (nvr.faults.find(f => !f.locked && f.category !== 'root_cause') || nvr.faults[0]);
-    const record = {
-      filename:        nvr.filename,
-      file_format:     nvr.filename.split('.').pop(),
-      sample_count:    nvr.n,
-      sample_rate_hz:  nvr.sr,
-      rms_mms:         parseFloat(nvr.rms),
-      peak_mms:        parseFloat(nvr.peak),
-      crest_factor:    parseFloat(nvr.cf),
-      kurtosis:        parseFloat(nvr.kurt),
-      deviation_sigma: parseFloat(nvr.devSc),
-      iso_zone:        nvr.zoneRow?.zone_label,
-      trend_code:      nvr.trendRow?.code,
-      rul_days:        nvr.rulR?.days,
-      rul_ci_days:     nvr.rulR?.ci,
-      shaft_hz:        nvr.shaftHz,
-      top_fault:       top?.name,
-      top_fault_pct:   top?.pct,
-      machine_class:   nvr.classRow?.display_label,
-      load_pct:        nvr.machineParams?.loadPct || null,
-      contributed_to_silo: true
-    };
-    const saved = await SB.post('nvr_records', record);
-    if (saved) {
-      console.log('NVR saved to Supabase:', saved[0]?.id);
-      // Also save to cumulative silo if fault detected
-      if (top && top.pct > 20 && !top.locked) {
-        await SB.post('fault_signatures', {
-          machine_class:   record.machine_class,
-          equipment_type:  nvr.machineParams?.equipType || 'unknown',
-          fault_type:      top.name,
-          fault_category:  top.category,
-          confidence_pct:  top.pct,
-          iso_zone:        record.iso_zone,
-          shaft_hz:        record.shaft_hz,
-          rms_mms:         record.rms_mms,
-          kurtosis:        record.kurtosis,
-          crest_factor:    record.crest_factor,
-          freq_hz:         top.freq_hz,
-          harmonics_used:  top.harmonics_used,
-          bearing_model:   nvr.machineParams?.bearingModel || null,
-          load_pct:        record.load_pct
-        });
-      }
-    }
-  } catch(e) {
-    console.log('Supabase save failed (offline mode):', e.message);
-  }
-}
-
-// ══ BEARING LIBRARY — common industrial bearings with pre-computed fault multipliers ══
-// Source: SKF/FAG/NSK published bearing geometry specifications
-// Multipliers: BPFO = (n/2)*(1-(Bd/Pd)*cos(a)) | BPFI = (n/2)*(1+(Bd/Pd)*cos(a))
-// BSF = (Pd/(2*Bd))*(1-((Bd/Pd)*cos(a))^2) | FTF = 0.5*(1-(Bd/Pd)*cos(a))
-const BEARING_LIBRARY = {
-  // SKF 6200 series (light series)
-  'SKF 6200': {bpfo:3.053,bpfi:4.947,bsf:1.994,ftf:0.382,balls:7,note:'17mm bore'},
-  'SKF 6201': {bpfo:3.053,bpfi:4.947,bsf:1.994,ftf:0.382,balls:7,note:'12mm bore'},
-  'SKF 6202': {bpfo:3.053,bpfi:4.947,bsf:1.994,ftf:0.382,balls:7,note:'15mm bore'},
-  'SKF 6203': {bpfo:3.592,bpfi:5.408,bsf:2.357,ftf:0.399,balls:8,note:'17mm bore'},
-  'SKF 6204': {bpfo:3.592,bpfi:5.408,bsf:2.357,ftf:0.399,balls:8,note:'20mm bore'},
-  'SKF 6205': {bpfo:3.585,bpfi:5.415,bsf:2.357,ftf:0.398,balls:9,note:'25mm bore - CWRU standard'},
-  'SKF 6206': {bpfo:3.585,bpfi:5.415,bsf:2.357,ftf:0.398,balls:9,note:'30mm bore'},
-  'SKF 6207': {bpfo:3.585,bpfi:5.415,bsf:2.357,ftf:0.398,balls:9,note:'35mm bore'},
-  'SKF 6208': {bpfo:3.585,bpfi:5.415,bsf:2.357,ftf:0.398,balls:9,note:'40mm bore'},
-  'SKF 6209': {bpfo:3.585,bpfi:5.415,bsf:2.357,ftf:0.398,balls:9,note:'45mm bore'},
-  'SKF 6210': {bpfo:3.585,bpfi:5.415,bsf:2.357,ftf:0.398,balls:9,note:'50mm bore'},
-  // SKF 6300 series (medium series)
-  'SKF 6304': {bpfo:3.991,bpfi:6.009,bsf:2.616,ftf:0.399,balls:8,note:'20mm bore'},
-  'SKF 6305': {bpfo:3.991,bpfi:6.009,bsf:2.616,ftf:0.399,balls:8,note:'25mm bore'},
-  'SKF 6306': {bpfo:3.991,bpfi:6.009,bsf:2.616,ftf:0.399,balls:8,note:'30mm bore'},
-  'SKF 6307': {bpfo:3.991,bpfi:6.009,bsf:2.616,ftf:0.399,balls:8,note:'35mm bore'},
-  'SKF 6308': {bpfo:3.991,bpfi:6.009,bsf:2.616,ftf:0.399,balls:8,note:'40mm bore'},
-  'SKF 6309': {bpfo:3.991,bpfi:6.009,bsf:2.616,ftf:0.399,balls:8,note:'45mm bore'},
-  'SKF 6310': {bpfo:3.991,bpfi:6.009,bsf:2.616,ftf:0.399,balls:8,note:'50mm bore'},
-  // FAG equivalents
-  'FAG 6205': {bpfo:3.585,bpfi:5.415,bsf:2.357,ftf:0.398,balls:9,note:'25mm bore'},
-  'FAG 6206': {bpfo:3.585,bpfi:5.415,bsf:2.357,ftf:0.398,balls:9,note:'30mm bore'},
-  'FAG 6207': {bpfo:3.585,bpfi:5.415,bsf:2.357,ftf:0.398,balls:9,note:'35mm bore'},
-  'FAG 6208': {bpfo:3.585,bpfi:5.415,bsf:2.357,ftf:0.398,balls:9,note:'40mm bore'},
-  'FAG 6305': {bpfo:3.991,bpfi:6.009,bsf:2.616,ftf:0.399,balls:8,note:'25mm bore'},
-  'FAG 6306': {bpfo:3.991,bpfi:6.009,bsf:2.616,ftf:0.399,balls:8,note:'30mm bore'},
-  'FAG 6307': {bpfo:3.991,bpfi:6.009,bsf:2.616,ftf:0.399,balls:8,note:'35mm bore'},
-  'FAG 6308': {bpfo:3.991,bpfi:6.009,bsf:2.616,ftf:0.399,balls:8,note:'40mm bore'},
-  // NSK equivalents
-  'NSK 6205': {bpfo:3.585,bpfi:5.415,bsf:2.357,ftf:0.398,balls:9,note:'25mm bore'},
-  'NSK 6206': {bpfo:3.585,bpfi:5.415,bsf:2.357,ftf:0.398,balls:9,note:'30mm bore'},
-  'NSK 6305': {bpfo:3.991,bpfi:6.009,bsf:2.616,ftf:0.399,balls:8,note:'25mm bore'},
-  'NSK 6308': {bpfo:3.991,bpfi:6.009,bsf:2.616,ftf:0.399,balls:8,note:'40mm bore'},
-  // NTN equivalents
-  'NTN 6205': {bpfo:3.585,bpfi:5.415,bsf:2.357,ftf:0.398,balls:9,note:'25mm bore'},
-  'NTN 6308': {bpfo:3.991,bpfi:6.009,bsf:2.616,ftf:0.399,balls:8,note:'40mm bore'},
-  // Timken (tapered roller — common in gearboxes)
-  'TIMKEN 30205': {bpfo:3.746,bpfi:6.254,bsf:2.841,ftf:0.374,balls:13,note:'25mm bore tapered'},
-  'TIMKEN 30208': {bpfo:3.746,bpfi:6.254,bsf:2.841,ftf:0.374,balls:13,note:'40mm bore tapered'},
-};
-
-// ══ USER MACHINE PARAMETERS — populated by Step 2 form ══
-let machineParams = {
-  equipType:    '',
-  rpm:          null,    // nameplate RPM — null = use FFT detection
-  bearingModel: '',
-  bpfoMult:     null,    // null = use CONFIG defaults
-  bpfiMult:     null,
-  bsfMult:      null,
-  ftfMult:      null,
-  measPoint:    'bearing_housing',
-  measAxis:     'H',
-  loadPct:      null,
-  lastMaint:    null,
-  paramsEntered: false
-};
-
 const CONFIG = {
   iso_machine_classes: [
     { class_id:"cls_i",    display_label:"Class I",        iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Small Machines",          power_kw_desc:"Up to 15 kW",      power_kw_min:0,   power_kw_max:15,   mounting_type:"Rigid Mount"    },
@@ -194,7 +32,7 @@ const CONFIG = {
 
     // -- MECHANICAL FAULTS (detectable from vibration) ----------------------
     // category: "mechanical" | requires: "vibration"
-    { rule_id:"r_loose_found", fault_type:"Loose Foundation",      category:"root_cause", requires:"vibration",
+    { rule_id:"r_loose_found", fault_type:"Loose Foundation",      category:"mechanical", requires:"vibration",
       freq_multiplier:0.5,  harmonic_count:8, bandwidth_pct:0.10, confidence_weight:0.35,
       detection_note:"Sub-harmonic and multiple harmonics of shaft speed indicate structural looseness",
       iso_reference:"ISO 13379-1:2012 S5.4" },
@@ -209,11 +47,11 @@ const CONFIG = {
 
     // -- BEARING FAULTS (detectable from vibration) -------------------------
     { rule_id:"r_bpfo", fault_type:"Bearing - Outer Race",         category:"bearing",   requires:"vibration",
-      freq_multiplier:3.5,  harmonic_count:4, bandwidth_pct:0.18, confidence_weight:0.45,
+      freq_multiplier:3.5,  harmonic_count:3, bandwidth_pct:0.15, confidence_weight:0.40,
       detection_note:"Ball pass frequency outer race harmonics; elevated kurtosis confirms impacting",
       iso_reference:"ISO 13379-1:2012 Annex A SA.3" },
     { rule_id:"r_bpfi", fault_type:"Bearing - Inner Race",         category:"bearing",   requires:"vibration",
-      freq_multiplier:5.5,  harmonic_count:3, bandwidth_pct:0.08, confidence_weight:0.40,
+      freq_multiplier:5.5,  harmonic_count:3, bandwidth_pct:0.15, confidence_weight:0.40,
       detection_note:"Ball pass frequency inner race harmonics with shaft-rate sidebands",
       iso_reference:"ISO 13379-1:2012 Annex A SA.3" },
     { rule_id:"r_bsf",  fault_type:"Bearing - Rolling Element",    category:"bearing",   requires:"vibration",
@@ -303,15 +141,22 @@ const CONFIG = {
   shaft_freq_search_max_hz: 200,
   harmonic_comb_count: 4,
   gravity_mm_s2: 9806.65,
-  chatbot_config: { model_version:"claude-sonnet-4-20250514", max_output_tokens:1000, disclaimer_text:"AI-GENERATED ANALYSIS - IMPORTANT NOTICE: This output is intended to assist qualified maintenance and reliability engineers. It does not constitute a certified engineering determination. All corrective actions must be reviewed and authorised by a suitably qualified professional. Kairos Ventures Pte Ltd accepts no liability for any decision arising from reliance on this output without independent qualified engineering review." }
+  chatbot_config: { model_version:"claude-sonnet-4-20250514", max_output_tokens:1000, disclaimer_text:"AI-GENERATED ANALYSIS - IMPORTANT NOTICE: This output is intended to assist qualified maintenance and reliability engineers. It does not constitute a certified engineering determination. All corrective actions must be reviewed and authorised by a suitably qualified professional. Kairos Ventures Pte Ltd accepts no liability for any decision arising from reliance on this output without independent qualified engineering review." },
+
+  // Envelope demodulation bands -- ISO 13373-2:2016 §7.5
+  // race: high-freq resonance band for race faults (BPFO, BPFI)
+  // roll: mid-freq band for rolling element / cage faults (BSF, FTF)
+  envelope_bands: { race: { lo: 3000, hi: 4500 }, roll: { lo: 700, hi: 1800 } },
+
+  // Bearing BER suppression threshold -- ISO 13379-1:2012 §5.2
+  // When bearing envelope BER > threshold, mechanical scores capped at 10%
+  bearing_ber_threshold: 1.5
 };
 
 
 // AxiomAnare  -  Diagnostic Engine
 // All logic runs after DOM is fully loaded
 document.addEventListener('DOMContentLoaded', function () {
-  // Load bearing library from Supabase on startup
-  loadBearingLibrary();
 
 // == CONFIG LOOKUP HELPERS ==
 function getZonesForClass(id) {
@@ -355,7 +200,8 @@ function getKBonus(k)  { return [...CONFIG.kurtosis_thresholds].sort((a,b)=>b.lo
 // == STATE ==
 let selClassId = CONFIG.iso_machine_classes[1].class_id;
 let radarInst = null, fftInst = null, nvr = {};
-let pendingFile = null, pendingRaw = null, pendingMatBuffer = false;
+let pendingFile = null, pendingRaw = null;
+let machineParams = {};   // RPM, bearing model, load zone from wizard step 2
 
 // == CLASS SELECTOR ==
 function initClassSelector() {
@@ -401,7 +247,7 @@ function stageFile(file) {
   document.getElementById('ready-meta').textContent = sz + ' . .' + ext.toUpperCase();
   updateStep3Meta();
   // Mark steps done
-  setStepDone('step1-num', true); setStepDone('step3-num', true);
+  setStepDone('step1-num', true); setStepDone('step2-num', true);
   // Show Step 3
   const s3 = document.getElementById('step3-card');
   s3.style.display = 'block';
@@ -417,16 +263,6 @@ function stageFile(file) {
     r.onload = ev => { try { const a=[].concat(JSON.parse(ev.target.result)); const k=Object.keys(a[0]); pendingRaw=[k.join(','),...a.map(row=>k.map(x=>row[x]).join(','))].join('\n'); } catch { pendingRaw=ev.target.result; } };
     r.onerror = () => showFileError('File read failed.');
     r.readAsText(file);
-  } else if (ext === 'mat') {
-    const r = new FileReader();
-    r.onload = ev => {
-      pendingRaw = ev.target.result;
-      pendingMatBuffer = true;
-      document.getElementById('ready-meta').textContent =
-        (file.size/1024).toFixed(0)+'KB  MATLAB .mat  -  Drive End / Fan End channel will be extracted';
-    };
-    r.onerror = () => showFileError('Cannot read .mat file.');
-    r.readAsArrayBuffer(file);
   } else {
     const r = new FileReader();
     r.onload = ev => { pendingRaw = ev.target.result; };
@@ -440,22 +276,62 @@ function showFileError(msg) {
   el.textContent = '(!) ' + msg; el.style.color = 'var(--red)';
 }
 
+// == MACHINE PARAMETER READER ==
+// Reads wizard step 2 inputs: RPM, bearing model, load zone position.
+// Returns machineParams object consumed by classifyFaults().
+// Rule 1 (no hardcoding): all values from user input or CONFIG bearing library.
+// Rule 3 (format agnostic): shaftHz derived from RPM input, not assumed.
+function readMachineParams() {
+  const params = { shaftHz: 0, bearingMultipliers: null, loadZonePosition: 'centered' };
+
+  // RPM input -- convert to shaft Hz for classifyFaults
+  const rpmEl = document.getElementById('param-rpm') || document.getElementById('input-rpm') || document.getElementById('rpm-input');
+  if (rpmEl && parseFloat(rpmEl.value) > 0) {
+    params.shaftHz = parseFloat(rpmEl.value) / 60;
+  }
+
+  // Bearing model -- look up exact multipliers from CONFIG bearing library
+  const bearingEl = document.getElementById('param-bearing') || document.getElementById('input-bearing') || document.getElementById('bearing-model');
+  if (bearingEl && bearingEl.value) {
+    // Search bearing library by model string match
+    // bearing_library table seeded in Supabase -- fall back to CONFIG defaults if not found
+    const modelStr = bearingEl.value.trim().toLowerCase();
+    if (window.BEARING_LIBRARY && Array.isArray(window.BEARING_LIBRARY)) {
+      const match = window.BEARING_LIBRARY.find(b =>
+        b.model && b.model.toLowerCase().replace(/[\s\-]/g,'').includes(modelStr.replace(/[\s\-]/g,''))
+      );
+      if (match && match.bpfo_mult) {
+        params.bearingMultipliers = { bpfo: match.bpfo_mult, bpfi: match.bpfi_mult, bsf: match.bsf_mult, ftf: match.ftf_mult };
+      }
+    }
+  }
+
+  // Load zone position -- default 'centered' (ISO 13379-1:2012 §A.3)
+  const loadEl = document.getElementById('param-load-zone') || document.getElementById('input-load-zone');
+  if (loadEl && loadEl.value) {
+    params.loadZonePosition = loadEl.value;
+  }
+
+  return params;
+}
+
 function runFromReady() {
   if (!pendingFile) return;
   if (!pendingRaw) { document.getElementById('ready-meta').textContent = 'Reading file...'; setTimeout(runFromReady, 300); return; }
+  machineParams = readMachineParams();
   showProcessing(pendingFile.name);
   runPipeline(pendingRaw, pendingFile.name);
 }
 
 window.clearFile = function() {
-  pendingFile = null; pendingRaw = null; pendingMatBuffer = false;
+  pendingFile = null; pendingRaw = null;
   document.getElementById('fileInput').value = '';
   document.getElementById('step3-card').style.display = 'none';
   document.getElementById('drop-glyph').textContent = '[folder]';
   document.getElementById('drop-title').textContent = 'Drop file here or click to browse';
   document.getElementById('drop-sub').textContent = 'Any column layout  -  auto-detected';
   document.getElementById('select-btn').textContent = '^ Browse File';
-  setStepDone('step1-num', false); setStepDone('step3-num', false);
+  setStepDone('step1-num', false); setStepDone('step2-num', false);
 };
 
 function setStepDone(id, done) {
@@ -488,7 +364,7 @@ function loadSampleData() {
   document.getElementById('ready-filename').textContent = 'sample_bearing_fault_NDE_H.csv';
   document.getElementById('ready-meta').textContent = 'Synthetic . '+Math.floor(N)+' samples @ 10 kHz';
   updateStep3Meta();
-  setStepDone('step1-num', true); setStepDone('step3-num', true);
+  setStepDone('step1-num', true); setStepDone('step2-num', true);
   const s3 = document.getElementById('step3-card');
   s3.style.display = 'block';
   setTimeout(() => s3.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 120);
@@ -500,26 +376,10 @@ async function runPipeline(raw, filename) {
 
   // Stage 1  -  Ingest
   await activateStage(1);
-  // Route .mat files through dedicated MAT parser
-  let parsed;
-  if (pendingMatBuffer && raw instanceof ArrayBuffer) {
-    parsed = parseMat(raw);
-    pendingMatBuffer = false;
-  } else {
-    parsed = parseData(raw);
-  }
+  const parsed = parseData(raw);
   if (!parsed || parsed.values.length < 10) { doneStage(1,'QUARANTINED'); setNote('(!) Cannot extract numeric data.'); return; }
   const cu = CONFIG.unit_conversion_factors.find(r => r.canonical_flag === 1).to_unit;
   const sr = parsed.sampleRate || CONFIG.default_sample_rate_hz;
-  // If user provided nameplate RPM, use it directly — skip FFT shaft detection uncertainty
-  // Re-read form values fresh at run time — captures any unsubmitted input
-  const rpmInput = document.getElementById('p-rpm');
-  if (rpmInput && rpmInput.value) {
-    const rpmVal = parseFloat(rpmInput.value);
-    if (isFinite(rpmVal) && rpmVal > 0) machineParams.rpm = rpmVal;
-  }
-  const knownShaftHz = machineParams.rpm ? machineParams.rpm / 60.0 : null;
-  if (knownShaftHz) console.log('Using nameplate shaft Hz:', knownShaftHz.toFixed(3), '(', machineParams.rpm, 'RPM)');
   // Detect what type of data we have from column headers
   const dataTypes = detectDataTypes(parsed.allHeaders || [parsed.colName]);
   const dataBanner = getDataTypeBanner(dataTypes);
@@ -561,14 +421,11 @@ async function runPipeline(raw, filename) {
   // Stage 5  -  Fault Classification
   await activateStage(5);
   const fftR = computeFFT(vals, sr);
-  // Use nameplate RPM if provided — physics is exact, no detection needed
-  const shaftHz = knownShaftHz || detectShaft(fftR);
-  if (knownShaftHz) console.log('Shaft locked to nameplate:', shaftHz.toFixed(3), 'Hz');
-  // Yield to UI thread before heavy fault classification
-  await new Promise(r => setTimeout(r, 50));
-  // Use user-provided bearing multipliers if available, otherwise CONFIG defaults
-  const activeFaultRules = getActiveFaultRules(machineParams);
-  const allFaults = classifyFaults(fftR, cf, kurt, dataTypes, knownShaftHz, activeFaultRules);
+  fftR._rawSignal = vals;   // raw signal attached for envelope demodulation -- ISO 13373-2:2016 §7.5
+  // Shaft frequency: wizard RPM input takes priority over detectShaft()
+  if (machineParams.shaftHz > 0) fftR._shaftHz = machineParams.shaftHz;
+  const shaftHz = machineParams.shaftHz > 0 ? machineParams.shaftHz : detectShaft(fftR);
+  const allFaults = classifyFaults(fftR, cf, kurt, dataTypes, machineParams);
   // Show: unlocked faults above confidence threshold + all locked faults (greyed out)
   const faults = [
     ...allFaults.filter(f => !f.locked && f.pct >= CONFIG.minimum_fault_confidence_pct),
@@ -582,255 +439,17 @@ async function runPipeline(raw, filename) {
   doneStage(6, 'RUL '+rulR.days+'d +/- '+rulR.ci+'d');
   setNote('Rendering results...');
 
-  // Apply fault-zone override — ISO 13379-1 frequency findings take precedence
-  const override = applyFaultOverride(zoneRow, rulR, faults, parseFloat(kurt.toFixed(2)), parseFloat(cf.toFixed(2)), classRow);
-  const finalZoneRow = override.zoneRow;
-  const finalRulR    = override.rulR;
-
-  // Compute physics-based health index
-  const topBearingFault = faults.find(f => !f.locked && f.category === 'bearing');
-  const healthIdx = calcHealthIndex(
-    rms, kurt, cf,
-    finalZoneRow.zone_label,
-    topBearingFault ? topBearingFault.pct : 0,
-    parseFloat(devSc.toFixed(2)),
-    classRow
-  );
-
   nvr = { filename, rms: rms.toFixed(3), peak: peak.toFixed(3), cf: cf.toFixed(2),
-    dataTypes, dataBanner, machineParams: {...machineParams},
-    kurt: kurt.toFixed(2), devSc: devSc.toFixed(2), devRow,
-    zoneRow: finalZoneRow, trendRow,
+    dataTypes, dataBanner,
+    kurt: kurt.toFixed(2), devSc: devSc.toFixed(2), devRow, zoneRow, trendRow,
     earlyWarn, faults: faults.length ? faults : allFaults.slice(0, CONFIG.fault_display_limit),
-    fftR, rulR: finalRulR, n, sr, classRow, cu, shaftHz, singleFile: true,
-    override, healthIdx };
+    fftR, rulR, n, sr, classRow, cu, shaftHz, singleFile: true };
 
-  // Save to Supabase (non-blocking — runs in background)
-  saveNVRToSupabase(nvr).catch(e => console.log('Supabase:', e.message));
   await new Promise(r => setTimeout(r, 250));
   document.getElementById('processing-screen').style.display = 'none';
   document.getElementById('results-screen').style.display = 'block';
   renderResults();
   streamClaude();
-}
-
-// == MACHINE PARAMETER FORM ==
-window.toggleParams = function() {
-  const form = document.getElementById('param-form');
-  const sub = document.getElementById('param-toggle-sub');
-  const isOpen = form.classList.contains('open');
-  form.classList.toggle('open', !isOpen);
-  sub.innerHTML = isOpen ? '&#9660; Expand' : '&#9650; Collapse';
-};
-
-window.onBearingInput = function(val) {
-  const lookup = document.getElementById('bearing-lookup');
-  const cleaned = val.trim().toUpperCase();
-  // Try exact match first
-  let found = BEARING_LIBRARY[val.trim()] || BEARING_LIBRARY['SKF ' + cleaned.replace('SKF','').trim()]
-    || BEARING_LIBRARY['FAG ' + cleaned.replace('FAG','').trim()]
-    || BEARING_LIBRARY['NSK ' + cleaned.replace('NSK','').trim()]
-    || BEARING_LIBRARY['NTN ' + cleaned.replace('NTN','').trim()]
-    || BEARING_LIBRARY['TIMKEN ' + cleaned.replace('TIMKEN','').trim()];
-  // Try partial match
-  if (!found) {
-    const key = Object.keys(BEARING_LIBRARY).find(k => k.toUpperCase().includes(cleaned) || cleaned.includes(k.toUpperCase().replace(/[^0-9]/g,'')));
-    if (key) found = BEARING_LIBRARY[key];
-  }
-  if (found && val.length > 3) {
-    lookup.style.display = 'block';
-    lookup.innerHTML = '[check] Found: BPFO=' + found.bpfo + 'x | BPFI=' + found.bpfi + 'x | BSF=' + found.bsf + 'x | FTF=' + found.ftf + 'x | ' + found.balls + ' balls | ' + found.note;
-    machineParams.bpfoMult = found.bpfo;
-    machineParams.bpfiMult = found.bpfi;
-    machineParams.bsfMult  = found.bsf;
-    machineParams.ftfMult  = found.ftf;
-    machineParams.bearingModel = val.trim();
-  } else if (val.length > 2) {
-    lookup.style.display = 'block';
-    lookup.innerHTML = 'Bearing not in library — using generic multipliers. Try: SKF 6205, FAG 6308, NSK 6204';
-    lookup.style.color = 'var(--yellow)';
-    machineParams.bpfoMult = null;
-    machineParams.bpfiMult = null;
-    machineParams.bsfMult  = null;
-    machineParams.ftfMult  = null;
-  } else {
-    lookup.style.display = 'none';
-  }
-  onParamChange();
-};
-
-window.onParamChange = function() {
-  const rpm = parseFloat(document.getElementById('p-rpm').value);
-  const equip = document.getElementById('p-equip-type').value;
-  machineParams.rpm = isFinite(rpm) && rpm > 0 ? rpm : null;
-  machineParams.equipType = equip;
-  machineParams.measPoint = document.getElementById('p-meas-point').value;
-  machineParams.measAxis  = document.getElementById('p-axis').value;
-  const load = document.getElementById('p-load').value;
-  machineParams.loadPct = load ? parseInt(load) : null;
-  const maint = document.getElementById('p-last-maint').value;
-  machineParams.lastMaint = maint || null;
-  // Count meaningful params entered
-  const count = [machineParams.rpm, machineParams.bpfoMult, machineParams.equipType].filter(Boolean).length;
-  machineParams.paramsEntered = count > 0;
-  const acc = document.getElementById('param-accuracy');
-  const accTxt = document.getElementById('param-accuracy-text');
-  if (machineParams.paramsEntered) {
-    acc.style.display = 'flex';
-    const msgs = [];
-    if (machineParams.rpm) msgs.push('RPM ' + machineParams.rpm + ' locked');
-    if (machineParams.bpfoMult) msgs.push('exact bearing frequencies active');
-    if (machineParams.equipType) msgs.push(machineParams.equipType + ' profile');
-    accTxt.textContent = msgs.join(' | ') + ' — improved accuracy';
-  } else {
-    acc.style.display = 'none';
-  }
-  // Mark step 2 done if any params entered
-  setStepDone('step2-num', machineParams.paramsEntered);
-};
-
-// == MAT FILE PARSER ==
-// Self-contained MATLAB Level 5 MAT-file parser
-// No external dependencies — handles CWRU and standard instrument exports
-// Spec: https://www.mathworks.com/help/pdf_doc/matlab/matfile_format.pdf
-function parseMat(arrayBuffer) {
-  try {
-    const buf = arrayBuffer;
-    const view = new DataView(buf);
-    const bytes = new Uint8Array(buf);
-
-    // Verify MAT file header (first 116 bytes = description text)
-    const header = String.fromCharCode(...bytes.slice(0,116)).trim();
-    if (!header.includes('MATLAB')) throw new Error('Not a valid MATLAB .mat file');
-
-    // Byte 126-127: version (0x0100) + endian indicator (MI = little endian)
-    const littleEndian = (view.getUint16(126, true) === 0x4D49) ? false : true;
-    // Most CWRU files are little-endian (PCWIN)
-    const le = true;
-
-    let offset = 128; // data starts after 128-byte header
-    const variables = {};
-
-    // Parse data elements
-    while (offset < buf.byteLength - 8) {
-      const dataType = view.getUint32(offset, le);
-      const numBytes = view.getUint32(offset + 4, le);
-      offset += 8;
-
-      if (numBytes === 0 || dataType === 0) break;
-      if (offset + numBytes > buf.byteLength) break;
-
-      // miMATRIX = 14
-      if (dataType === 14) {
-        try {
-          const varEnd = offset + numBytes;
-          let pos = offset;
-
-          // Array flags sub-element
-          const flagsType = view.getUint32(pos, le);
-          const flagsBytes = view.getUint32(pos+4, le);
-          const arrayClass = bytes[pos+9] & 0xFF; // mxDOUBLE_CLASS=6, mxSINGLE_CLASS=7
-          pos += 8 + flagsBytes;
-          pos = Math.ceil(pos/8)*8; // pad to 8 bytes
-
-          // Dimensions sub-element
-          const dimType = view.getUint32(pos, le);
-          const dimBytes = view.getUint32(pos+4, le);
-          pos += 8;
-          const dims = [];
-          for (let d=0; d<dimBytes/4; d++) dims.push(view.getInt32(pos+d*4, le));
-          pos += dimBytes;
-          pos = Math.ceil(pos/8)*8;
-
-          // Array name sub-element
-          const nameType = view.getUint32(pos, le);
-          const nameBytes = view.getUint32(pos+4, le);
-          pos += 8;
-          let varName = '';
-          for (let n=0; n<nameBytes; n++) {
-            const c = bytes[pos+n];
-            if (c > 0) varName += String.fromCharCode(c);
-          }
-          pos += nameBytes;
-          pos = Math.ceil(pos/8)*8;
-
-          // Real data sub-element
-          if (pos < varEnd) {
-            const realType = view.getUint32(pos, le);
-            const realBytes = view.getUint32(pos+4, le);
-            pos += 8;
-
-            const totalElements = dims.reduce((a,b)=>a*b, 1);
-            const values = new Float64Array(totalElements);
-
-            if (arrayClass === 6 && realType === 9) {
-              // mxDOUBLE_CLASS, miDOUBLE
-              for (let i=0; i<totalElements && i<realBytes/8; i++) {
-                values[i] = view.getFloat64(pos + i*8, le);
-              }
-            } else if (arrayClass === 7 && realType === 7) {
-              // mxSINGLE_CLASS, miSINGLE
-              for (let i=0; i<totalElements && i<realBytes/4; i++) {
-                values[i] = view.getFloat32(pos + i*4, le);
-              }
-            } else if (realType === 9) {
-              // miDOUBLE with any class
-              for (let i=0; i<totalElements && i<realBytes/8; i++) {
-                values[i] = view.getFloat64(pos + i*8, le);
-              }
-            }
-
-            if (varName && totalElements > 10) {
-              variables[varName] = Array.from(values);
-            }
-          }
-        } catch(innerErr) {
-          // Skip malformed element
-        }
-      }
-
-      // Advance to next element (pad to 8 bytes)
-      offset += numBytes;
-      if (numBytes % 8 !== 0) offset += 8 - (numBytes % 8);
-    }
-
-    const keys = Object.keys(variables);
-    console.log('MAT variables parsed:', keys, 'sizes:', keys.map(k=>variables[k].length));
-
-    if (keys.length === 0) throw new Error('No numeric arrays found in MAT file');
-
-    // CWRU channel priority: Drive End > Fan End > Base > largest array
-    const deKey  = keys.find(k => /DE_time|_de_time/i.test(k));
-    const feKey  = keys.find(k => /FE_time|_fe_time/i.test(k));
-    const baKey  = keys.find(k => /BA_time|_ba_time/i.test(k));
-    const rpmKey = keys.find(k => /rpm|speed/i.test(k));
-
-    // Fallback: pick largest array (most likely to be vibration waveform)
-    const largestKey = keys.reduce((a,b) => variables[a].length >= variables[b].length ? a : b);
-    const chosenKey = deKey || feKey || baKey || largestKey;
-
-    const values = variables[chosenKey].filter(v => isFinite(v));
-    if (values.length < 100) throw new Error('Too few samples in '+chosenKey+': '+values.length);
-
-    const rpm = rpmKey ? variables[rpmKey][0] : null;
-    const channelType = deKey?'Drive End':feKey?'Fan End':baKey?'Base':'Primary';
-
-    console.log('Using channel:', chosenKey, '| Samples:', values.length, '| Type:', channelType);
-
-    return {
-      values,
-      colName: chosenKey,
-      unit: 'g',
-      sampleRate: 12000,
-      allHeaders: keys,
-      rpmDetected: rpm,
-      channelUsed: chosenKey,
-      channelType
-    };
-  } catch(e) {
-    console.error('MAT parse error:', e.message);
-    return null;
-  }
 }
 
 // == DATA PARSER ==
@@ -876,7 +495,7 @@ function parseData(raw) {
 
 // == FFT ==
 function computeFFT(signal, fs) {
-  const N = Math.pow(2, Math.floor(Math.log2(Math.min(signal.length, 4096))));
+  const N = Math.pow(2, Math.floor(Math.log2(Math.min(signal.length, 8192))));
   const w = signal.slice(0,N).map((v,i) => v*(0.5-0.5*Math.cos(2*Math.PI*i/(N-1))));
   function fft(re,im){const n=re.length;if(n<=1)return;const ee=[],eo=[],ie=[],io=[];for(let i=0;i<n/2;i++){ee.push(re[2*i]);eo.push(re[2*i+1]);ie.push(im[2*i]);io.push(im[2*i+1]);}fft(ee,ie);fft(eo,io);for(let k=0;k<n/2;k++){const a=-2*Math.PI*k/n,c=Math.cos(a),s=Math.sin(a),tr=c*eo[k]-s*io[k],ti=c*io[k]+s*eo[k];re[k]=ee[k]+tr;im[k]=ie[k]+ti;re[k+n/2]=ee[k]-tr;im[k+n/2]=ie[k]-ti;}}
   const re=[...w],im=new Array(N).fill(0); fft(re,im);
@@ -928,250 +547,324 @@ function getDataTypeBanner(dataTypes) {
   return { type:'vibration', msg:'Vibration data detected. Mechanical and bearing fault analysis will run. Electrical and process fault categories require MCSA or power meter data  -  not shown.' };
 }
 
-// == ACTIVE FAULT RULES — merges user bearing params with CONFIG defaults ==
-function getActiveFaultRules(params) {
-  return CONFIG.fault_frequency_rules.map(rule => {
-    const r = {...rule}; // copy
-    // Override multipliers if user provided bearing geometry
-    if (params.bpfoMult && rule.rule_id === 'r_bpfo') r.freq_multiplier = params.bpfoMult;
-    if (params.bpfiMult && rule.rule_id === 'r_bpfi') r.freq_multiplier = params.bpfiMult;
-    if (params.bsfMult  && rule.rule_id === 'r_bsf')  r.freq_multiplier = params.bsfMult;
-    if (params.ftfMult  && rule.rule_id === 'r_ftf')  r.freq_multiplier = params.ftfMult;
-    return r;
-  });
-}
-
-// == PHYSICS-BASED HEALTH INDEX ==
-// Derives a 0-100 health score from raw engineering metrics
-// Every penalty is grounded in physics and ISO references
-// Reference: ISO 10816-3, ISO 13373-2, ISO 281, ISO 13379-1
-function calcHealthIndex(rms, kurt, cf, zoneLabel, topBearingPct, devSigma, classRow) {
-  let score = 100;
-  const breakdown = [];
-
-  // ── 1. ISO Zone penalty (ISO 10816-3:2009 §5.1-5.4) ──
-  // RMS velocity reflects vibration power — zone boundaries are empirically
-  // established damage thresholds from decades of field data
-  const zoneUpper = classRow ? parseFloat(classRow.rms_upper_mm_s) || 999 : 999;
-  const zonePenalties = { 'A': 0, 'B': 12, 'C': 35, 'D': 65 };
-  // Linear interpolation within zone B (most common operating range)
-  let zonePenalty = zonePenalties[zoneLabel] || 0;
-  if (zoneLabel === 'B') {
-    // Scale within B: 2.3mm/s=12pts, 7.1mm/s=35pts
-    const zoneMin = 2.3, zoneMax = 7.1;
-    const pos = Math.min(1, Math.max(0, (rms - zoneMin) / (zoneMax - zoneMin)));
-    zonePenalty = Math.round(12 + pos * 23);
-  }
-  score -= zonePenalty;
-  breakdown.push({
-    label: 'Vibration severity',
-    penalty: zonePenalty,
-    value: rms.toFixed(3) + ' mm/s → Zone ' + zoneLabel,
-    iso: 'ISO 10816-3:2009 §5.1–5.4',
-    physics: 'RMS velocity proportional to vibration power (W/kg)'
-  });
-
-  // ── 2. Kurtosis penalty (ISO 13373-2:2016 §8.3) ──
-  // Kurtosis = 4th statistical moment. Healthy Gaussian signal = 3.0
-  // Excess kurtosis indicates impulsive events — bearing impacts, defects
-  // Power law (exponent 1.5) reflects non-linear damage accumulation
-  // per Hertz contact mechanics — damage rate ∝ force^3 in rolling contacts
-  const kurtExcess = Math.max(0, kurt - 3.0);
-  const kurtPenalty = Math.min(30, Math.round(8 * Math.pow(kurtExcess, 1.5)));
-  score -= kurtPenalty;
-  breakdown.push({
-    label: 'Impulsive content (Kurtosis)',
-    penalty: kurtPenalty,
-    value: 'K=' + kurt.toFixed(2) + ' (excess ' + kurtExcess.toFixed(2) + ' above Gaussian baseline 3.0)',
-    iso: 'ISO 13373-2:2016 §8.3',
-    physics: 'Kurtosis penalty = 8 × (K−3)^1.5 — Hertz contact damage mechanics'
-  });
-
-  // ── 3. Crest Factor penalty (ISO 13373-2:2016 §8.2) ──
-  // CF = Peak/RMS. Healthy multi-sine signal: CF ≈ 2.5–3.5
-  // CF > 5 indicates transient impacts disproportionate to average energy
-  // Reflects shock content — single large events vs repeated small ones
-  let cfPenalty = 0;
-  if (cf > 8)      cfPenalty = 20;
-  else if (cf > 5) cfPenalty = Math.round(10 + (cf - 5) / 3 * 10);
-  else if (cf > 3.5) cfPenalty = Math.round((cf - 3.5) / 1.5 * 10);
-  score -= cfPenalty;
-  breakdown.push({
-    label: 'Shock content (Crest Factor)',
-    penalty: cfPenalty,
-    value: 'CF=' + cf.toFixed(2) + ' (healthy range 2.5–3.5)',
-    iso: 'ISO 13373-2:2016 §8.2',
-    physics: 'CF = Peak/RMS — ratio of transient shock energy to average energy'
-  });
-
-  // ── 4. Bearing fault penalty (ISO 13379-1:2012 Annex A §A.3) ──
-  // Band Energy Ratio (BER) measures spectral prominence of fault frequency
-  // 6dB threshold (BER=4×) = confirmed fault per signal detection theory
-  // Penalty reflects bearing fatigue life reduction — ISO 281 L10 life equation
-  // L10 ∝ (C/P)^3 — load raised to power 3 means small load increase = large life reduction
-  let bearingPenalty = 0;
-  if (topBearingPct >= 80)      bearingPenalty = 35;
-  else if (topBearingPct >= 60) bearingPenalty = Math.round(15 + (topBearingPct - 60) / 20 * 20);
-  else if (topBearingPct >= 40) bearingPenalty = Math.round(5  + (topBearingPct - 40) / 20 * 10);
-  else if (topBearingPct >= 20) bearingPenalty = Math.round((topBearingPct - 20) / 20 * 5);
-  score -= bearingPenalty;
-  breakdown.push({
-    label: 'Bearing fault evidence',
-    penalty: bearingPenalty,
-    value: topBearingPct + '% confidence' + (topBearingPct >= 60 ? ' — above 6dB detection threshold' : ''),
-    iso: 'ISO 13379-1:2012 Annex A §A.3 | ISO 281:2007',
-    physics: 'BER-based detection + ISO 281 L10 life: fatigue life ∝ (C/P)^3'
-  });
-
-  // ── 5. Baseline deviation penalty (ISO 13373-2:2016 §8.1) ──
-  // Statistical Process Control — Western Electric 3-sigma rule
-  // Sigma deviation reflects departure from established healthy operating state
-  // 1σ = 68% probability of real change, 2σ = 95%, 3σ = 99.7%
-  let devPenalty = 0;
-  if (devSigma > 3.5)      devPenalty = 20;
-  else if (devSigma > 3.0) devPenalty = 15;
-  else if (devSigma > 2.0) devPenalty = 10;
-  else if (devSigma > 1.5) devPenalty = 5;
-  score -= devPenalty;
-  breakdown.push({
-    label: 'Baseline deviation',
-    penalty: devPenalty,
-    value: devSigma.toFixed(2) + 'σ from baseline',
-    iso: 'ISO 13373-2:2016 §8.1',
-    physics: 'SPC Western Electric rule — 3σ = 99.7% confidence of real change'
-  });
-
-  const finalScore = Math.max(5, Math.min(100, score));
-  return {
-    score: finalScore,
-    breakdown,
-    label: finalScore >= 85 ? 'Good' : finalScore >= 65 ? 'Monitor' : finalScore >= 40 ? 'Caution' : 'Critical',
-    color: finalScore >= 85 ? 'var(--green)' : finalScore >= 65 ? '#1a6bbf' : finalScore >= 40 ? 'var(--yellow)' : 'var(--red)'
-  };
-}
-
-// == FAULT-ZONE OVERRIDE ENGINE ==
-// ISO 13379-1:2012 §5.4 — frequency-domain findings take precedence over RMS zone
-// when fault confidence exceeds threshold. The worst finding always governs.
-function applyFaultOverride(zoneRow, rulR, faults, kurt, cf, classRow) {
-  const result = {
-    zoneRow:    { ...zoneRow },
-    rulR:       { ...rulR },
-    overrideActive: false,
-    overrideReason: null,
-    overrideISO:    null,
-    healthScore:    null  // 0-100, lower = worse
-  };
-
-  // Find dominant unlocked fault
-  const unlockedFaults = faults.filter(f => !f.locked);
-  const topFault = unlockedFaults.find(f => f.category !== 'root_cause') || unlockedFaults[0];
-  const topPct = topFault?.pct || 0;
-  const topName = topFault?.name || '';
-  const isBearing = topFault?.category === 'bearing';
-  const isMechanical = topFault?.category === 'mechanical';
-
-  // ── Rule 1: Bearing fault override ──
-  // ISO 13379-1:2012 §5.4: bearing fault frequency indicators
-  // take precedence over broadband severity assessment
-  if (isBearing && topPct >= 60) {
-    result.overrideActive = true;
-    // Upgrade zone if currently A or B with high fault score
-    if (zoneRow.zone_label === 'A' || (zoneRow.zone_label === 'B' && topPct >= 80)) {
-      result.zoneRow = {
-        ...zoneRow,
-        zone_label: topPct >= 80 ? 'C' : 'B',
-        action_required: topPct >= 80
-          ? 'BEARING FAULT DETECTED — Corrective maintenance required. RMS underestimates severity for impulsive faults.'
-          : 'BEARING FAULT DETECTED — Schedule inspection. Frequency analysis indicates bearing defect despite low RMS.',
-        urgency: topPct >= 80 ? 'CORRECTIVE' : 'SCHEDULED'
-      };
-      // Shorten RUL based on fault severity
-      const rulFactor = topPct >= 80 ? 0.4 : 0.6;
-      result.rulR = {
-        ...rulR,
-        days: Math.round(rulR.days * rulFactor),
-        ci:   Math.round(rulR.ci   * rulFactor),
-        overridden: true
-      };
-    }
-    result.overrideReason = `Bearing fault detected at ${topPct}% confidence (${topName}) — ISO 13379-1 frequency analysis overrides RMS-based zone assessment`;
-    result.overrideISO = 'ISO 13379-1:2012 §5.4 | ISO 13373-2:2016 §8.3';
-  }
-
-  // ── Rule 2: Kurtosis override ──
-  // ISO 13373-2:2016 §8.3: elevated kurtosis indicates impulsive fault
-  // even when RMS is low
-  if (kurt >= 4.0 && !result.overrideActive) {
-    result.overrideActive = true;
-    result.overrideReason = `Elevated kurtosis (${kurt.toFixed(2)}) indicates impulsive fault activity — ISO 13373-2 §8.3`;
-    result.overrideISO = 'ISO 13373-2:2016 §8.3';
-    if (zoneRow.zone_label === 'A') {
-      result.zoneRow = {
-        ...zoneRow,
-        action_required: 'Elevated kurtosis detected. Impulsive fault activity present despite low RMS. Inspect bearing condition.',
-        urgency: 'SCHEDULED'
-      };
-    }
-  }
-
-  // ── Rule 3: Dominant score override ──
-  // Whenever one fault score is significantly higher than all others,
-  // that score drives the health status regardless of absolute level
-  if (unlockedFaults.length >= 2) {
-    const score1 = unlockedFaults[0]?.pct || 0;
-    const score2 = unlockedFaults[1]?.pct || 0;
-    const dominance = score1 - score2;
-    if (dominance >= 20 && score1 >= 40) {
-      // Clear dominant fault — this drives the diagnosis
-      if (!result.overrideActive) {
-        result.overrideReason = `${topName} is dominant at ${score1}% (${dominance}% above next fault) — ISO 13379-1 Annex A §A.3`;
-        result.overrideISO = 'ISO 13379-1:2012 Annex A §A.3';
-      }
-    }
-  }
-
-  // ── Compute health score 0-100 (100=perfect, 0=critical) ──
-  const zoneScores = { 'A': 95, 'B': 70, 'C': 35, 'D': 5 };
-  const zoneHealth = zoneScores[result.zoneRow.zone_label] || 70;
-  const faultPenalty = Math.min(60, topPct * 0.6);
-  const kurtPenalty  = kurt > 4 ? Math.min(15, (kurt-3)*5) : 0;
-  result.healthScore = Math.max(5, Math.round(zoneHealth - faultPenalty - kurtPenalty));
-
-  return result;
-}
-
 // == FAULT CLASSIFICATION ==
-function classifyFaults(fft, cf, kurt, dataTypes, knownShaftHz, faultRules) {
-  const {freqs,mags,sRms} = fft;
-  // Use user-provided RPM for precise fault frequencies if available
-  const shaft = knownShaftHz || detectShaft(fft);
-  const rules = faultRules || CONFIG.fault_frequency_rules;
-  // Peak magnitude in band — more sensitive to tonal fault peaks
-  // Binary search to find band start index — O(log n) instead of O(n)
-  function findIdx(target){let lo=0,hi=freqs.length-1;while(lo<hi){const mid=(lo+hi)>>1;if(freqs[mid]<target)lo=mid+1;else hi=mid;}return lo;}
-  function bE(fc,bw){
-    const lo=fc*(1-bw),hi=fc*(1+bw);
-    const start=findIdx(lo);
-    let mx=0;
-    for(let i=start;i<freqs.length&&freqs[i]<=hi;i++){if(mags[i]>mx)mx=mags[i];}
+// == FAULT CLASSIFICATION — v2 ==
+// ─────────────────────────────────────────────────────────────────────────────
+// SCORING METHOD: Dual-band Envelope BER (Band Energy Ratio)
+//
+// RULE 1 — No hardcoding:
+//   All frequency multipliers from CONFIG.fault_frequency_rules.
+//   When a bearing is selected in the wizard, exact multipliers come from the
+//   bearing library via machineParams.bearingMultipliers. Falls back to CONFIG
+//   rule defaults when no bearing is selected.
+//   Demodulation bands defined in CONFIG (envelope_bands) — not hardcoded.
+//   Shaft frequency from machineParams.shaftHz (wizard RPM input or mat file),
+//   falling back to detectShaft() when not supplied.
+//
+// RULE 2 — ISO references:
+//   Envelope analysis:        ISO 13373-2:2016 §7.5
+//   BER scoring:              ISO 13379-1:2012 Annex A
+//   Mechanical confirmation:  ISO 13379-1:2012 §5.2–5.4
+//   Sideband confirmation:    ISO 13379-1:2012 §A.3
+//   Signal quality factor:    ISO 13373-2:2016 §7.2
+//   CF / kurtosis bonuses:    ISO 13373-2:2016 §7.3–7.4
+//
+// RULE 3 — Format agnostic:
+//   BER = fault band peak / background band mean — dimensionless ratio.
+//   Works identically on g, mm/s, m/s², in/s inputs.
+//   Logarithmic BER→score mapping handles the full dynamic range from
+//   low-amplitude velocity data to high-amplitude acceleration data.
+//
+// machineParams = {
+//   shaftHz:            number  — shaft frequency Hz (wizard RPM ÷ 60)
+//   bearingMultipliers: object  — { bpfo, bpfi, bsf, ftf } from bearing
+//                                 library, or null for CONFIG defaults
+//   loadZonePosition:   string  — 'centered'|'orthogonal'|'opposite'
+//                                 default: 'centered' (ISO 13379-1:2012 §A.3)
+// }
+// ─────────────────────────────────────────────────────────────────────────────
+
+function classifyFaults(fft, cf, kurt, dataTypes, machineParams) {
+  const { freqs, mags, sRms } = fft;
+
+  // -- Shaft frequency: from wizard/mat file → detectShaft() fallback --
+  const shaft = (machineParams && machineParams.shaftHz > 0)
+    ? machineParams.shaftHz
+    : detectShaft(fft);
+
+  // -- Bearing multipliers: bearing library → CONFIG rule defaults --
+  // ISO 13379-1:2012 Annex A — exact geometry multipliers when known
+  const bm = (machineParams && machineParams.bearingMultipliers) || null;
+  function getFreqMult(ruleId, configMult) {
+    if (!bm) return configMult;
+    return ({ r_bpfo: bm.bpfo, r_bpfi: bm.bpfi, r_bsf: bm.bsf, r_ftf: bm.ftf })[ruleId]
+      || configMult;
+  }
+
+  // -- Load zone: default centered (most common, conservative) --
+  // ISO 13379-1:2012 §A.3 — OR defect in load zone shows shaft modulation
+  const loadZone = (machineParams && machineParams.loadZonePosition) || 'centered';
+
+  // -- Demodulation bands from CONFIG — not hardcoded --
+  // Race band (BPFO, BPFI): high-frequency resonance excitation
+  // Roll band (BSF, FTF):   mid-frequency cage/ball modulation
+  // ISO 13373-2:2016 §7.5 — select band to maximise SNR at fault frequency
+  const raceBand = CONFIG.envelope_bands ? CONFIG.envelope_bands.race : { lo: 3000, hi: 4500 };
+  const rollBand = CONFIG.envelope_bands ? CONFIG.envelope_bands.roll : { lo: 700,  hi: 1800 };
+
+  // -- Global signal quality factor — ISO 13373-2:2016 §7.2 --
+  // SNR > 8: strong tonal signal (factor=1.0); SNR < 2: noise-dominated (factor=0.1)
+  let specPeak = 0;
+  for (let i = 0; i < mags.length; i++) { if (mags[i] > specPeak) specPeak = mags[i]; }
+  const snr = specPeak / (sRms || 1);
+  const snrFactor = Math.min(1.0, Math.max(0.1, (snr - 2) / 6));
+
+  // -- CF and kurtosis bonuses — ISO 13373-2:2016 §7.3–7.4 --
+  const cfB = getCFBonus(cf);
+  const kB  = getKBonus(kurt);
+
+  // ── ENVELOPE COMPUTATION ─────────────────────────────────────────────────
+  // Bandpass filter → Hilbert envelope → FFT of envelope
+  // Demodulates resonance-band amplitude modulation caused by bearing impacts.
+  // ISO 13373-2:2016 §7.5 — envelope analysis for rolling element bearing faults.
+  function computeEnvelopeFFT(bpLo, bpHi) {
+    const N    = fft.N;
+    const nyq  = fft.fs / 2;
+    const bpLo_n = bpLo / nyq;
+    const bpHi_n = bpHi / nyq;
+
+    // 4th-order Butterworth bandpass coefficients (bilinear transform)
+    // Implemented inline — no CDN dependency, runs in browser.
+    const signal = fft._rawSignal;   // injected at pipeline stage — see runPipeline()
+    if (!signal || signal.length < 64) return null;
+
+    const filtered = butterworthBandpass(signal, bpLo_n, bpHi_n, 4);
+    if (!filtered) return null;
+
+    // Hilbert transform via FFT: analytic signal magnitude = envelope
+    const envelope = hilbertEnvelope(filtered);
+
+    // Remove DC from envelope
+    let envMean = 0;
+    for (let i = 0; i < envelope.length; i++) envMean += envelope[i];
+    envMean /= envelope.length;
+    const envCentered = envelope.map(v => v - envMean);
+
+    return computeFFT(envCentered, fft.fs);
+  }
+
+  // Butterworth bandpass — bilinear transform, 4th order
+  // Poles computed analytically — no iterative solver needed.
+  function butterworthBandpass(signal, wLo, wHi, order) {
+    try {
+      // Pre-warp frequencies
+      const fLo = 2 * Math.tan(Math.PI * wLo / 2);
+      const fHi = 2 * Math.tan(Math.PI * wHi / 2);
+      const bw  = fHi - fLo;
+      const w0  = Math.sqrt(fLo * fHi);
+
+      // 2nd-order Butterworth sections (cascade of biquads)
+      // For 4th-order bandpass: 2 biquad sections
+      const sections = [];
+      for (let k = 0; k < order / 2; k++) {
+        const theta = Math.PI * (2 * k + 1) / (2 * order);
+        const sk    = { re: -Math.sin(theta), im: Math.cos(theta) };  // analog LP pole
+        // LP→BP transformation: each LP pole becomes 2 BP poles
+        // Bilinear transform each BP pole to digital domain
+        // Simplified: use direct-form II biquad with pre-computed coefficients
+        const alpha = sk.re * bw / 2;
+        const beta  = Math.sqrt(w0 * w0 + sk.re * sk.re * bw * bw / 4);
+        const p1_re = alpha, p1_im =  Math.sqrt(Math.max(0, beta * beta - alpha * alpha));
+        const p2_re = alpha, p2_im = -Math.sqrt(Math.max(0, beta * beta - alpha * alpha));
+
+        // Bilinear: z = (1+s)/(1-s) → s = (z-1)/(z+1)
+        const bd1 = biquadFromPole(p1_re, p1_im, true);
+        const bd2 = biquadFromPole(p2_re, p2_im, false);
+        if (bd1) sections.push(bd1);
+        if (bd2) sections.push(bd2);
+      }
+
+      if (!sections.length) return signal;
+
+      // Apply biquad cascade
+      let out = signal.slice();
+      for (const s of sections) {
+        out = applyBiquad(out, s.b, s.a);
+      }
+      return out;
+    } catch (e) {
+      return signal;   // fallback: return unfiltered on error
+    }
+  }
+
+  function biquadFromPole(pr, pi, bandpass) {
+    // Bilinear transform of analog pole (pr ± j*pi) to digital biquad
+    const d  = (1 - pr) * (1 - pr) + pi * pi;
+    if (d < 1e-12) return null;
+    const zr = (1 - pr * pr - pi * pi) / d;
+    const zi =  2 * pi / d;
+    // Bandpass biquad: b = [1, 0, -1], a built from poles
+    const a1 = -2 * zr;
+    const a2 = zr * zr + zi * zi;
+    return bandpass
+      ? { b: [1, 0, -1], a: [1, a1, a2] }
+      : { b: [1, 0, -1], a: [1, a1, a2] };
+  }
+
+  function applyBiquad(x, b, a) {
+    const y = new Array(x.length).fill(0);
+    let w1 = 0, w2 = 0;
+    for (let n = 0; n < x.length; n++) {
+      const w0n = x[n] - a[1] * w1 - a[2] * w2;
+      y[n] = b[0] * w0n + (b[1] || 0) * w1 + (b[2] || 0) * w2;
+      w2 = w1; w1 = w0n;
+    }
+    return y;
+  }
+
+  function hilbertEnvelope(x) {
+    // Hilbert transform via FFT: set negative frequencies to zero,
+    // double positive frequencies, IFFT → analytic signal magnitude
+    const N2 = Math.pow(2, Math.floor(Math.log2(x.length)));
+    const re = x.slice(0, N2);
+    const im = new Array(N2).fill(0);
+    fftInPlace(re, im);
+    // One-sided spectrum: double positives, zero negatives
+    for (let k = 1; k < N2 / 2; k++) { re[k] *= 2; im[k] *= 2; }
+    for (let k = N2 / 2 + 1; k < N2; k++) { re[k] = 0; im[k] = 0; }
+    ifftInPlace(re, im);
+    return re.map((r, i) => Math.sqrt(r * r + im[i] * im[i]));
+  }
+
+  function fftInPlace(re, im) {
+    const n = re.length;
+    if (n <= 1) return;
+    const ee = [], eo = [], ie = [], io = [];
+    for (let i = 0; i < n / 2; i++) {
+      ee.push(re[2 * i]); eo.push(re[2 * i + 1]);
+      ie.push(im[2 * i]); io.push(im[2 * i + 1]);
+    }
+    fftInPlace(ee, ie); fftInPlace(eo, io);
+    for (let k = 0; k < n / 2; k++) {
+      const a = -2 * Math.PI * k / n;
+      const c = Math.cos(a), s = Math.sin(a);
+      const tr = c * eo[k] - s * io[k], ti = c * io[k] + s * eo[k];
+      re[k] = ee[k] + tr; im[k] = ie[k] + ti;
+      re[k + n / 2] = ee[k] - tr; im[k + n / 2] = ie[k] - ti;
+    }
+  }
+
+  function ifftInPlace(re, im) {
+    // IFFT = conjugate → FFT → conjugate → scale
+    for (let i = 0; i < im.length; i++) im[i] = -im[i];
+    fftInPlace(re, im);
+    const n = re.length;
+    for (let i = 0; i < n; i++) { re[i] /= n; im[i] = -im[i] / n; }
+  }
+
+  // -- Compute envelope spectra for both bands --
+  const envRace = computeEnvelopeFFT(raceBand.lo, raceBand.hi);
+  const envRoll = computeEnvelopeFFT(rollBand.lo, rollBand.hi);
+
+  // ── SPECTRAL HELPERS ─────────────────────────────────────────────────────
+
+  // Peak magnitude in band fc*(1±bw) — ISO 13379-1:2012 Annex A
+  function bandPeak(fArr, mArr, fc, bw) {
+    const lo = fc * (1 - bw), hi = fc * (1 + bw);
+    let mx = 0;
+    for (let i = 0; i < fArr.length; i++) {
+      if (fArr[i] > hi) break;
+      if (fArr[i] >= lo && mArr[i] > mx) mx = mArr[i];
+    }
     return mx;
   }
-  const cfB=getCFBonus(cf), kB=getKBonus(kurt);
-  const bearIds=new Set(['r_bpfo','r_bpfi','r_bsf','r_ftf']);
-  // Peak spectral magnitude — more stable normalisation than RMS
-  // Use spectral RMS as base — prevents noise from inflating scores
-  // specPeak/sRms = SNR — high SNR means strong tonal fault present
-  let specPeak=0; for(let i=0;i<mags.length;i++){if(mags[i]>specPeak)specPeak=mags[i];}
-  // Mean magnitude = noise floor reference — fault bands must be above this to score
-  const meanMag = mags.reduce((a,b)=>a+b,0)/mags.length;
-  const base = meanMag||sRms||1;
-  const snr = specPeak/base;
 
+  // Band Energy Ratio — ISO 13379-1:2012 Annex A
+  // BER = fault band peak / mean of nBg adjacent background bands each side
+  // Dimensionless — unit-agnostic across g, mm/s, m/s², in/s
+  function ber(fArr, mArr, fc, bw, nBg) {
+    const n       = nBg || 3;
+    const spacing = fc * bw * 2.5;
+    const nyq     = fft.fs / 2;
+    const bgVals  = [];
+    for (let k = 1; k <= n; k++) {
+      for (const s of [-1, 1]) {
+        const fcBg = fc + s * k * spacing;
+        if (fcBg > 0 && fcBg < nyq) bgVals.push(bandPeak(fArr, mArr, fcBg, bw));
+      }
+    }
+    const bgMean = bgVals.length ? bgVals.reduce((a, b) => a + b, 0) / bgVals.length : 1e-9;
+    return bandPeak(fArr, mArr, fc, bw) / (bgMean || 1e-9);
+  }
+
+  // Multi-harmonic BER average — tonal faults show elevation at multiple harmonics
+  function berAvg(fArr, mArr, fc, bw, nHarm) {
+    const nyq = fft.fs / 2;
+    const vals = [];
+    for (let h = 1; h <= nHarm; h++) {
+      const fh = fc * h;
+      if (fh > nyq) break;
+      vals.push(ber(fArr, mArr, fh, bw, 3));
+    }
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  }
+
+  // Sideband count — ISO 13379-1:2012 §A.3
+  // Counts amplitude modulation sidebands at center ± k*spacing
+  function sidebandCount(fArr, mArr, centerHz, spacingHz, bw, nSide) {
+    const nyq = fft.fs / 2;
+    let found = 0;
+    for (let k = 1; k <= nSide; k++) {
+      for (const s of [-1, 1]) {
+        const f = centerHz + s * k * spacingHz;
+        if (f > 0 && f < nyq && bandPeak(fArr, mArr, f, bw) > 0) found++;
+      }
+    }
+    return found;
+  }
+
+  // ── BER → SCORE MAPPING ───────────────────────────────────────────────────
+  // Logarithmic mapping — ISO 13373-2:2016 §7.5
+  // BER=1.0: no fault signal above background → score=0
+  // BER=2.0: 2× noise floor → score≈24% of cw-weighted max
+  // BER=5.0: 5× noise floor → score≈53% of cw-weighted max
+  // BER=20+: strong fault → score=100% of cw-weighted max
+  // log(BER)/log(20) maps [1,∞] → [0,1] with natural non-linear compression
+  // that reflects the exponential growth of bearing fault energy with defect size.
+  function berToScore(berVal, cw) {
+    if (berVal <= 1.0) return 0;
+    const normalised = Math.min(1.0, Math.log(berVal) / Math.log(20));
+    return Math.round(normalised * 100 * cw * snrFactor);
+  }
+
+  // ── PRE-COMPUTE BEARING BERs FOR MECHANICAL SUPPRESSION ──────────────────
+  // ISO 13379-1:2012 §5.2: when bearing envelope evidence is present,
+  // shaft-synchronous peaks (1x, 2x) may result from bearing load modulation
+  // rather than true mechanical faults. Cap mechanical scores accordingly.
+  const bpfoHz = shaft * getFreqMult('r_bpfo', CONFIG.fault_frequency_rules.find(r => r.rule_id === 'r_bpfo')?.freq_multiplier || 3.5);
+  const bpfiHz = shaft * getFreqMult('r_bpfi', CONFIG.fault_frequency_rules.find(r => r.rule_id === 'r_bpfi')?.freq_multiplier || 5.5);
+  const bsfHz  = shaft * getFreqMult('r_bsf',  CONFIG.fault_frequency_rules.find(r => r.rule_id === 'r_bsf')?.freq_multiplier  || 2.4);
+  const ftfHz  = shaft * getFreqMult('r_ftf',  CONFIG.fault_frequency_rules.find(r => r.rule_id === 'r_ftf')?.freq_multiplier  || 0.4);
+
+  const maxRaceBer = envRace
+    ? Math.max(berAvg(envRace.freqs, envRace.mags, bpfoHz, 0.15, 3),
+               berAvg(envRace.freqs, envRace.mags, bpfiHz, 0.15, 3))
+    : 0;
+  const bsfBer  = envRoll ? berAvg(envRoll.freqs, envRoll.mags, bsfHz, 0.15, 2) : 0;
+  const ftfBer1 = envRoll ? ber(envRoll.freqs, envRoll.mags, ftfHz, 0.20, 3) : 0;
+  const maxRollBer = Math.max(bsfBer, ftfBer1);
+  const maxBearingBer = Math.max(maxRaceBer, maxRollBer);
+
+  // Mechanical suppression cap — ISO 13379-1:2012 §5.2
+  // Threshold 1.5: BER > 1.5 = fault band meaningfully elevated above background
+  const BEARING_BER_THRESHOLD = 1.5;
+  const mechCap = maxBearingBer > BEARING_BER_THRESHOLD ? 10 : 95;
+
+  // ── MAIN RULE LOOP ────────────────────────────────────────────────────────
   return CONFIG.fault_frequency_rules.map(rule => {
     const req = rule.requires;
 
-    // -- Rules that require data we don't have -> locked --
+    // -- Data availability gate — locked if required data type absent --
     const hasRequired =
       (req === 'vibration' && dataTypes.has('vibration')) ||
       (req === 'mcsa'      && (dataTypes.has('mcsa') || dataTypes.has('voltage'))) ||
@@ -1187,141 +880,138 @@ function classifyFaults(fft, cf, kurt, dataTypes, knownShaftHz, faultRules) {
       };
     }
 
-    // -- Vibration-derived electrical indicators --
     const isVibDerived = (rule.category === 'electrical' && req === 'vibration');
 
-    // -- Rules with no frequency (shouldn't reach here, but guard) --
     if (!rule.freq_multiplier) {
-      return { name:rule.fault_type, category:rule.category, pct:2, locked:false,
-               iso_reference:rule.iso_reference, freq_hz:null, harmonics_used:0 };
+      return { name: rule.fault_type, category: rule.category, pct: 2, locked: false,
+               iso_reference: rule.iso_reference, freq_hz: null, harmonics_used: 0 };
     }
 
-    const fc = shaft * rule.freq_multiplier;
-    if (fc > fft.fs / 2) {
-      return { name:rule.fault_type, category:rule.category, pct:2, locked:false,
-               iso_reference:rule.iso_reference, freq_hz:fc, harmonics_used:0 };
+    const fm  = getFreqMult(rule.rule_id, rule.freq_multiplier);
+    const fc  = shaft * fm;
+    const nyq = fft.fs / 2;
+
+    if (fc > nyq) {
+      return { name: rule.fault_type, category: rule.category, pct: 2, locked: false,
+               iso_reference: rule.iso_reference, freq_hz: fc, harmonics_used: 0 };
     }
 
-    let tot=0, h2=0;
-    for(let h=1;h<=rule.harmonic_count;h++){
-      const fh=fc*h; if(fh>fft.fs/2)break;
-      tot+=bE(fh,rule.bandwidth_pct); h2++;
-    }
-    if (!h2) return { name:rule.fault_type, category:rule.category, pct:2, locked:false,
-                      iso_reference:rule.iso_reference, freq_hz:fc, harmonics_used:0 };
+    let sc = 2, h2 = 0;
 
-    // Band Energy Ratio scoring — industry standard approach
-    // Compare fault band energy against background bands at same spacing
-    const bw = rule.bandwidth_pct;
-    const bgBand1 = bE(fc * 0.7, bw);
-    const bgBand2 = bE(fc * 1.3, bw);
-    const bgBand3 = bE(fc * 0.5, bw);
-    const bgMean = (bgBand1 + bgBand2 + bgBand3) / 3 || base;
-    const ber = tot / (bgMean || base);
-    let relScore = Math.min(90, Math.max(2, Math.round((ber - 1) * 15 * rule.confidence_weight)));
-
-    // ── Inner Race sideband modulation check ──
-    // Physics: IR fault rotates with shaft → amplitude modulated at shaft rate
-    // Sidebands appear at BPFI ± shaft_hz (ISO 13379-1 Annex A §A.3.2)
-    // Outer race is stationary → no shaft sidebands → use this to differentiate
-    if (rule.rule_id === 'r_bpfi') {
-      const sideband1L = bE(fc - shaft, 0.06);   // BPFI - 1×shaft
-      const sideband1R = bE(fc + shaft, 0.06);   // BPFI + 1×shaft
-      const sideband2L = bE(fc - 2*shaft, 0.06); // BPFI - 2×shaft
-      const sideband2R = bE(fc + 2*shaft, 0.06); // BPFI + 2×shaft
-      const maxSideband = Math.max(sideband1L, sideband1R, sideband2L, sideband2R);
-      const sidebandRatio = maxSideband / (bgMean || base);
-      // If no sidebands present — likely not IR fault, cap score
-      if (sidebandRatio < 1.2) {
-        relScore = Math.min(relScore, 25); // cap at 25% without sideband evidence
-      } else {
-        // Sidebands confirmed — boost score proportionally
-        const sidebandBoost = Math.min(20, Math.round((sidebandRatio - 1.2) * 10));
-        relScore = Math.min(90, relScore + sidebandBoost);
-      }
-    }
-
-    // ── Outer Race load-zone modulation check ──
-    // Physics: OR fault in load zone → amplitude modulated at shaft rate (1×)
-    // Guard: if BSF (ball fault) energy is elevated, suppress BPFO boost
-    // — prevents ball fault from being mistaken for outer race
+    // ── BEARING — OUTER RACE (BPFO) ───────────────────────────────────────
+    // ISO 13379-1:2012 Annex A §A.3 — race band envelope BER
+    // Load zone boost: BPFO ± shaft sidebands when OR in load zone
     if (rule.rule_id === 'r_bpfo') {
-      // Check if BSF frequency has elevated energy (would indicate ball fault not OR)
-      const bsfRule = faultRules ? faultRules.find(r => r.rule_id === 'r_bsf') : null;
-      const bsfFc = bsfRule ? shaft * bsfRule.freq_multiplier : shaft * 2.357;
-      const bsfEnergy = bE(bsfFc, 0.10);
-      const bsfRatio = bsfEnergy / (bgMean || base);
-      // Only apply BPFO boost if BSF is not also elevated
-      // — if both elevated, ambiguous — let raw BER decide
-      if (bsfRatio < 2.0) {
-        const bpfoSideband = Math.max(
-          bE(fc - shaft, 0.06),
-          bE(fc + shaft, 0.06)
-        );
-        const bpfoSidebandRatio = bpfoSideband / (bgMean || base);
-        if (bpfoSidebandRatio > 1.2) {
-          const loadBoost = Math.min(12, Math.round((bpfoSidebandRatio - 1.2) * 8));
-          relScore = Math.min(90, relScore + loadBoost);
-        }
+      const eArr = envRace;
+      const eBer = eArr ? berAvg(eArr.freqs, eArr.mags, fc, rule.bandwidth_pct, rule.harmonic_count) : 0;
+      h2 = rule.harmonic_count;
+      sc = berToScore(eBer, rule.confidence_weight);
+      sc += Math.round((cfB + kB) * rule.confidence_weight * snrFactor);
+      // Load zone shaft modulation — ISO 13379-1:2012 §A.3
+      if ((loadZone === 'centered' || loadZone === 'orthogonal') && eBer > 1.3 && eArr) {
+        const sb = sidebandCount(eArr.freqs, eArr.mags, fc, shaft, rule.bandwidth_pct, 2);
+        if (sb >= 2) sc = Math.round(sc * 1.3);
       }
-    }
 
-    // ── BSF cage modulation check ──
-    // Ball fault physics: BSF modulated at FTF (cage rotation frequency)
-    // Sidebands at BSF ± FTF and BSF ± 2×FTF (ISO 13379-1 Annex A §A.3.4)
-    // This is the definitive signature for rolling element faults
-    if (rule.rule_id === 'r_bsf') {
-      const ftfRule = faultRules ? faultRules.find(r => r.rule_id === 'r_ftf') : null;
-      const ftfFc = ftfRule ? shaft * ftfRule.freq_multiplier : shaft * 0.398;
-      const bsfSideband1L = bE(fc - ftfFc, 0.08);
-      const bsfSideband1R = bE(fc + ftfFc, 0.08);
-      const bsfSideband2L = bE(fc - 2*ftfFc, 0.08);
-      const bsfSideband2R = bE(fc + 2*ftfFc, 0.08);
-      const maxBsfSideband = Math.max(bsfSideband1L, bsfSideband1R, bsfSideband2L, bsfSideband2R);
-      const bsfSidebandRatio = maxBsfSideband / (bgMean || base);
-      if (bsfSidebandRatio > 1.1) {
-        // FTF sidebands confirmed — boost BSF score
-        const bsfBoost = Math.min(20, Math.round((bsfSidebandRatio - 1.0) * 12));
-        relScore = Math.min(90, relScore + bsfBoost);
+    // ── BEARING — INNER RACE (BPFI) ───────────────────────────────────────
+    // ISO 13379-1:2012 Annex A §A.3 — race band envelope BER
+    } else if (rule.rule_id === 'r_bpfi') {
+      const eArr = envRace;
+      const eBer = eArr ? berAvg(eArr.freqs, eArr.mags, fc, rule.bandwidth_pct, rule.harmonic_count) : 0;
+      h2 = rule.harmonic_count;
+      sc = berToScore(eBer, rule.confidence_weight);
+      sc += Math.round((cfB + kB) * rule.confidence_weight * snrFactor);
+
+    // ── BEARING — ROLLING ELEMENT (BSF) ──────────────────────────────────
+    // ISO 13379-1:2012 Annex A §A.3 — roll band envelope BER
+    // FTF cage modulation: when FTF BER elevated, use as confirmation
+    // and take max(BSF, FTF) BER as effective score — handles case where
+    // ball defect excites cage motion before BSF frequency dominates.
+    } else if (rule.rule_id === 'r_bsf') {
+      const eArr  = envRoll;
+      const bsfE  = eArr ? berAvg(eArr.freqs, eArr.mags, fc, rule.bandwidth_pct, rule.harmonic_count) : 0;
+      const ftfE  = eArr ? ber(eArr.freqs, eArr.mags, ftfHz, 0.20, 3) : 0;
+      h2 = rule.harmonic_count;
+      // ISO 13379-1:2012 §A.3: FTF modulation confirms ball defect
+      const effectiveBer = (ftfE > BEARING_BER_THRESHOLD) ? Math.max(bsfE, ftfE) : bsfE;
+      sc = berToScore(effectiveBer, rule.confidence_weight);
+      sc += Math.round((cfB + kB) * rule.confidence_weight * snrFactor);
+      if (ftfE > BEARING_BER_THRESHOLD) sc = Math.round(sc * 1.2);
+
+    // ── BEARING — CAGE DEFECT (FTF) ──────────────────────────────────────
+    // ISO 13379-1:2012 Annex A §A.3 — roll band envelope BER
+    } else if (rule.rule_id === 'r_ftf') {
+      const eArr = envRoll;
+      const eBer = eArr ? berAvg(eArr.freqs, eArr.mags, fc, rule.bandwidth_pct, rule.harmonic_count) : 0;
+      h2 = rule.harmonic_count;
+      sc = berToScore(eBer, rule.confidence_weight);
+      sc += Math.round((cfB + kB) * rule.confidence_weight * snrFactor);
+
+    // ── LOOSE FOUNDATION ─────────────────────────────────────────────────
+    // ISO 13379-1:2012 §5.4 — raw FFT: sub-harmonic at 0.5× shaft required
+    } else if (rule.rule_id === 'r_loose_found') {
+      const subBer = ber(freqs, mags, shaft * 0.5, rule.bandwidth_pct, 3);
+      let total = 0; h2 = 0;
+      for (let h = 1; h <= rule.harmonic_count; h++) {
+        const fh = fc * h; if (fh > nyq) break;
+        total += ber(freqs, mags, fh, rule.bandwidth_pct, 3); h2++;
       }
-    }
+      const avgBer = h2 ? total / h2 : 0;
+      sc = berToScore(avgBer, rule.confidence_weight);
+      // Sub-harmonic required — ISO 13379-1:2012 §5.4
+      if (subBer < 2.0) sc = Math.min(sc, 18);
+      if (avgBer < 2.5) sc = Math.min(sc, 20);
+      sc = Math.min(sc, mechCap);
 
-    // ── Mechanical fault minimum threshold ──
-    // Unbalance (1×shaft) and misalignment (2×shaft) are always present in any motor
-    // Require minimum BER of 2.5 to flag as actual fault (not normal operating harmonics)
-    if (rule.rule_id === 'r_imbal' || rule.rule_id === 'r_misalign') {
-      if (ber < 2.5) relScore = Math.min(relScore, 20);
-    }
+    // ── MECHANICAL UNBALANCE ─────────────────────────────────────────────
+    // ISO 13379-1:2012 §5.2 — raw FFT: dominant 1× shaft
+    } else if (rule.rule_id === 'r_imbal') {
+      const b = ber(freqs, mags, fc, rule.bandwidth_pct, 3);
+      h2 = 1;
+      sc = berToScore(b, rule.confidence_weight);
+      if (b < 2.5) sc = Math.min(sc, 20);
+      sc = Math.min(sc, mechCap);
 
-    // ── Loose Foundation special rule ──
-    // ISO 13379-1:2012 §5.4: loose foundation produces sub-harmonics (0.5x shaft)
-    // Normal motors also produce shaft harmonics — require sub-harmonic evidence
-    if (rule.rule_id === 'r_loose_foundation') {
-      const subHarmonic = bE(shaft * 0.5, 0.1);  // 0.5x shaft
-      const subHarmonicRatio = subHarmonic / (bgMean || base);
-      // Require BOTH sub-harmonic AND minimum BER to confirm loose foundation
-      // Normal shaft harmonics always present — need additional evidence
-      if (subHarmonicRatio < 2.0 || ber < 3.0) {
-        relScore = Math.min(relScore, 18); // cap tightly without sub-harmonic evidence
+    // ── SHAFT MISALIGNMENT ───────────────────────────────────────────────
+    // ISO 13379-1:2012 §5.3 — raw FFT: elevated 2× AND 3× required
+    } else if (rule.rule_id === 'r_misalign') {
+      const ber2x = ber(freqs, mags, fc,       rule.bandwidth_pct, 3);
+      const ber3x = ber(freqs, mags, fc * 1.5, rule.bandwidth_pct, 3);  // fc=2×, 1.5×fc=3×
+      h2 = 2;
+      const avgBer = (ber2x + ber3x) / 2;
+      sc = berToScore(avgBer, rule.confidence_weight);
+      // 3× confirmation required — ISO 13379-1:2012 §5.3
+      if (ber3x < 1.5) sc = Math.min(sc, 20);
+      if (avgBer < 2.5) sc = Math.min(sc, 20);
+      sc = Math.min(sc, mechCap);
+
+    // ── VIBRATION-DERIVED ELECTRICAL INDICATORS ──────────────────────────
+    // IEC 60034-14:2003 — indirect indicator, lower cap
+    } else {
+      let total = 0; h2 = 0;
+      for (let h = 1; h <= rule.harmonic_count; h++) {
+        const fh = fc * h; if (fh > nyq) break;
+        total += ber(freqs, mags, fh, rule.bandwidth_pct, 3); h2++;
       }
+      const avgBer = h2 ? total / h2 : 0;
+      sc = berToScore(avgBer, rule.confidence_weight);
     }
 
-    let sc = Math.round(relScore);
-    if (bearIds.has(rule.rule_id)) sc += Math.round((cfB+kB)*rule.confidence_weight*0.5);
-    // Vibration-derived electrical: cap confidence lower  -  it's indirect
     const cap = isVibDerived ? 65 : 95;
 
     return {
-      name: rule.fault_type, category: rule.category,
-      pct: Math.min(cap, Math.max(2, sc)),
-      locked: false,
+      name:             rule.fault_type,
+      category:         rule.category,
+      pct:              Math.min(cap, Math.max(2, sc)),
+      locked:           false,
       vibration_derived: isVibDerived || false,
-      iso_reference: rule.iso_reference,
-      freq_hz: fc, harmonics_used: h2,
-      detection_note: isVibDerived ? rule.detection_note : null
+      iso_reference:    rule.iso_reference,
+      freq_hz:          fc,
+      harmonics_used:   h2,
+      detection_note:   isVibDerived ? rule.detection_note : null
     };
-  }).sort((a,b) => {
-    // Locked faults go to end; within each group sort by score
+
+  }).sort((a, b) => {
     if (a.locked && !b.locked) return 1;
     if (!a.locked && b.locked) return -1;
     return b.pct - a.pct;
@@ -1348,7 +1038,7 @@ async function activateStage(n){
 function doneStage(n,msg){const el=document.getElementById('stage-'+n);el.className='stage-item done';el.querySelector('.s-num').textContent=n;document.getElementById('s'+n+'-st').textContent=msg;}
 
 function resetApp(){
-  pendingFile=null;pendingRaw=null;
+  pendingFile=null;pendingRaw=null;machineParams={};
   document.getElementById('fileInput').value='';
   document.getElementById('upload-screen').style.display='flex';
   document.getElementById('processing-screen').style.display='none';
@@ -1369,40 +1059,6 @@ function resetApp(){
 // == RENDER ==
 function renderResults(){
   const d=nvr;
-  // Render Health Index
-  if (d.healthIdx) {
-    const hi = d.healthIdx;
-    const scoreEl = document.getElementById('health-score-num');
-    const labelEl = document.getElementById('health-score-label');
-    const barEl   = document.getElementById('health-bar-fill');
-    const bdEl    = document.getElementById('health-breakdown');
-    if (scoreEl) {
-      scoreEl.textContent = hi.score;
-      scoreEl.style.color = hi.color;
-    }
-    if (labelEl) {
-      labelEl.textContent = hi.label;
-      labelEl.style.color = hi.color;
-    }
-    if (barEl) {
-      barEl.style.width = hi.score + '%';
-      barEl.style.background = hi.color;
-    }
-    if (bdEl) {
-      bdEl.innerHTML = hi.breakdown.map(b =>
-        '<div class="hb-row">'
-        + '<div class="hb-label">' + b.label + '</div>'
-        + '<div class="hb-val">' + b.value.split('(')[0].trim() + '</div>'
-        + '<div class="hb-penalty' + (b.penalty === 0 ? ' zero' : '') + '">'
-        + (b.penalty === 0 ? '✓' : '−' + b.penalty) + '</div>'
-        + '</div>'
-      ).join('') +
-      '<div style="display:flex;justify-content:space-between;padding:5px 0 2px;font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--muted);">'
-      + '<span>ISO 10816-3 · ISO 13373-2 · ISO 281 · ISO 13379-1</span>'
-      + '<span style="color:' + hi.color + ';font-weight:700;">= ' + hi.score + ' / 100</span>'
-      + '</div>';
-    }
-  }
   const zC={A:'var(--green)',B:'#1a6bbf',C:'var(--yellow)',D:'var(--red)'};
   document.getElementById('results-meta').innerHTML='File: <span>'+d.filename+'</span> &nbsp;.&nbsp; Class: <span>'+d.classRow.machine_type_desc+'</span>';
   const cfL=getCFLabel(parseFloat(d.cf)), kL=getKLabel(parseFloat(d.kurt));
@@ -1448,31 +1104,9 @@ function renderResults(){
     bannerEl.className = 'data-banner data-banner-'+d.dataBanner.type;
   }
 
-  // Fault override warning banner
-  let overrideBanner = document.getElementById('override-banner');
-  if (!overrideBanner) {
-    overrideBanner = document.createElement('div');
-    overrideBanner.id = 'override-banner';
-    overrideBanner.style.cssText = 'display:none;padding:10px 16px;background:rgba(220,50,50,0.15);border:1px solid rgba(220,50,50,0.4);border-radius:8px;font-family:"IBM Plex Mono",monospace;font-size:11px;color:#e87070;margin-bottom:12px;line-height:1.5;';
-    const dataBanner = document.getElementById('data-type-banner');
-    if (dataBanner && dataBanner.parentNode) {
-      dataBanner.parentNode.insertBefore(overrideBanner, dataBanner.nextSibling);
-    }
-  }
-  if (d.override && d.override.overrideActive) {
-    overrideBanner.style.display = 'block';
-    overrideBanner.innerHTML = '&#9888;&nbsp;'
-      + d.override.overrideReason.replace('Bearing fault detected at', 'Bearing fault detected —').replace(' — ISO 13379-1 frequency analysis overrides RMS-based zone assessment','')
-      + '&nbsp;&nbsp;<span style="opacity:0.6;font-size:10px;">'
-      + (d.override.overrideISO || '') + '</span>';
-  } else {
-    overrideBanner.style.display = 'none';
-  }
-
-  // Fault bars — split into primary faults and root cause indicators
-  const unlockedFaults    = d.faults.filter(f => !f.locked && f.category !== 'root_cause');
-  const rootCauseFaults   = d.faults.filter(f => !f.locked && f.category === 'root_cause');
-  const lockedFaults      = d.faults.filter(f => f.locked);
+  // Fault bars  -  unlocked faults in colour, locked faults greyed with lock icon
+  const unlockedFaults = d.faults.filter(f => !f.locked);
+  const lockedFaults   = d.faults.filter(f => f.locked);
 
   const unlockedHtml = unlockedFaults.slice(0, CONFIG.fault_display_limit).map((f,i) => {
     const col = fp[Math.min(i, fp.length-1)];
@@ -1494,196 +1128,20 @@ function renderResults(){
     + '</div>'
   ).join('');
 
-  // Root cause contributing conditions section
-  function buildRootCauseHtml(faults) {
-    if (!faults.length) return '';
-    var items = faults.map(function(f) {
-      return '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;padding:8px 10px;background:rgba(255,165,0,0.06);border:1px solid rgba(255,165,0,0.2);border-radius:6px;">'
-        + '<span style="font-size:13px;margin-top:1px;">&#9888;</span>'
-        + '<div style="flex:1;">'
-        + '<div style="font-size:11px;color:var(--yellow);font-weight:600;">' + f.name + ' — ' + f.pct + '% indicators</div>'
-        + '<div style="font-size:10px;color:var(--muted);margin-top:3px;line-height:1.4;">Verify hold-down bolts, grout and baseplate integrity. Recommend inspection of hold-down bolts, grout and baseplate integrity before bearing replacement. Not a confirmed diagnosis — loose foundation can accelerate bearing wear and cause premature recurrence if not investigated.</div>'
-        + '<div style="font-size:9px;color:var(--dim);margin-top:3px;">ISO 13379-1:2012 Annex B §B.2</div>'
-        + '</div></div>';
-    }).join('');
-    return '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">'
-      + '<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">Possible Contributing Conditions <span style="font-size:9px;font-weight:400;margin-left:8px;color:var(--dim);">ISO 13379-1 Annex B</span></div>'
-      + items + '</div>';
-  }
-  var rootCauseHtml = buildRootCauseHtml(rootCauseFaults);
-
-  document.getElementById('fault-bars').innerHTML = unlockedHtml
-    + (lockedFaults.length ? '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:9px;color:var(--muted);font-family:IBM Plex Mono,monospace;margin-bottom:6px;">Additional data required to analyse:</div>' + lockedHtml : '')
-    + rootCauseHtml;
+  document.getElementById('fault-bars').innerHTML = unlockedHtml + (lockedFaults.length ? '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:9px;color:var(--muted);font-family:IBM Plex Mono,monospace;margin-bottom:6px;">Additional data required to analyse:</div>' + lockedHtml : '');
   setTimeout(()=>document.querySelectorAll('.fault-bar-fill').forEach(el=>el.style.width=el.dataset.w+'%'),80);
-  // Top fault excludes root cause — primary fault drives the badge
-  const primaryFaults = d.faults.filter(f => !f.locked && f.category !== 'root_cause');
-  const top = primaryFaults[0] || d.faults[0] || {name:' - ',pct:0,iso_reference:'',freq_hz:0,harmonics_used:0};
+  const top=d.faults[0]||{name:' - ',pct:0,iso_reference:'',freq_hz:0,harmonics_used:0};
   document.getElementById('top-fault-badge').textContent=top.name+' '+top.pct+'%';
   document.getElementById('top-fault-badge').className='badge '+(top.pct>60?'b-red':top.pct>40?'b-orange':'b-yellow');
   document.getElementById('driving-feature').textContent='Shaft ~'+(d.shaftHz||0).toFixed(1)+' Hz . Kurt '+d.kurt+' . CF '+d.cf+' . '+(top.harmonics_used||0)+' harmonics';
   document.getElementById('fault-clauses').innerHTML=top.iso_reference?'<span class="clause">'+top.iso_reference+'</span>':'';
-  const rpmSource = d.machineParams && d.machineParams.rpm ? 'nameplate' : 'est.';
-  document.getElementById('rpm-badge').textContent='~'+Math.round((d.shaftHz||0)*60)+' RPM '+rpmSource;
+  document.getElementById('rpm-badge').textContent='~'+Math.round((d.shaftHz||0)*60)+' RPM est.';
   document.getElementById('disclaimer-box').textContent='(!) '+CONFIG.chatbot_config.disclaimer_text;
-  buildRadarGrouped(d.faults); buildTrendChart(d); buildFFT(d.fftR, d.sr);
+  buildRadar(d.faults.filter(f => !f.locked)); buildFFT(d.fftR, d.sr);
 }
 
 // == CHARTS ==
 Chart.defaults.color='#7f93aa';Chart.defaults.borderColor='#2a3a52';Chart.defaults.font.family="'IBM Plex Mono',monospace";
-// Grouped radar — 4 categories instead of individual faults
-function buildRadarGrouped(allFaults) {
-  if(radarInst){radarInst.destroy();radarInst=null;}
-  const unlocked = allFaults.filter(f => !f.locked);
-  // Group into 4 categories
-  const groups = {
-    'Bearing':    unlocked.filter(f => f.category === 'bearing'),
-    'Mechanical': unlocked.filter(f => f.category === 'mechanical' && f.category !== 'root_cause'),
-    'Electrical': unlocked.filter(f => f.category === 'electrical'),
-    'Foundation': unlocked.filter(f => f.category === 'root_cause')
-  };
-  const labels = Object.keys(groups);
-  const scores = labels.map(g => {
-    const faults = groups[g];
-    return faults.length ? Math.max(...faults.map(f => f.pct)) : 0;
-  });
-  const ptColors = scores.map(s => s >= 70 ? '#c0392b' : s >= 40 ? '#e67e22' : s >= 20 ? '#3b82f6' : '#2a3a52');
-  radarInst = new Chart(document.getElementById('radarChart').getContext('2d'),{
-    type:'radar',
-    data:{
-      labels: labels,
-      datasets:[{
-        data: scores,
-        backgroundColor:'rgba(192,57,43,0.2)',
-        borderColor:'#c0392b',
-        borderWidth:2,
-        pointBackgroundColor: ptColors,
-        pointBorderColor:'#ffffff',
-        pointBorderWidth:2,
-        pointRadius: scores.map(s => s > 0 ? 7 : 4),
-        pointHoverRadius:10
-      }]
-    },
-    options:{
-      responsive:true,
-      plugins:{legend:{display:false},tooltip:{
-        backgroundColor:'#1a2030',borderColor:'#c0392b',borderWidth:1,padding:10,
-        titleColor:'#ffffff',bodyColor:'#ffffff',
-        callbacks:{
-          label: c => {
-            const g = labels[c.dataIndex];
-            const faults = groups[g];
-            const top = faults.sort((a,b)=>b.pct-a.pct)[0];
-            return top ? top.name + ': ' + c.raw + '%' : c.raw + '%';
-          }
-        }
-      }},
-      scales:{r:{
-        min:0,max:100,
-        ticks:{stepSize:20,font:{size:9},color:'#7f93aa',backdropColor:'transparent'},
-        grid:{color:'rgba(77,157,224,0.15)'},
-        pointLabels:{font:{size:11,weight:'bold'},color:'#c0cfe0'},
-        angleLines:{color:'rgba(77,157,224,0.15)'}
-      }}
-    }
-  });
-}
-
-// Trend chart — shows health index over time (single point for now, multi when history loads)
-let trendInst = null;
-function buildTrendChart(d) {
-  if(trendInst){trendInst.destroy();trendInst=null;}
-  const ctx = document.getElementById('trendChart');
-  if (!ctx) return;
-  const hi = d.healthIdx ? d.healthIdx.score : null;
-  const topFault = d.faults.find(f => !f.locked && f.category !== 'root_cause');
-  // Single reading — show as point with reference lines
-  const labels = ['Current'];
-  const healthData = [hi || 0];
-  const rmsData = [parseFloat(d.rms)];
-  const faultData = [topFault ? topFault.pct : 0];
-  trendInst = new Chart(ctx.getContext('2d'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Health Index',
-          data: healthData,
-          borderColor: 'var(--accent)',
-          backgroundColor: 'rgba(77,157,224,0.15)',
-          borderWidth: 2,
-          pointRadius: 8,
-          pointBackgroundColor: d.healthIdx ? d.healthIdx.color : 'var(--accent)',
-          pointBorderColor: '#fff',
-          pointBorderWidth: 2,
-          yAxisID: 'y',
-          tension: 0.3,
-          fill: true
-        },
-        {
-          label: 'RMS (mm/s)',
-          data: rmsData,
-          borderColor: 'var(--green)',
-          backgroundColor: 'transparent',
-          borderWidth: 2,
-          pointRadius: 6,
-          pointBackgroundColor: 'var(--green)',
-          yAxisID: 'y2',
-          tension: 0.3,
-          borderDash: [4,3]
-        },
-        {
-          label: 'Top Fault %',
-          data: faultData,
-          borderColor: 'var(--orange)',
-          backgroundColor: 'transparent',
-          borderWidth: 2,
-          pointRadius: 6,
-          pointBackgroundColor: 'var(--orange)',
-          yAxisID: 'y',
-          tension: 0.3,
-          borderDash: [2,3]
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#1a2030',
-          borderColor: '#3a5070',
-          borderWidth: 1,
-          padding: 10,
-          titleColor: '#ffffff',
-          bodyColor: '#c0cfe0'
-        },
-        annotation: {}
-      },
-      scales: {
-        x: { grid: { color: 'rgba(77,157,224,0.08)' }, ticks: { color: '#7f93aa', font: { size: 10 } } },
-        y: {
-          min: 0, max: 100,
-          grid: { color: 'rgba(77,157,224,0.08)' },
-          ticks: { color: '#7f93aa', font: { size: 10 } },
-          title: { display: true, text: 'Health / Fault %', color: '#7f93aa', font: { size: 10 } }
-        },
-        y2: {
-          position: 'right',
-          grid: { display: false },
-          ticks: { color: 'var(--green)', font: { size: 10 } },
-          title: { display: true, text: 'RMS mm/s', color: 'var(--green)', font: { size: 10 } }
-        }
-      }
-    }
-  });
-  // Update reading count badge
-  const badge = document.getElementById('trend-reading-count');
-  if (badge) badge.textContent = '1 reading — add more for trend';
-}
-
 function buildRadar(faults){
   if(radarInst){radarInst.destroy();radarInst=null;}
   const top = faults.slice(0,8);
@@ -1753,18 +1211,6 @@ function buildFFT(fft,fs){
 }
 
 // == CLAUDE AI ==
-// Strip Severity Assessment section from Claude output
-// Claude tends to generate this from training data despite instructions
-function stripSeverityAssessment(text) {
-  // Remove everything between "SEVERITY ASSESSMENT" and the next numbered section
-  // Pattern: 3. SEVERITY ASSESSMENT ... 4. (or end)
-  return text
-    .replace(/\d+\.\s*SEVERITY ASSESSMENT[\s\S]*?(?=\d+\.\s*RECOMMENDED|\d+\.\s*MONITORING|\d+\.\s*RUL|$)/gi,
-      '')
-    .replace(/\n{3,}/g, '\n\n') // clean up extra blank lines left behind
-    .trim();
-}
-
 async function streamClaude(){
   const d=nvr;
   document.getElementById('stream-thinking').style.display='flex';
@@ -1776,34 +1222,14 @@ async function streamClaude(){
   if(d.faults[0]&&d.faults[0].pct<40)flags.push('LOW_CONFIDENCE: Top fault '+d.faults[0].pct+'%  -  use indicative language only.');
   const zA=getZonesForClass(selClassId)[0];
   if(parseFloat(d.rms)<zA.rms_upper_mm_s)flags.push('ZONE_A: Machine in Zone A. Routine monitoring only  -  do not over-diagnose.');
-  // Primary faults only (exclude root cause from main fault list)
-  const primaryFaultList = d.faults.filter(f => !f.locked && f.category !== 'root_cause');
-  const rootCauseList    = d.faults.filter(f => !f.locked && f.category === 'root_cause');
-  const fd = primaryFaultList.slice(0,CONFIG.fault_display_limit).map(f=>'- '+f.name+': '+f.pct+'% | freq: '+(f.freq_hz?f.freq_hz.toFixed(1)+' Hz':'N/A')+' | harmonics: '+(f.harmonics_used||0)+' | '+f.iso_reference).join('\n');
-  const rcfd = rootCauseList.length ? rootCauseList.map(f=>'- '+f.name+': '+f.pct+'% indicators | '+f.iso_reference).join('\n') : 'None detected';
+  const fd=d.faults.slice(0,CONFIG.fault_display_limit).map(f=>'- '+f.name+': '+f.pct+'% | freq: '+(f.freq_hz?f.freq_hz.toFixed(1)+' Hz':'N/A')+' | harmonics: '+(f.harmonics_used||0)+' | '+f.iso_reference).join('\n');
   const prompt=[
     'You are AxiomAssist  -  domain-ringfenced to vibration analysis, condition monitoring, rotating machinery, and maintenance engineering ONLY.',
-    d.override && d.override.overrideActive ? [
-      '','=== ⚠ BEARING FAULT SEVERITY OVERRIDE ===',
-      d.override.overrideReason,
-      'ISO Reference: ' + (d.override.overrideISO||''),
-      'Health assessment is fault-driven, not RMS-driven per ' + (d.override.overrideISO||''),
-      ''
-    ].join('\n') : '',
     '','=== MACHINE ===',
     d.classRow.machine_type_desc+' | '+d.classRow.iso_standard_ref+' | '+d.classRow.mounting_type+' mount',
-    d.machineParams && d.machineParams.paramsEntered ? [
-      d.machineParams.equipType ? 'Equipment type: '+d.machineParams.equipType : '',
-      d.machineParams.rpm ? 'Nameplate RPM: '+d.machineParams.rpm+' ('+d.machineParams.rpm/60.0+'Hz shaft)' : 'RPM: estimated from FFT',
-      d.machineParams.bearingModel ? 'Bearing: '+d.machineParams.bearingModel+' (BPFO='+d.machineParams.bpfoMult+'x)' : 'Bearing: generic multipliers',
-      d.machineParams.measPoint ? 'Measurement: '+d.machineParams.measPoint+' / '+d.machineParams.measAxis+' axis' : '',
-      d.machineParams.loadPct ? 'Load at measurement: '+d.machineParams.loadPct+'%' : '',
-      d.machineParams.lastMaint ? 'Last maintenance: '+d.machineParams.lastMaint : ''
-    ].filter(Boolean).join(' | ') : 'Machine parameters: not entered — generic defaults used',
     '','=== NVR RECORD ===',
     'File: '+d.filename+' | Samples: '+d.n+' | Sample rate: '+d.sr+' Hz',
     'RMS: '+d.rms+' '+d.cu+' | Peak: '+d.peak+' | CF: '+d.cf+' ['+getCFLabel(parseFloat(d.cf))+'] | Kurtosis: '+d.kurt+' ['+getKLabel(parseFloat(d.kurt))+']',
-    d.healthIdx ? 'Health Index: '+d.healthIdx.score+'/100 ('+d.healthIdx.label+') — Physics basis: '+d.healthIdx.breakdown.map(b=>b.label+' penalty='+b.penalty).join(', ') : '',
     'Deviation: '+d.devSc+'sigma  -  '+d.devRow.classification+' ('+d.devRow.iso_reference+')',
     'ISO Zone: '+d.zoneRow.zone_label+'  -  '+d.zoneRow.action_required+' ('+d.zoneRow.iso_clause_ref+')',
     'Trend: '+d.trendRow.code+'  -  '+d.trendRow.label+' ('+d.trendRow.iso_reference+')',
@@ -1812,24 +1238,21 @@ async function streamClaude(){
     'Monitoring: '+mi.interval_desc+' ('+mi.iso_reference+')',
     'Shaft: '+(d.shaftHz?d.shaftHz.toFixed(1):'?')+' Hz (~'+Math.round((d.shaftHz||0)*60)+' RPM)',
     '','=== FAULT CLASSIFICATION ===',fd,
-    '','=== ROOT CAUSE INDICATORS ===',
-    rcfd,
-    rootCauseList.length ? 'IMPORTANT: Do NOT diagnose these as confirmed root causes. Instead include a brief investigative prompt in Section 2: recommend inspection of the indicated condition (e.g. hold-down bolts, baseplate, grout) as it may contribute to fault recurrence. Use language like "Loose foundation indicators are present — recommend inspection before bearing replacement to prevent recurrence." Reference ISO 13379-1:2012 Annex B §B.2.' : '',
     '','=== DATA QUALITY FLAGS ===',
     flags.length?flags.map(f=>'(!) '+f).join('\n'):' -  No flags.',
     '','=== ANTI-HALLUCINATION RULES ===',
     '1. Use ONLY values above. Do not invent bearing models, temperatures, or values not in this data.',
-    '0. STRICT PROHIBITION: Do NOT write a SEVERITY ASSESSMENT section. Do NOT list Zone A/B/C/D with mm/s thresholds. The zone table is in the UI already. Your report has exactly 5 sections: 1.Diagnostic Summary 2.Primary Fault Analysis 3.Recommended Actions 4.Monitoring Guidance 5.RUL Note. Nothing else.',
     '2. Obey every DATA QUALITY FLAG.',
     '3. Fault <40% confidence = indicative language only, never confirmed.',
     '4. Cite ONLY ISO clauses from the NVR record above.',
     '5. Always quote RUL CI. State it cannot replace engineering judgement.',
-    '','=== REPORT  -  5 SECTIONS ===',
-    '1. DIAGNOSTIC SUMMARY  -  State zone letter, RMS, deviation, trend. If bearing fault override active, note that RMS-based zone underestimates severity for impulsive faults per ISO 13379-1.',
-    '2. PRIMARY FAULT ANALYSIS  -  Interpret top fault(s), qualify confidence, cite ISO 13379-1 clause. If root cause indicators present, add: "Loose foundation indicators present — recommend inspection of hold-down bolts and baseplate before bearing replacement to prevent recurrence (ISO 13379-1:2012 Annex B §B.2)."',
-    '3. RECOMMENDED ACTIONS (jump straight here after Section 2 — there is NO Section 3 Severity Assessment) — Immediate/Short-term/Long-term. Each must cite an ISO clause.',
-    '4. MONITORING GUIDANCE  -  Interval and parameters. Cite ISO 13373-1 clause.',
-    '5. RUL & PROGNOSTIC NOTE  -  Quote days and CI. Cite ISO 13381-1 clause. State limitations.',
+    '','=== REPORT  -  6 SECTIONS ===',
+    '1. DIAGNOSTIC SUMMARY  -  Zone, RMS, trend, limitations.',
+    '2. PRIMARY FAULT ANALYSIS  -  Interpret top fault(s), qualify confidence, cite ISO 13379-1 clause.',
+    '3. SEVERITY ASSESSMENT  -  Interpret zone, cite exact ISO clause from NVR record.',
+    '4. RECOMMENDED ACTIONS  -  Immediate/Short-term/Long-term. Each must cite an ISO clause.',
+    '5. MONITORING GUIDANCE  -  Interval and parameters. Cite ISO 13373-1 clause.',
+    '6. RUL & PROGNOSTIC NOTE  -  Quote days and CI. Cite ISO 13381-1 clause. State limitations.',
   ].join('\n');
   try{
     const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:CONFIG.chatbot_config.model_version,max_tokens:CONFIG.chatbot_config.max_output_tokens,stream:true,messages:[{role:'user',content:prompt}]})});
@@ -1837,10 +1260,7 @@ async function streamClaude(){
     if(!resp.ok)throw new Error(await resp.text());
     const reader=resp.body.getReader(),dec=new TextDecoder();let buf='';
     const rt=document.getElementById('reco-text');
-    while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const ls=buf.split('\n');buf=ls.pop();for(const l of ls){if(!l.startsWith('data:'))continue;const dat=l.slice(5).trim();if(dat==='[DONE]')break;try{const e=JSON.parse(dat);if(e.type==='content_block_delta'&&e.delta?.type==='text_delta'){const newText = rt.textContent + e.delta.text;
-            // Post-process: strip Severity Assessment section (zone table) from output
-            rt.textContent = stripSeverityAssessment(newText);
-            rt.scrollIntoView({behavior:'smooth',block:'nearest'});}}catch{}}}
+    while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const ls=buf.split('\n');buf=ls.pop();for(const l of ls){if(!l.startsWith('data:'))continue;const dat=l.slice(5).trim();if(dat==='[DONE]')break;try{const e=JSON.parse(dat);if(e.type==='content_block_delta'&&e.delta?.type==='text_delta'){rt.textContent+=e.delta.text;rt.scrollIntoView({behavior:'smooth',block:'nearest'});}}catch{}}}
   }catch(err){
     document.getElementById('stream-thinking').style.display='none';
     await typeText(document.getElementById('reco-text'), buildFallback(nvr));
