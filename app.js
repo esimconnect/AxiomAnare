@@ -157,6 +157,7 @@ const CONFIG = {
 // AxiomAnare  -  Diagnostic Engine
 // All logic runs after DOM is fully loaded
 document.addEventListener('DOMContentLoaded', function () {
+initBearingLibrary();   // pre-load bearing library from Supabase for wizard lookup
 
 // == CONFIG LOOKUP HELPERS ==
 function getZonesForClass(id) {
@@ -284,35 +285,107 @@ function showFileError(msg) {
 function readMachineParams() {
   const params = { shaftHz: 0, bearingMultipliers: null, loadZonePosition: 'centered' };
 
-  // RPM input -- convert to shaft Hz for classifyFaults
-  const rpmEl = document.getElementById('param-rpm') || document.getElementById('input-rpm') || document.getElementById('rpm-input');
+  // RPM input (id='p-rpm' in index.html) -- convert to shaft Hz
+  const rpmEl = document.getElementById('p-rpm');
   if (rpmEl && parseFloat(rpmEl.value) > 0) {
     params.shaftHz = parseFloat(rpmEl.value) / 60;
   }
 
-  // Bearing model -- look up exact multipliers from CONFIG bearing library
-  const bearingEl = document.getElementById('param-bearing') || document.getElementById('input-bearing') || document.getElementById('bearing-model');
-  if (bearingEl && bearingEl.value) {
-    // Search bearing library by model string match
-    // bearing_library table seeded in Supabase -- fall back to CONFIG defaults if not found
-    const modelStr = bearingEl.value.trim().toLowerCase();
-    if (window.BEARING_LIBRARY && Array.isArray(window.BEARING_LIBRARY)) {
-      const match = window.BEARING_LIBRARY.find(b =>
-        b.model && b.model.toLowerCase().replace(/[\s\-]/g,'').includes(modelStr.replace(/[\s\-]/g,''))
+  // Bearing model (id='p-bearing') -- look up multipliers from client-side bearing library
+  // window.BEARING_LIBRARY populated from Supabase on page load (see initBearingLibrary)
+  // Falls back gracefully to CONFIG rule defaults when no bearing selected
+  const bearingEl = document.getElementById('p-bearing');
+  if (bearingEl && bearingEl.value.trim()) {
+    const modelStr = bearingEl.value.trim().toLowerCase().replace(/[\s\-]/g, '');
+    const lib = window.BEARING_LIBRARY;
+    if (lib && Array.isArray(lib)) {
+      const match = lib.find(b =>
+        b.model && b.model.toLowerCase().replace(/[\s\-]/g, '').includes(modelStr)
       );
       if (match && match.bpfo_mult) {
-        params.bearingMultipliers = { bpfo: match.bpfo_mult, bpfi: match.bpfi_mult, bsf: match.bsf_mult, ftf: match.ftf_mult };
+        params.bearingMultipliers = {
+          bpfo: parseFloat(match.bpfo_mult),
+          bpfi: parseFloat(match.bpfi_mult),
+          bsf:  parseFloat(match.bsf_mult),
+          ftf:  parseFloat(match.ftf_mult)
+        };
       }
     }
   }
 
-  // Load zone position -- default 'centered' (ISO 13379-1:2012 §A.3)
-  const loadEl = document.getElementById('param-load-zone') || document.getElementById('input-load-zone');
-  if (loadEl && loadEl.value) {
-    params.loadZonePosition = loadEl.value;
-  }
+  // Load zone position: default 'centered' (most common, ISO 13379-1:2012 §A.3)
+  // Could be extended from a UI selector if added to index.html
+  params.loadZonePosition = 'centered';
 
   return params;
+}
+
+// == WIZARD PARAMETER UI FUNCTIONS ==
+// These are called from index.html onclick/oninput handlers.
+
+window.toggleParams = function() {
+  const form = document.getElementById('param-form');
+  const sub  = document.getElementById('param-toggle-sub');
+  if (!form) return;
+  const isOpen = form.classList.contains('open');
+  form.classList.toggle('open', !isOpen);
+  if (sub) sub.innerHTML = isOpen ? '&#9660; Expand' : '&#9650; Collapse';
+};
+
+window.onParamChange = function() {
+  // Show accuracy indicator when RPM is entered
+  const rpm  = parseFloat(document.getElementById('p-rpm')?.value || 0);
+  const accEl = document.getElementById('param-accuracy');
+  if (accEl) accEl.style.display = rpm > 0 ? 'flex' : 'none';
+  // Update step 2 done indicator
+  if (rpm > 0) setStepDone('step2-num', true);
+};
+
+window.onBearingInput = function(val) {
+  const lookup = document.getElementById('bearing-lookup');
+  if (!lookup) return;
+  if (!val.trim()) { lookup.style.display = 'none'; return; }
+  lookup.style.display = 'block';
+
+  const modelStr = val.trim().toLowerCase().replace(/[\s\-]/g, '');
+  const lib = window.BEARING_LIBRARY;
+  if (!lib || !Array.isArray(lib)) {
+    lookup.innerHTML = '(i) Bearing library loading...';
+    lookup.style.color = 'var(--muted)';
+    return;
+  }
+  const match = lib.find(b =>
+    b.model && b.model.toLowerCase().replace(/[\s\-]/g, '').includes(modelStr)
+  );
+  if (match) {
+    lookup.innerHTML =
+      '[check] <b>' + match.model + '</b> &nbsp;|&nbsp; ' +
+      'BPFO: ' + parseFloat(match.bpfo_mult).toFixed(4) + 'x &nbsp; ' +
+      'BPFI: ' + parseFloat(match.bpfi_mult).toFixed(4) + 'x &nbsp; ' +
+      'BSF: '  + parseFloat(match.bsf_mult).toFixed(4)  + 'x &nbsp; ' +
+      'FTF: '  + parseFloat(match.ftf_mult).toFixed(4)  + 'x';
+    lookup.style.color = 'var(--green)';
+  } else {
+    lookup.innerHTML = '(?) No match found. Using CONFIG rule defaults.';
+    lookup.style.color = 'var(--muted)';
+  }
+};
+
+// Load bearing library from Supabase into window.BEARING_LIBRARY on page load
+// Makes multipliers available client-side for readMachineParams() lookup
+async function initBearingLibrary() {
+  try {
+    const SUPA_URL = 'https://duedtedevbnrflfbnzba.supabase.co';
+    const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1ZWR0ZWRldmJucmZsZmJuemJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0OTIzNzIsImV4cCI6MjA5MDA2ODM3Mn0.u_ngs7Fct7xQof90C-aPLMKeMcrqtS-yccUgI7r2FrE';
+    const res = await fetch(SUPA_URL + '/rest/v1/bearing_library?select=model,bpfo_mult,bpfi_mult,bsf_mult,ftf_mult&order=model', {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    if (res.ok) {
+      window.BEARING_LIBRARY = await res.json();
+    }
+  } catch(e) {
+    window.BEARING_LIBRARY = [];
+  }
 }
 
 function runFromReady() {
