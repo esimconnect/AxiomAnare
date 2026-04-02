@@ -1,3 +1,41 @@
+// ══ SUPABASE CONFIG ══════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://zjfhxutcvjxootoekade.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqZmh4dXRjdmp4b290b2VrYWRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMjgzODAsImV4cCI6MjA5MDcwNDM4MH0.5yGgSjALJhTQm5Ud3W-fU2Bgo-3PkziaS0oLrGMYQ9o';
+
+const SB = {
+  headers() {
+    return {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    };
+  },
+  async get(table, params='') {
+    try {
+      const r = await fetch(SUPABASE_URL+'/rest/v1/'+table+'?'+params, { headers: this.headers() });
+      return r.ok ? r.json() : null;
+    } catch(e) { return null; }
+  },
+  async post(table, body) {
+    try {
+      const r = await fetch(SUPABASE_URL+'/rest/v1/'+table, {
+        method: 'POST', headers: this.headers(), body: JSON.stringify(body)
+      });
+      return r.ok ? r.json() : null;
+    } catch(e) { return null; }
+  },
+  async patch(table, params, body) {
+    try {
+      const r = await fetch(SUPABASE_URL+'/rest/v1/'+table+'?'+params, {
+        method: 'PATCH', headers: this.headers(), body: JSON.stringify(body)
+      });
+      return r.ok ? r.json() : null;
+    } catch(e) { return null; }
+  }
+};
+// ══ END SUPABASE CONFIG ═══════════════════════════════════════════════════
+
 const CONFIG = {
   iso_machine_classes: [
     { class_id:"cls_i",    display_label:"Class I",        iso_standard_ref:"ISO 10816-3:2009", machine_type_desc:"Small Machines",          power_kw_desc:"Up to 15 kW",      power_kw_min:0,   power_kw_max:15,   mounting_type:"Rigid Mount"    },
