@@ -837,7 +837,8 @@ async function runPipeline(raw, filename) {
     override, healthIdx,
     singleFile: history.length < 3,
     historyCount: history.length,
-    assetName: machineParams.assetName || null };
+    assetName: machineParams.assetName || null,
+    _history: history };
 
   await new Promise(r => setTimeout(r, 250));
   document.getElementById('processing-screen').style.display = 'none';
@@ -1831,10 +1832,152 @@ function renderResults(){
   document.getElementById('rpm-badge').textContent='~'+Math.round((d.shaftHz||0)*60)+' RPM est.';
   document.getElementById('disclaimer-box').textContent='(!) '+CONFIG.chatbot_config.disclaimer_text;
   buildRadar(d.faults.filter(f => !f.locked)); buildFFT(d.fftR, d.sr);
+  buildTrendChart(d, nvr._history || []);
 }
 
 // == CHARTS ==
 Chart.defaults.color='#7f93aa';Chart.defaults.borderColor='#2a3a52';Chart.defaults.font.family="'IBM Plex Mono',monospace";
+
+// == TREND CHART ============================================================
+// Plots Health Index, RMS and Top Fault Score over time for this asset.
+// Uses Supabase NVR history when 2+ readings exist; falls back to single point.
+// ISO 13373-2:2016 §8.2 — trend state requires minimum 3 readings.
+let trendInst = null;
+
+function buildTrendChart(d, history) {
+  if (trendInst) { trendInst.destroy(); trendInst = null; }
+  const ctx = document.getElementById('trendChart');
+  if (!ctx) return;
+
+  // Build dataset from history (newest last) + current reading
+  let labels = [], rmsVals = [], healthVals = [], faultVals = [];
+
+  if (history && history.length > 0) {
+    // Reverse to chronological order
+    const hist = [...history].reverse();
+    hist.forEach((r, i) => {
+      const dt = new Date(r.recorded_at);
+      labels.push(dt.toLocaleDateString('en-GB', { day:'2-digit', month:'short' }));
+      rmsVals.push(parseFloat(r.rms_mms) || 0);
+      healthVals.push(null);  // health not stored in history yet
+      faultVals.push(r.top_fault_pct || 0);
+    });
+    // Add current reading
+    labels.push('Now');
+    rmsVals.push(parseFloat(d.rms));
+    healthVals.push(d.healthIdx ? d.healthIdx.score : null);
+    faultVals.push(d.faults.find(f=>!f.locked&&f.pct>0)?.pct || 0);
+  } else {
+    // Single reading
+    labels = ['Now'];
+    rmsVals = [parseFloat(d.rms)];
+    healthVals = [d.healthIdx ? d.healthIdx.score : null];
+    faultVals = [d.faults.find(f=>!f.locked&&f.pct>0)?.pct || 0];
+  }
+
+  const count = labels.length;
+  const badge = document.getElementById('trend-reading-count');
+  if (badge) badge.textContent = count + ' reading' + (count===1?'':'s') + (count<3?' — need 3+ for trend':'');
+  const chartBadge = document.getElementById('trend-chart-badge');
+  if (chartBadge) {
+    chartBadge.textContent = d.trendRow.code + ' — ' + d.trendRow.label;
+    const tC = { SWB:'b-green', DDU:'b-blue', PRS:'b-yellow', PRA:'b-red', RGI:'b-green', SCO:'b-red' };
+    chartBadge.className = 'badge ' + (tC[d.trendRow.code] || 'b-blue');
+  }
+
+  trendInst = new Chart(ctx.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Health Index',
+          data: healthVals,
+          borderColor: '#4d9de0',
+          backgroundColor: 'rgba(77,157,224,0.10)',
+          borderWidth: 2,
+          pointRadius: 5,
+          pointBackgroundColor: healthVals.map(v => v===null?'#4d9de0':v>=85?'#2ecc71':v>=65?'#4d9de0':v>=40?'#f39c12':'#e74c3c'),
+          pointBorderColor: '#1a2030',
+          pointBorderWidth: 1.5,
+          yAxisID: 'y',
+          tension: 0.35,
+          fill: true,
+          spanGaps: true
+        },
+        {
+          label: 'RMS mm/s',
+          data: rmsVals,
+          borderColor: '#2ecc71',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          borderDash: [5,3],
+          pointRadius: 4,
+          pointBackgroundColor: '#2ecc71',
+          pointBorderColor: '#1a2030',
+          pointBorderWidth: 1,
+          yAxisID: 'y2',
+          tension: 0.35
+        },
+        {
+          label: 'Top Fault Score',
+          data: faultVals,
+          borderColor: '#e67e22',
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          borderDash: [3,3],
+          pointRadius: 3,
+          pointBackgroundColor: '#e67e22',
+          yAxisID: 'y',
+          tension: 0.35
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a2030',
+          borderColor: '#3a5070',
+          borderWidth: 1,
+          padding: 10,
+          titleColor: '#ffffff',
+          bodyColor: '#c0cfe0',
+          callbacks: {
+            label: c => {
+              if (c.dataset.label === 'Health Index') return ' Health: ' + (c.raw !== null ? c.raw+'/100' : 'N/A');
+              if (c.dataset.label === 'RMS mm/s') return ' RMS: ' + (c.raw||0).toFixed(3) + ' mm/s';
+              return ' Fault Score: ' + faultIndicatorLabel(c.raw||0);
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(77,157,224,0.08)' },
+          ticks: { color: '#7f93aa', font: { size: 10 }, maxRotation: 30 }
+        },
+        y: {
+          min: 0, max: 100,
+          grid: { color: 'rgba(77,157,224,0.08)' },
+          ticks: { color: '#7f93aa', font: { size: 9 } },
+          title: { display: true, text: 'Health / Fault Score', color: '#7f93aa', font: { size: 9 } }
+        },
+        y2: {
+          position: 'right',
+          grid: { display: false },
+          ticks: { color: '#2ecc71', font: { size: 9 } },
+          title: { display: true, text: 'RMS mm/s', color: '#2ecc71', font: { size: 9 } }
+        }
+      }
+    }
+  });
+}
+// == END TREND CHART ========================================================
+
 function buildRadar(faults){
   if(radarInst){radarInst.destroy();radarInst=null;}
   const top = faults.slice(0,8);
