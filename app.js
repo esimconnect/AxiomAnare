@@ -535,7 +535,7 @@ async function runPipeline(raw, filename) {
 
   // Apply fault-zone override — ISO 13379-1:2012 §5.4
   // Fault findings take precedence over RMS zone when confidence is high enough.
-  const override = applyFaultOverride(zoneRow, rulR, faults, parseFloat(cf), parseFloat(kurt), classRow);
+  const override = applyFaultOverride(zoneRow, rulR, faults, parseFloat(kurt), parseFloat(cf), classRow);
   const finalZoneRow = override.zoneRow;
   const finalRulR    = override.rulR;
 
