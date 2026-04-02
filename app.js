@@ -1521,11 +1521,11 @@ function renderResults(){
 
   document.getElementById('fault-bars').innerHTML = unlockedHtml + (lockedFaults.length ? '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:9px;color:var(--muted);font-family:IBM Plex Mono,monospace;margin-bottom:6px;">Additional data required to analyse:</div>' + lockedHtml : '');
   setTimeout(()=>document.querySelectorAll('.fault-bar-fill').forEach(el=>el.style.width=el.dataset.w+'%'),80);
-  const top=d.faults[0]||{name:' - ',pct:0,iso_reference:'',freq_hz:0,harmonics_used:0};
+  const top=(d.faults.find(f=>!f.locked&&f.pct>0))||{name:' - ',pct:0,iso_reference:'',freq_hz:0,harmonics_used:0};
   document.getElementById('top-fault-badge').textContent=top.name+' '+top.pct+'%';
   document.getElementById('top-fault-badge').className='badge '+(top.pct>60?'b-red':top.pct>40?'b-orange':'b-yellow');
   document.getElementById('driving-feature').textContent='Shaft ~'+(d.shaftHz||0).toFixed(1)+' Hz . Kurt '+d.kurt+' . CF '+d.cf+' . '+(top.harmonics_used||0)+' harmonics';
-  document.getElementById('fault-clauses').innerHTML=top.iso_reference?'<span class="clause">'+top.iso_reference+'</span>':'';
+  document.getElementById('fault-clauses').innerHTML=top.iso_reference&&top.pct>0?'<span class="clause">'+top.iso_reference+'</span>':'';
   document.getElementById('rpm-badge').textContent='~'+Math.round((d.shaftHz||0)*60)+' RPM est.';
   document.getElementById('disclaimer-box').textContent='(!) '+CONFIG.chatbot_config.disclaimer_text;
   buildRadar(d.faults.filter(f => !f.locked)); buildFFT(d.fftR, d.sr);
@@ -1663,9 +1663,10 @@ async function streamClaude(){
 function buildFallback(d){
   // Top unlocked fault only — locked faults (MCSA/power) excluded
   const unlockedFaults = d.faults.filter(f=>!f.locked);
-  const top = unlockedFaults.find(f=>f.pct>=CONFIG.minimum_fault_confidence_pct)
-    || unlockedFaults[0]
-    || {name:'No fault detected',pct:0,iso_reference:'ISO 13379-1:2012',freq_hz:null,harmonics_used:0,category:'none'};
+  // Use top unlocked fault regardless of minimum threshold — threshold only controls display bars
+  // For healthy machines, top fault will be low % — use indicative language accordingly
+  const top = unlockedFaults[0]
+    || {name:'No significant fault detected',pct:0,iso_reference:'ISO 13379-1:2012',freq_hz:null,harmonics_used:0,category:'none'};
   // Secondary = next unlocked fault (not locked MCSA/power faults)
   const sec = unlockedFaults.find(f=>f!==top&&f.pct>=CONFIG.minimum_fault_confidence_pct);
   const mi=getMonitoringInterval(d.zoneRow.zone_label,d.trendRow.code);
