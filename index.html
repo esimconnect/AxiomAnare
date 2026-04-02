@@ -205,6 +205,10 @@ main{padding-top:54px;position:relative;z-index:1;}
     }
     .baseline-toggle.active .baseline-toggle-label { color: #22c55e; }
     .baseline-toggle-sub { font-size: 9px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+    .trend-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+    .trend-tab { padding: 4px 14px; font-size: 10px; font-family: 'IBM Plex Mono',monospace; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; color: var(--muted); background: transparent; transition: all 0.15s; }
+    .trend-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .trend-tab:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
     .baseline-toggle * { pointer-events: none; }  /* children don't steal clicks */
 </style>
 </head>
@@ -510,13 +514,12 @@ main{padding-top:54px;position:relative;z-index:1;}
         <span class="badge" id="trend-chart-badge">—</span>
       </div>
     </div>
+    <div class="trend-tabs">
+      <button class="trend-tab active" data-tab="rms" onclick="switchTrendTab('rms')">RMS + Fault Score</button>
+      <button class="trend-tab" data-tab="health" onclick="switchTrendTab('health')">Health Index</button>
+    </div>
     <div style="position:relative;height:220px;">
       <canvas id="trendChart"></canvas>
-    </div>
-    <div style="display:flex;gap:16px;margin-top:8px;font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;">
-      <span style="display:flex;align-items:center;gap:4px;"><span style="width:20px;height:2px;background:#4d9de0;display:inline-block;"></span>Health Index (0-100)</span>
-      <span style="display:flex;align-items:center;gap:4px;"><span style="width:20px;height:2px;background:#2ecc71;display:inline-block;border-top:2px dashed #2ecc71;"></span>RMS mm/s</span>
-      <span style="display:flex;align-items:center;gap:4px;"><span style="width:20px;height:2px;background:#e67e22;display:inline-block;border-top:2px dashed #e67e22;"></span>Top Fault Score</span>
     </div>
   </div>
 
