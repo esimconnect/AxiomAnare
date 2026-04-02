@@ -205,6 +205,7 @@ main{padding-top:54px;position:relative;z-index:1;}
     }
     .baseline-toggle.active .baseline-toggle-label { color: #22c55e; }
     .baseline-toggle-sub { font-size: 9px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+    .baseline-toggle * { pointer-events: none; }  /* children don't steal clicks */
 </style>
 </head>
 <body>
@@ -249,13 +250,14 @@ main{padding-top:54px;position:relative;z-index:1;}
           <div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:4px;">Auto-generated from machine class + type + RPM + point if left blank</div>
         </div>
         <!-- Baseline toggle -->
-        <div class="baseline-toggle" id="baseline-toggle" onclick="onBaselineToggle()">
+        <label class="baseline-toggle" id="baseline-toggle" style="cursor:pointer;">
+          <input type="checkbox" id="baseline-checkbox" style="display:none;" onchange="onBaselineToggle()">
           <div class="baseline-toggle-check" id="baseline-check"></div>
           <div>
             <div class="baseline-toggle-label">Mark this upload as the Baseline Reference</div>
             <div class="baseline-toggle-sub">First reading sets the healthy benchmark for all future deviation calculations (ISO 13373-2:2016 §8.1)</div>
           </div>
-        </div>
+        </label>
         <!-- Row 1: Equipment type + RPM -->
         <div class="param-row">
           <div class="param-group">

@@ -521,7 +521,8 @@ window.toggleParams = function() {
 };
 
 window.onBaselineToggle = function() {
-  isBaselineUpload = !isBaselineUpload;
+  const cb = document.getElementById('baseline-checkbox');
+  isBaselineUpload = cb ? cb.checked : !isBaselineUpload;
   const el = document.getElementById('baseline-toggle');
   if (el) el.classList.toggle('active', isBaselineUpload);
   const chk = document.getElementById('baseline-check');
@@ -1647,6 +1648,7 @@ function doneStage(n,msg){const el=document.getElementById('stage-'+n);el.classN
 function resetApp(){
   pendingFile=null;pendingRaw=null;pendingMatBuffer=false;machineParams={};isBaselineUpload=false;
   const bt=document.getElementById('baseline-toggle'); if(bt) bt.classList.remove('active');
+  const bcb=document.getElementById('baseline-checkbox'); if(bcb) bcb.checked=false;
   document.getElementById('fileInput').value='';
   document.getElementById('upload-screen').style.display='flex';
   document.getElementById('processing-screen').style.display='none';
