@@ -1912,6 +1912,7 @@ async function streamClaude(){
   const mi=getMonitoringInterval(d.zoneRow.zone_label,d.trendRow.code);
   const flags=[];
   if(d.singleFile)flags.push('SINGLE_FILE: Trend is DDU. One snapshot only  -  do NOT imply deterioration trajectory.');
+  if(!d.singleFile)flags.push('MULTI_READING: Trend '+d.trendRow.code+' derived from '+d.historyCount+' historical readings. Trend direction is established.');
   if(d.faults[0]&&d.faults[0].pct<40)flags.push('LOW_CONFIDENCE: Top fault '+d.faults[0].pct+'%  -  use indicative language only.');
   const zA=getZonesForClass(selClassId)[0];
   if(parseFloat(d.rms)<zA.rms_upper_mm_s)flags.push('ZONE_A: Machine in Zone A. Routine monitoring only  -  do not over-diagnose.');
