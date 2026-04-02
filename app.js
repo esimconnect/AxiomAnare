@@ -204,6 +204,24 @@ let radarInst = null, fftInst = null, nvr = {};
 let pendingFile = null, pendingRaw = null, pendingMatBuffer = false;
 let machineParams = {};   // RPM, bearing model, load zone from wizard step 2
 
+
+// == FAULT INDICATOR LABEL ==
+// Replaces % confidence with ISO 13379-1:2012 Annex A tier labels.
+// Score is spectral evidence strength, not statistical probability.
+function faultIndicatorLabel(pct) {
+  if (pct >= 85) return 'Critical';
+  if (pct >= 65) return 'Strong';
+  if (pct >= 40) return 'Elevated';
+  if (pct >= 20) return 'Indicative';
+  if (pct >= 8)  return 'Low';
+  return 'Trace';
+}
+function faultIndicatorColor(pct) {
+  if (pct >= 65) return 'var(--red)';
+  if (pct >= 40) return 'var(--orange)';
+  if (pct >= 20) return 'var(--yellow)';
+  return 'var(--accent)';
+}
 // == CLASS SELECTOR ==
 function initClassSelector() {
   document.getElementById('class-grid').innerHTML = CONFIG.iso_machine_classes.map(c => `
@@ -527,7 +545,8 @@ async function runPipeline(raw, filename) {
     ...allFaults.filter(f => !f.locked),
     ...allFaults.filter(f => f.locked)
   ];
-  doneStage(5, (faults[0]?.name||' - ')+' '+(faults[0]?.pct||0)+'%');
+  const topUnlocked=faults.find(f=>!f.locked)||faults[0];
+  doneStage(5, (topUnlocked?.name||' - ')+' · '+faultIndicatorLabel(topUnlocked?.pct||0));
 
   // Stage 6  -  RUL
   await activateStage(6);
@@ -830,7 +849,7 @@ function calcHealthIndex(rms, kurt, cf, zoneLabel, topBearingPct, devSigma, clas
   score -= bearingPenalty;
   breakdown.push({
     label: 'Bearing fault evidence', penalty: bearingPenalty,
-    value: topBearingPct + '% confidence' + (topBearingPct >= 60 ? ' — above 6dB detection threshold' : ''),
+    value: faultIndicatorLabel(topBearingPct) + ' (' + topBearingPct + ')' + (topBearingPct >= 60 ? ' — above 6dB detection threshold' : ''),
     iso: 'ISO 13379-1:2012 Annex A §A.3 | ISO 281:2007',
     physics: 'BER detection + ISO 281 L10 life: fatigue ∝ (C/P)^3'
   });
@@ -888,7 +907,7 @@ function applyFaultOverride(zoneRow, rulR, faults, kurt, cf, classRow) {
       const rulFactor = topPct >= 80 ? 0.4 : 0.6;
       result.rulR = { ...rulR, days: Math.round(rulR.days * rulFactor), ci: Math.round(rulR.ci * rulFactor), overridden: true };
     }
-    result.overrideReason = 'Bearing fault at ' + topPct + '% (' + topName + ') — frequency analysis overrides RMS zone per ISO 13379-1:2012 §5.4';
+    result.overrideReason = 'Bearing fault indicator: ' + faultIndicatorLabel(topPct) + ' (' + topName + ') — frequency analysis overrides RMS zone per ISO 13379-1:2012 §5.4';
     result.overrideISO = 'ISO 13379-1:2012 §5.4';
   }
 
@@ -1509,7 +1528,7 @@ function renderResults(){
     return '<div class="fault-item">'
       + '<div class="fault-name" style="color:'+col+';">'+f.name+derivedTag+'</div>'
       + '<div class="fault-bar-wrap"><div class="fault-bar-fill" style="background:'+col+';" data-w="'+f.pct+'"></div></div>'
-      + '<div class="fault-pct" style="color:'+col+';">'+f.pct+'%</div>'
+      + '<div class="fault-pct" style="color:'+col+';">'+faultIndicatorLabel(f.pct)+'</div>'
       + '</div>';
   }).join('');
 
@@ -1524,8 +1543,8 @@ function renderResults(){
   document.getElementById('fault-bars').innerHTML = unlockedHtml + (lockedFaults.length ? '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:9px;color:var(--muted);font-family:IBM Plex Mono,monospace;margin-bottom:6px;">Additional data required to analyse:</div>' + lockedHtml : '');
   setTimeout(()=>document.querySelectorAll('.fault-bar-fill').forEach(el=>el.style.width=el.dataset.w+'%'),80);
   const top=(d.faults.find(f=>!f.locked&&f.pct>0))||{name:' - ',pct:0,iso_reference:'',freq_hz:0,harmonics_used:0};
-  document.getElementById('top-fault-badge').textContent=top.name+' '+top.pct+'%';
-  document.getElementById('top-fault-badge').className='badge '+(top.pct>60?'b-red':top.pct>40?'b-orange':'b-yellow');
+  document.getElementById('top-fault-badge').textContent=top.name+' · '+faultIndicatorLabel(top.pct);
+  document.getElementById('top-fault-badge').className='badge '+(top.pct>=65?'b-red':top.pct>=40?'b-orange':top.pct>=20?'b-yellow':'b-blue');
   document.getElementById('driving-feature').textContent='Shaft ~'+(d.shaftHz||0).toFixed(1)+' Hz . Kurt '+d.kurt+' . CF '+d.cf+' . '+(top.harmonics_used||0)+' harmonics';
   document.getElementById('fault-clauses').innerHTML=top.iso_reference&&top.pct>0?'<span class="clause">'+top.iso_reference+'</span>':'';
   document.getElementById('rpm-badge').textContent='~'+Math.round((d.shaftHz||0)*60)+' RPM est.';
@@ -1568,7 +1587,7 @@ function buildRadar(faults){
           padding:10,
           titleColor:'#ffffff',
           bodyColor:'#ffffff',
-          callbacks:{label:c=>c.raw+'% confidence'}
+          callbacks:{label:c=>faultIndicatorLabel(c.raw)+' ('+c.raw+')'}
         }
       },
       scales:{
@@ -1615,7 +1634,7 @@ async function streamClaude(){
   if(d.faults[0]&&d.faults[0].pct<40)flags.push('LOW_CONFIDENCE: Top fault '+d.faults[0].pct+'%  -  use indicative language only.');
   const zA=getZonesForClass(selClassId)[0];
   if(parseFloat(d.rms)<zA.rms_upper_mm_s)flags.push('ZONE_A: Machine in Zone A. Routine monitoring only  -  do not over-diagnose.');
-  const fd=d.faults.slice(0,CONFIG.fault_display_limit).map(f=>'- '+f.name+': '+f.pct+'% | freq: '+(f.freq_hz?f.freq_hz.toFixed(1)+' Hz':'N/A')+' | harmonics: '+(f.harmonics_used||0)+' | '+f.iso_reference).join('\n');
+  const fd=d.faults.slice(0,CONFIG.fault_display_limit).map(f=>'- '+f.name+': '+faultIndicatorLabel(f.pct)+' (score '+f.pct+') | freq: '+(f.freq_hz?f.freq_hz.toFixed(1)+' Hz':'N/A')+' | harmonics: '+(f.harmonics_used||0)+' | '+f.iso_reference).join('\n');
   const prompt=[
     'You are AxiomAssist  -  domain-ringfenced to vibration analysis, condition monitoring, rotating machinery, and maintenance engineering ONLY.',
     '','=== MACHINE ===',
@@ -1677,7 +1696,7 @@ function buildFallback(d){
   const urg=zI===allZ.length-1?'IMMEDIATE SHUTDOWN':zI===allZ.length-2?'URGENT  -  within 7 days':'PLANNED  -  within 90 days';
   const cq=top.pct>=60?'':'indicative of ';
   const fA=top.name.includes('Outer Race')?'Spectral signature is '+cq+'outer race bearing defect (BPFO). CF ('+d.cf+') and Kurtosis ('+d.kurt+') '+(top.pct>=60?'confirm':'suggest')+' impacting behaviour. '+top.harmonics_used+' harmonic(s) at ~'+(top.freq_hz?top.freq_hz.toFixed(1):'est.')+' Hz. Per '+top.iso_reference+'.':top.name.includes('Inner Race')?'Spectral signature is '+cq+'inner race bearing defect. Kurtosis ('+d.kurt+') provides supporting evidence. '+top.harmonics_used+' harmonic(s) matched. Per '+top.iso_reference+'.':top.name.includes('Rolling Element')?'Spectral signature is '+cq+'rolling element (ball) bearing defect. CF ('+d.cf+') and envelope analysis provide supporting evidence. '+top.harmonics_used+' harmonic(s) matched. Per '+top.iso_reference+'.':top.name.includes('Cage')?'Spectral signature is '+cq+'cage/train defect (FTF). '+top.harmonics_used+' harmonic(s) matched. Per '+top.iso_reference+'.':top.name.includes('Imbalance')?'1x shaft frequency component is '+cq+'mechanical imbalance. '+top.harmonics_used+' harmonic(s) at ~'+(top.freq_hz?top.freq_hz.toFixed(1):'est.')+' Hz. Per '+top.iso_reference+'.':top.name.includes('Misalignment')?'2x/3x harmonic content is '+cq+'shaft misalignment. '+top.harmonics_used+' harmonic(s) matched. Per '+top.iso_reference+'.':top.name.includes('Looseness')?'Multiple sub-harmonics are '+cq+'mechanical looseness. '+top.harmonics_used+' matched. Per '+top.iso_reference+'.':'Spectral signature is '+cq+top.name+'. '+top.harmonics_used+' harmonic(s) matched. Per '+top.iso_reference+'.';
-  return '1. DIAGNOSTIC SUMMARY\nISO Zone '+d.zoneRow.zone_label+' ('+d.zoneRow.iso_clause_ref+'). RMS: '+d.rms+' '+d.cu+' on '+d.classRow.machine_type_desc+'.\n'+d.zoneRow.action_required+'\nDeviation: '+d.devSc+'sigma ('+d.devRow.classification+', '+d.devRow.iso_reference+').\nTrend: '+d.trendRow.code+'  -  '+d.trendRow.description+' ('+d.trendRow.iso_reference+').\nNote: Single measurement file  -  trend direction cannot be established from one snapshot. Multiple readings required per '+d.trendRow.iso_reference+'.\n\n2. PRIMARY FAULT ANALYSIS ('+top.iso_reference+')\n'+top.name+' at '+top.pct+'% confidence.\n'+fA+(sec?'\nSecondary indicator: '+sec.name+' at '+sec.pct+'% ('+sec.iso_reference+').':'')+'\n\n3. RECOMMENDED ACTIONS\nImmediate:\n'+(zI===allZ.length-1?'* Controlled shutdown required. Do not restart without engineering authorisation. ('+d.zoneRow.iso_clause_ref+')':zI===allZ.length-2?'* Schedule maintenance within 7 days. ('+d.zoneRow.iso_clause_ref+')':'* Continue current schedule. Document per ISO 55001:2014 S7.5.')+'\nShort-term:\n* '+(top.category==='bearing'?'Inspect bearing. Verify lubrication per ISO 13373-1:2002 S6.2.':top.name.includes('Imbalance')?'Dynamic balance per ISO 1940-1.':top.name.includes('Misalignment')?'Precision alignment. Check soft-foot per ISO 10816-3.':top.name.includes('Looseness')?'Inspect hold-down bolts, grout and baseplate integrity.':'Continue monitoring. Re-baseline post any maintenance (ISO 13373-2:2016 S8.1).')+'\nLong-term:\n* Re-baseline post-maintenance (ISO 13373-2:2016 S8.1).\n\n4. MONITORING GUIDANCE ('+mi.iso_reference+')\nInterval: '+mi.interval_desc+'.\nMeasure H/V/A at bearing housings (ISO 13373-1:2002 S5.2). Track RMS, CF, Kurtosis.\n\n5. RUL & PROGNOSTIC NOTE ('+d.rulR.iso_reference+')\nRUL: '+d.rulR.days+'d +/- '+d.rulR.ci+'d CI ('+Math.round((1-CONFIG.rul_ci_fraction)*100)+'% confidence).\n'+(d.rulR.days<60?'Below 60 days  -  begin maintenance planning immediately.':'Continue trending to improve RUL accuracy.')+'\nPer '+d.rulR.iso_reference+': this estimate must not be the sole criterion for maintenance deferral. Qualified engineering review required.';
+  return '1. DIAGNOSTIC SUMMARY\nISO Zone '+d.zoneRow.zone_label+' ('+d.zoneRow.iso_clause_ref+'). RMS: '+d.rms+' '+d.cu+' on '+d.classRow.machine_type_desc+'.\n'+d.zoneRow.action_required+'\nDeviation: '+d.devSc+'sigma ('+d.devRow.classification+', '+d.devRow.iso_reference+').\nTrend: '+d.trendRow.code+'  -  '+d.trendRow.description+' ('+d.trendRow.iso_reference+').\nNote: Single measurement file  -  trend direction cannot be established from one snapshot. Multiple readings required per '+d.trendRow.iso_reference+'.\n\n2. PRIMARY FAULT ANALYSIS ('+top.iso_reference+')\n'+top.name+': Fault Indicator — '+faultIndicatorLabel(top.pct)+'.\n'+fA+(sec?'\nSecondary indicator: '+sec.name+' — '+faultIndicatorLabel(sec.pct)+' ('+sec.iso_reference+').':'')+'\n\n3. RECOMMENDED ACTIONS\nImmediate:\n'+(zI===allZ.length-1?'* Controlled shutdown required. Do not restart without engineering authorisation. ('+d.zoneRow.iso_clause_ref+')':zI===allZ.length-2?'* Schedule maintenance within 7 days. ('+d.zoneRow.iso_clause_ref+')':'* Continue current schedule. Document per ISO 55001:2014 S7.5.')+'\nShort-term:\n* '+((top.category==='bearing'&&top.pct>=20)?'Inspect bearing. Verify lubrication per ISO 13373-1:2002 S6.2.':top.category==='bearing'?'Monitor bearing condition. Re-measure within '+mi.interval_desc+'. Track CF and Kurtosis trend (ISO 13373-2:2016 §8.2).':top.name.includes('Imbalance')?'Dynamic balance per ISO 1940-1.':top.name.includes('Misalignment')?'Precision alignment. Check soft-foot per ISO 10816-3.':top.name.includes('Looseness')?'Inspect hold-down bolts, grout and baseplate integrity.':'Continue monitoring. Re-baseline post any maintenance (ISO 13373-2:2016 S8.1).')+'\nLong-term:\n* Re-baseline post-maintenance (ISO 13373-2:2016 S8.1).\n\n4. MONITORING GUIDANCE ('+mi.iso_reference+')\nInterval: '+mi.interval_desc+'.\nMeasure H/V/A at bearing housings (ISO 13373-1:2002 S5.2). Track RMS, CF, Kurtosis.\n\n5. RUL & PROGNOSTIC NOTE ('+d.rulR.iso_reference+')\nRUL: '+d.rulR.days+'d +/- '+d.rulR.ci+'d CI ('+Math.round((1-CONFIG.rul_ci_fraction)*100)+'% confidence).\n'+(d.rulR.days<60?'Below 60 days  -  begin maintenance planning immediately.':'Continue trending to improve RUL accuracy.')+'\nPer '+d.rulR.iso_reference+': this estimate must not be the sole criterion for maintenance deferral. Qualified engineering review required.';
 }
 
 async function typeText(el,text){el.textContent='';for(let i=0;i<text.length;i+=4){el.textContent+=text.slice(i,i+4);if(i%80===0)await new Promise(r=>setTimeout(r,5));}}
