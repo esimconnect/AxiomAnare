@@ -201,7 +201,7 @@ function getKBonus(k)  { return [...CONFIG.kurtosis_thresholds].sort((a,b)=>b.lo
 // == STATE ==
 let selClassId = CONFIG.iso_machine_classes[1].class_id;
 let radarInst = null, fftInst = null, nvr = {};
-let pendingFile = null, pendingRaw = null;
+let pendingFile = null, pendingRaw = null, pendingMatBuffer = false;
 let machineParams = {};   // RPM, bearing model, load zone from wizard step 2
 
 // == CLASS SELECTOR ==
@@ -264,6 +264,16 @@ function stageFile(file) {
     r.onload = ev => { try { const a=[].concat(JSON.parse(ev.target.result)); const k=Object.keys(a[0]); pendingRaw=[k.join(','),...a.map(row=>k.map(x=>row[x]).join(','))].join('\n'); } catch { pendingRaw=ev.target.result; } };
     r.onerror = () => showFileError('File read failed.');
     r.readAsText(file);
+  } else if (ext === 'mat') {
+    const r = new FileReader();
+    r.onload = ev => {
+      pendingRaw = ev.target.result;
+      pendingMatBuffer = true;
+      document.getElementById('ready-meta').textContent =
+        (file.size/1024).toFixed(0)+'KB  MATLAB .mat  -  Drive End / Fan End channel will be extracted';
+    };
+    r.onerror = () => showFileError('Cannot read .mat file.');
+    r.readAsArrayBuffer(file);
   } else {
     const r = new FileReader();
     r.onload = ev => { pendingRaw = ev.target.result; };
@@ -449,7 +459,18 @@ async function runPipeline(raw, filename) {
 
   // Stage 1  -  Ingest
   await activateStage(1);
-  const parsed = parseData(raw);
+  // Route .mat files through dedicated binary MAT parser
+  let parsed;
+  if (pendingMatBuffer && raw instanceof ArrayBuffer) {
+    parsed = parseMat(raw);
+    pendingMatBuffer = false;
+    // If MAT file contained RPM, inject into machineParams
+    if (parsed && parsed.rpmDetected && !(machineParams.shaftHz > 0)) {
+      machineParams.shaftHz = parsed.rpmDetected / 60;
+    }
+  } else {
+    parsed = parseData(raw);
+  }
   if (!parsed || parsed.values.length < 10) { doneStage(1,'QUARANTINED'); setNote('(!) Cannot extract numeric data.'); return; }
   const cu = CONFIG.unit_conversion_factors.find(r => r.canonical_flag === 1).to_unit;
   const sr = parsed.sampleRate || CONFIG.default_sample_rate_hz;
@@ -523,6 +544,108 @@ async function runPipeline(raw, filename) {
   document.getElementById('results-screen').style.display = 'block';
   renderResults();
   streamClaude();
+}
+
+// == MAT FILE PARSER ==
+// Self-contained MATLAB Level 5 MAT-file parser — no external dependencies.
+// Handles CWRU and standard instrument .mat exports.
+// Priority: DE_time > FE_time > BA_time > largest array
+// Spec: https://www.mathworks.com/help/pdf_doc/matlab/matfile_format.pdf
+function parseMat(arrayBuffer) {
+  try {
+    const buf = arrayBuffer;
+    const view = new DataView(buf);
+    const bytes = new Uint8Array(buf);
+
+    // Verify MAT file header (first 116 bytes = description text)
+    const header = String.fromCharCode(...bytes.slice(0,116)).trim();
+    if (!header.includes('MATLAB')) throw new Error('Not a valid MATLAB .mat file');
+
+    // Byte 126-127: endian indicator (MI = little endian for PCWIN)
+    const le = true;  // CWRU files are little-endian
+
+    let offset = 128; // data starts after 128-byte header
+    const variables = {};
+
+    while (offset < buf.byteLength - 8) {
+      const dataType = view.getUint32(offset, le);
+      const numBytes = view.getUint32(offset + 4, le);
+      offset += 8;
+      if (numBytes === 0 || dataType === 0) break;
+      if (offset + numBytes > buf.byteLength) break;
+
+      if (dataType === 14) {  // miMATRIX = 14
+        try {
+          const varEnd = offset + numBytes;
+          let pos = offset;
+
+          // Array flags
+          const flagsBytes = view.getUint32(pos+4, le);
+          const arrayClass = bytes[pos+9] & 0xFF;  // mxDOUBLE=6, mxSINGLE=7
+          pos += 8 + flagsBytes;
+          pos = Math.ceil(pos/8)*8;
+
+          // Dimensions
+          const dimBytes = view.getUint32(pos+4, le);
+          pos += 8;
+          const dims = [];
+          for (let d=0; d<dimBytes/4; d++) dims.push(view.getInt32(pos+d*4, le));
+          pos += dimBytes;
+          pos = Math.ceil(pos/8)*8;
+
+          // Variable name
+          const nameBytes = view.getUint32(pos+4, le);
+          pos += 8;
+          let varName = '';
+          for (let n=0; n<nameBytes; n++) { const c=bytes[pos+n]; if(c>0) varName+=String.fromCharCode(c); }
+          pos += nameBytes;
+          pos = Math.ceil(pos/8)*8;
+
+          // Real data
+          if (pos < varEnd) {
+            const realType  = view.getUint32(pos, le);
+            const realBytes = view.getUint32(pos+4, le);
+            pos += 8;
+            const totalElements = dims.reduce((a,b)=>a*b, 1);
+            const values = new Float64Array(totalElements);
+            if ((arrayClass===6||arrayClass===0) && realType===9) {
+              for (let i=0;i<totalElements&&i<realBytes/8;i++) values[i]=view.getFloat64(pos+i*8,le);
+            } else if (arrayClass===7 && realType===7) {
+              for (let i=0;i<totalElements&&i<realBytes/4;i++) values[i]=view.getFloat32(pos+i*4,le);
+            } else if (realType===9) {
+              for (let i=0;i<totalElements&&i<realBytes/8;i++) values[i]=view.getFloat64(pos+i*8,le);
+            }
+            if (varName && totalElements > 10) variables[varName] = Array.from(values);
+          }
+        } catch(e) { /* skip malformed element */ }
+      }
+      offset += numBytes;
+      if (numBytes % 8 !== 0) offset += 8 - (numBytes % 8);
+    }
+
+    const keys = Object.keys(variables);
+    if (keys.length === 0) throw new Error('No numeric arrays found in MAT file');
+
+    // Channel priority: Drive End > Fan End > Base > largest array
+    const deKey  = keys.find(k => /DE_time|_de_time/i.test(k));
+    const feKey  = keys.find(k => /FE_time|_fe_time/i.test(k));
+    const baKey  = keys.find(k => /BA_time|_ba_time/i.test(k));
+    const rpmKey = keys.find(k => /rpm|speed/i.test(k));
+    const largestKey = keys.reduce((a,b) => variables[a].length >= variables[b].length ? a : b);
+    const chosenKey  = deKey || feKey || baKey || largestKey;
+
+    const values = variables[chosenKey].filter(v => isFinite(v));
+    if (values.length < 100) throw new Error('Too few samples in '+chosenKey+': '+values.length);
+
+    const rpm = rpmKey ? variables[rpmKey][0] : null;
+    const channelType = deKey?'Drive End':feKey?'Fan End':baKey?'Base':'Primary';
+
+    return { values, colName: chosenKey, unit: 'g', sampleRate: 12000,
+             allHeaders: keys, rpmDetected: rpm, channelUsed: chosenKey, channelType };
+  } catch(e) {
+    console.error('MAT parse error:', e.message);
+    return null;
+  }
 }
 
 // == DATA PARSER ==
@@ -1111,7 +1234,7 @@ async function activateStage(n){
 function doneStage(n,msg){const el=document.getElementById('stage-'+n);el.className='stage-item done';el.querySelector('.s-num').textContent=n;document.getElementById('s'+n+'-st').textContent=msg;}
 
 function resetApp(){
-  pendingFile=null;pendingRaw=null;machineParams={};
+  pendingFile=null;pendingRaw=null;pendingMatBuffer=false;machineParams={};
   document.getElementById('fileInput').value='';
   document.getElementById('upload-screen').style.display='flex';
   document.getElementById('processing-screen').style.display='none';
