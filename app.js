@@ -222,6 +222,155 @@ function faultIndicatorColor(pct) {
   if (pct >= 20) return 'var(--yellow)';
   return 'var(--accent)';
 }
+
+// ══ SUPABASE BASELINE ENGINE ══════════════════════════════════════════════
+// Two-silo data strategy per architecture doc:
+//   Customer silo: assets, baselines, nvr_records (private per session)
+//   Cumulative silo: fault_signatures (anonymised, contributes to fleet learning)
+//
+// Baseline = mean ± std of RMS readings from a known-healthy reference state.
+// ISO 13373-2:2016 §8.1 — baseline established from stable operating condition.
+// Trend = linear regression slope of last N RMS readings.
+// ISO 13373-2:2016 §8.2 — trend state requires minimum 3 readings.
+
+// Resolve or create asset in Supabase — returns asset_id
+async function resolveAsset(assetName, machineClass, equipType, measPoint) {
+  // Look for existing asset by name
+  const existing = await SB.get('assets', 'asset_name=eq.'+encodeURIComponent(assetName)+'&select=id,asset_name,baseline_established');
+  if (existing && existing.length > 0) return existing[0];
+  // Create new asset
+  const created = await SB.post('assets', {
+    asset_name:    assetName,
+    machine_class: machineClass,
+    equipment_type: equipType,
+    measurement_point: measPoint,
+    baseline_established: false
+  });
+  return created && created[0] ? created[0] : { id: null, asset_name: assetName, baseline_established: false };
+}
+
+// Load last N NVR records for this asset — used for trend computation
+async function loadAssetHistory(assetId, limit=10) {
+  if (!assetId) return [];
+  const rows = await SB.get('nvr_records',
+    'asset_id=eq.'+assetId+'&order=recorded_at.desc&limit='+limit+'&select=rms_mms,kurtosis,crest_factor,iso_zone,top_fault,top_fault_pct,recorded_at,is_baseline'
+  );
+  return rows || [];
+}
+
+// Load baseline for asset from Supabase baselines table
+async function loadBaseline(assetId) {
+  if (!assetId) return null;
+  const rows = await SB.get('baselines',
+    'asset_id=eq.'+assetId+'&order=established_at.desc&limit=1&select=mean_rms,std_rms,sample_count,established_at'
+  );
+  return rows && rows.length > 0 ? rows[0] : null;
+}
+
+// Save or update baseline from a set of NVR records
+async function saveBaseline(assetId, records) {
+  if (!assetId || !records.length) return;
+  const rmsValues = records.map(r => parseFloat(r.rms_mms)).filter(v => isFinite(v));
+  if (rmsValues.length < 1) return;
+  const mean = rmsValues.reduce((a,b)=>a+b,0) / rmsValues.length;
+  const std  = rmsValues.length > 1
+    ? Math.sqrt(rmsValues.reduce((s,v)=>s+(v-mean)**2,0) / rmsValues.length)
+    : 0;
+  // Upsert baseline
+  await SB.post('baselines', {
+    asset_id:       assetId,
+    mean_rms:       parseFloat(mean.toFixed(4)),
+    std_rms:        parseFloat(std.toFixed(4)),
+    sample_count:   rmsValues.length,
+    established_at: new Date().toISOString()
+  });
+  // Mark asset as baseline established
+  await SB.patch('assets', 'id=eq.'+assetId, { baseline_established: true });
+  console.log('Baseline saved: mean='+mean.toFixed(4)+' std='+std.toFixed(4));
+}
+
+// Compute trend state from historical RMS values — ISO 13373-2:2016 §8.2
+// Returns trend code: SWB / PRS / PRA / RGI / DDU
+function computeTrendFromHistory(history) {
+  if (!history || history.length < 3) return 'DDU';
+  // Use chronological order (history is desc from DB)
+  const rmsVals = [...history].reverse().map(r => parseFloat(r.rms_mms));
+  const n = rmsVals.length;
+  // Linear regression slope (normalised per reading)
+  const xMean = (n-1)/2;
+  const yMean = rmsVals.reduce((a,b)=>a+b,0)/n;
+  let num=0, den=0;
+  rmsVals.forEach((y,i) => { num+=(i-xMean)*(y-yMean); den+=(i-xMean)**2; });
+  const slope = den > 0 ? num/den : 0;
+  const normSlope = slope / (yMean || 1);  // normalise by mean RMS
+  // Match to CONFIG trend state rules
+  const rules = CONFIG.trend_state_rules.filter(r => r.code !== 'DDU' && r.code !== 'SCO');
+  for (const rule of rules) {
+    if (rule.slope_lower !== null && rule.slope_upper !== null) {
+      if (normSlope >= rule.slope_lower && normSlope < rule.slope_upper) return rule.code;
+    }
+  }
+  return normSlope >= 0.15 ? 'PRA' : normSlope <= -0.04 ? 'RGI' : 'SWB';
+}
+
+// Save NVR record to Supabase after analysis
+// Also handles baseline establishment if isBaselineUpload=true
+async function saveNVRToSupabase(nvr, assetId, isBaseline) {
+  try {
+    const top = nvr.faults && nvr.faults.find(f => !f.locked && f.pct > 0);
+    const record = {
+      asset_id:        assetId,
+      filename:        nvr.filename,
+      file_format:     nvr.filename.split('.').pop(),
+      sample_count:    nvr.n,
+      sample_rate_hz:  nvr.sr,
+      rms_mms:         parseFloat(nvr.rms),
+      peak_mms:        parseFloat(nvr.peak),
+      crest_factor:    parseFloat(nvr.cf),
+      kurtosis:        parseFloat(nvr.kurt),
+      deviation_sigma: parseFloat(nvr.devSc),
+      iso_zone:        nvr.zoneRow?.zone_label,
+      trend_code:      nvr.trendRow?.code,
+      rul_days:        nvr.rulR?.days,
+      shaft_hz:        nvr.shaftHz,
+      top_fault:       top?.name || null,
+      top_fault_pct:   top?.pct  || null,
+      machine_class:   nvr.classRow?.display_label,
+      load_pct:        nvr.machineParams?.loadPct || null,
+      is_baseline:     isBaseline || false,
+      recorded_at:     new Date().toISOString()
+    };
+    const saved = await SB.post('nvr_records', record);
+    if (saved && saved[0]) {
+      console.log('NVR saved id:', saved[0].id, '| asset:', assetId);
+      // Contribute to cumulative fault silo if fault indicator is Indicative or above
+      if (top && top.pct >= 20 && !top.locked) {
+        await SB.post('fault_signatures', {
+          machine_class:  record.machine_class,
+          equipment_type: nvr.machineParams?.equipType || 'unknown',
+          fault_type:     top.name,
+          fault_category: top.category,
+          fault_pct:      top.pct,
+          iso_zone:       record.iso_zone,
+          shaft_hz:       record.shaft_hz,
+          rms_mms:        record.rms_mms,
+          kurtosis:       record.kurtosis,
+          crest_factor:   record.crest_factor,
+          freq_hz:        top.freq_hz,
+          harmonics_used: top.harmonics_used,
+          bearing_model:  nvr.machineParams?.bearingModel || null
+        }).catch(()=>{});
+      }
+    }
+    return saved && saved[0] ? saved[0] : null;
+  } catch(e) {
+    console.log('Supabase NVR save failed:', e.message);
+    return null;
+  }
+}
+
+// ══ END SUPABASE BASELINE ENGINE ══════════════════════════════════════════
+
 // == CLASS SELECTOR ==
 function initClassSelector() {
   document.getElementById('class-grid').innerHTML = CONFIG.iso_machine_classes.map(c => `
@@ -341,8 +490,19 @@ function readMachineParams() {
     }
   }
 
-  // Load zone position: default 'centered' (most common, ISO 13379-1:2012 §A.3)
-  // Could be extended from a UI selector if added to index.html
+  // Asset name — user-entered or auto-generated from machine parameters
+  const assetEl = document.getElementById('p-asset-name');
+  const equipEl = document.getElementById('p-equip-type');
+  const measEl  = document.getElementById('p-meas-point');
+  const assetName = (assetEl && assetEl.value.trim())
+    ? assetEl.value.trim()
+    : [selClassId, (equipEl&&equipEl.value)||'machine',
+       params.shaftHz>0?Math.round(params.shaftHz*60)+'rpm':'',
+       (measEl&&measEl.value)||'meas'].filter(Boolean).join('-');
+  params.assetName  = assetName;
+  params.loadPct    = (() => { const el=document.getElementById('p-load'); return el&&el.value?parseInt(el.value):null; })();
+  params.equipType  = (equipEl&&equipEl.value)||'';
+  params.measPoint  = (measEl&&measEl.value)||'';
   params.loadZonePosition = 'centered';
 
   return params;
@@ -502,7 +662,7 @@ async function runPipeline(raw, filename) {
   } else { vals = parsed.values.map(v => toCanonicalUnit(v, parsed.unit, null)); }
   doneStage(1, vals.length+' samples . '+parsed.unit+'->'+cu);
 
-  // Stage 2  -  Baseline
+  // Stage 2  -  Baseline Comparison
   await activateStage(2);
   const n = vals.length;
   const mean = vals.reduce((a,b)=>a+b,0)/n;
@@ -511,14 +671,54 @@ async function runPipeline(raw, filename) {
   let peak = 0; for (let i=0; i<vals.length; i++) { const a=Math.abs(vals[i]); if(a>peak) peak=a; }
   const cf   = peak/(rms||1);
   const kurt = vals.reduce((s,v)=>s+((v-mean)/std)**4,0)/n;
-  const devSc = (rms-mean)/std;
-  const devRow = classifyDeviation(Math.abs(devSc));
-  doneStage(2, devRow.classification+' ('+devSc.toFixed(2)+'sigma)');
 
-  // Stage 3  -  Trend (DDU for single file  -  cannot establish trend from one snapshot)
+  // Supabase baseline comparison — ISO 13373-2:2016 §8.1
+  // Resolve asset and load baseline/history (non-blocking with fallback)
+  let assetRecord = null, baseline = null, history = [];
+  let devSc, devRow;
+  try {
+    assetRecord = await resolveAsset(
+      machineParams.assetName || 'unknown',
+      selClassId,
+      machineParams.equipType || '',
+      machineParams.measPoint || ''
+    );
+    if (assetRecord && assetRecord.id) {
+      [baseline, history] = await Promise.all([
+        loadBaseline(assetRecord.id),
+        loadAssetHistory(assetRecord.id, 10)
+      ]);
+    }
+  } catch(e) { console.log('Supabase baseline load failed:', e.message); }
+
+  if (baseline && parseFloat(baseline.std_rms) > 0) {
+    // Real baseline comparison — sigma deviation from established baseline
+    const blMean = parseFloat(baseline.mean_rms);
+    const blStd  = parseFloat(baseline.std_rms) || 1;
+    devSc  = (rms - blMean) / blStd;
+    devRow = classifyDeviation(Math.abs(devSc));
+    doneStage(2, devRow.classification+' ('+devSc.toFixed(2)+'σ vs baseline mean '+blMean.toFixed(3)+' mm/s)');
+  } else {
+    // No baseline yet — use signal self-statistics (single-file mode)
+    devSc  = (rms - mean) / std;
+    devRow = classifyDeviation(Math.abs(devSc));
+    const baselineNote = isBaselineUpload ? ' · Will set baseline' : ' · No baseline yet';
+    doneStage(2, devRow.classification+' ('+devSc.toFixed(2)+'sigma'+baselineNote+')');
+  }
+
+  // Stage 3  -  Trend State Assessment — ISO 13373-2:2016 §8.2
   await activateStage(3);
-  const trendRow = CONFIG.trend_state_rules.find(r => r.code === 'DDU');
-  doneStage(3, 'DDU  -  '+trendRow.label);
+  let trendRow;
+  if (history.length >= 3) {
+    // Real trend from historical readings
+    const trendCode = computeTrendFromHistory(history);
+    trendRow = CONFIG.trend_state_rules.find(r => r.code === trendCode) || CONFIG.trend_state_rules.find(r => r.code === 'DDU');
+    doneStage(3, trendRow.code+' ('+history.length+' readings) — '+trendRow.label);
+  } else {
+    // DDU — insufficient history for trend (ISO 13373-2:2016 §8.2)
+    trendRow = CONFIG.trend_state_rules.find(r => r.code === 'DDU');
+    doneStage(3, 'DDU — '+trendRow.label+' ('+(history.length)+' reading'+(history.length===1?'':'s')+' — need 3+)');
+  }
 
   // Stage 4  -  ISO Zone
   await activateStage(4);
@@ -576,13 +776,35 @@ async function runPipeline(raw, filename) {
     kurt: kurt.toFixed(2), devSc: devSc.toFixed(2), devRow,
     zoneRow: finalZoneRow, trendRow,
     earlyWarn, faults: faults.length ? faults : allFaults.slice(0, CONFIG.fault_display_limit),
-    fftR, rulR: finalRulR, n, sr, classRow, cu, shaftHz, singleFile: true,
-    override, healthIdx };
+    fftR, rulR: finalRulR, n, sr, classRow, cu, shaftHz,
+    override, healthIdx,
+    singleFile: history.length < 3,
+    historyCount: history.length,
+    assetName: machineParams.assetName || null };
 
   await new Promise(r => setTimeout(r, 250));
   document.getElementById('processing-screen').style.display = 'none';
   document.getElementById('results-screen').style.display = 'block';
   renderResults();
+
+  // Save to Supabase (non-blocking — runs in background)
+  (async () => {
+    try {
+      const savedNVR = await saveNVRToSupabase(nvr, assetRecord?.id || null, isBaselineUpload);
+      // If marked as baseline upload, save/update baseline record
+      if (isBaselineUpload && assetRecord?.id) {
+        const baselineRecords = history.length > 0
+          ? [...history, { rms_mms: rms }]   // include current reading
+          : [{ rms_mms: rms }];
+        await saveBaseline(assetRecord.id, baselineRecords);
+        console.log('Baseline established for asset:', assetRecord.asset_name);
+        // Reset toggle after baseline is set
+        isBaselineUpload = false;
+        const bt = document.getElementById('baseline-toggle');
+        if (bt) bt.classList.remove('active');
+      }
+    } catch(e) { console.log('Supabase post-analysis save failed:', e.message); }
+  })();
   streamClaude();
 }
 
@@ -1415,7 +1637,8 @@ async function activateStage(n){
 function doneStage(n,msg){const el=document.getElementById('stage-'+n);el.className='stage-item done';el.querySelector('.s-num').textContent=n;document.getElementById('s'+n+'-st').textContent=msg;}
 
 function resetApp(){
-  pendingFile=null;pendingRaw=null;pendingMatBuffer=false;machineParams={};
+  pendingFile=null;pendingRaw=null;pendingMatBuffer=false;machineParams={};isBaselineUpload=false;
+  const bt=document.getElementById('baseline-toggle'); if(bt) bt.classList.remove('active');
   document.getElementById('fileInput').value='';
   document.getElementById('upload-screen').style.display='flex';
   document.getElementById('processing-screen').style.display='none';
