@@ -195,6 +195,8 @@ const CONFIG = {
 // AxiomAnare  -  Diagnostic Engine
 // All logic runs after DOM is fully loaded
 document.addEventListener('DOMContentLoaded', function () {
+// Set measurement date default to today
+(function() { const el = document.getElementById('p-meas-date'); if (el) el.value = new Date().toISOString().split('T')[0]; })();
 initBearingLibrary();   // pre-load bearing library from Supabase for wizard lookup
 
 // == CONFIG LOOKUP HELPERS ==
@@ -377,7 +379,7 @@ async function saveNVRToSupabase(nvr, assetId, isBaseline) {
       load_pct:        nvr.machineParams?.loadPct || null,
       is_baseline:     isBaseline || false,
       health_score:    nvr.healthIdx ? nvr.healthIdx.score : null,
-      recorded_at:     new Date().toISOString()
+      recorded_at:     (nvr.machineParams && nvr.machineParams.measDate ? nvr.machineParams.measDate + 'T12:00:00.000Z' : new Date().toISOString())
     };
     const saved = await SB.post('nvr_records', record);
     if (saved && saved[0]) {
@@ -542,6 +544,9 @@ function readMachineParams() {
   params.loadPct    = (() => { const el=document.getElementById('p-load'); return el&&el.value?parseInt(el.value):null; })();
   params.equipType  = (equipEl&&equipEl.value)||'';
   params.measPoint  = (measEl&&measEl.value)||'';
+  // Measurement date — user-entered or today
+  const measDateEl = document.getElementById('p-meas-date');
+  params.measDate = (measDateEl && measDateEl.value) ? measDateEl.value : new Date().toISOString().split('T')[0];
   params.loadZonePosition = 'centered';
 
   return params;
