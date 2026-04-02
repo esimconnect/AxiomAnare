@@ -520,9 +520,11 @@ async function runPipeline(raw, filename) {
   if (machineParams.shaftHz > 0) fftR._shaftHz = machineParams.shaftHz;
   const shaftHz = machineParams.shaftHz > 0 ? machineParams.shaftHz : detectShaft(fftR);
   const allFaults = classifyFaults(fftR, cf, kurt, dataTypes, machineParams);
-  // Show: unlocked faults above confidence threshold + all locked faults (greyed out)
+  // Always include ALL unlocked faults (needed for health index + badge + fallback report)
+  // Locked faults (MCSA/power) appended after — greyed in UI, excluded from analysis
+  // Display threshold (minimum_fault_confidence_pct) is enforced in the fault bars render, not here
   const faults = [
-    ...allFaults.filter(f => !f.locked && f.pct >= CONFIG.minimum_fault_confidence_pct),
+    ...allFaults.filter(f => !f.locked),
     ...allFaults.filter(f => f.locked)
   ];
   doneStage(5, (faults[0]?.name||' - ')+' '+(faults[0]?.pct||0)+'%');
