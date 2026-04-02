@@ -520,6 +520,14 @@ window.toggleParams = function() {
   if (sub) sub.innerHTML = isOpen ? '&#9660; Expand' : '&#9650; Collapse';
 };
 
+window.onBaselineToggle = function() {
+  isBaselineUpload = !isBaselineUpload;
+  const el = document.getElementById('baseline-toggle');
+  if (el) el.classList.toggle('active', isBaselineUpload);
+  const chk = document.getElementById('baseline-check');
+  if (chk) chk.textContent = isBaselineUpload ? '✓' : '';
+};
+
 window.onParamChange = function() {
   // Show accuracy indicator when RPM is entered
   const rpm  = parseFloat(document.getElementById('p-rpm')?.value || 0);
