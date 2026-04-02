@@ -291,7 +291,7 @@ async function resolveAsset(assetName, machineClass, equipType, measPoint) {
 async function loadAssetHistory(assetId, limit=10) {
   if (!assetId) return [];
   const rows = await SB.get('nvr_records',
-    'asset_id=eq.'+assetId+'&order=recorded_at.desc&limit='+limit+'&select=rms_mms,kurtosis,crest_factor,iso_zone,top_fault,top_fault_pct,recorded_at,is_baseline'
+    'asset_id=eq.'+assetId+'&order=recorded_at.desc&limit='+limit+'&select=rms_mms,kurtosis,crest_factor,iso_zone,top_fault,top_fault_pct,health_score,recorded_at,is_baseline'
   );
   return rows || [];
 }
@@ -376,6 +376,7 @@ async function saveNVRToSupabase(nvr, assetId, isBaseline) {
       machine_class:   nvr.classRow?.display_label,
       load_pct:        nvr.machineParams?.loadPct || null,
       is_baseline:     isBaseline || false,
+      health_score:    nvr.healthIdx ? nvr.healthIdx.score : null,
       recorded_at:     new Date().toISOString()
     };
     const saved = await SB.post('nvr_records', record);
@@ -1859,7 +1860,7 @@ function buildTrendChart(d, history) {
       const dt = new Date(r.recorded_at);
       labels.push(dt.toLocaleDateString('en-GB', { day:'2-digit', month:'short' }));
       rmsVals.push(parseFloat(r.rms_mms) || 0);
-      healthVals.push(null);  // health not stored in history yet
+      healthVals.push(r.health_score !== null && r.health_score !== undefined ? parseFloat(r.health_score) : null);
       faultVals.push(r.top_fault_pct || 0);
     });
     // Add current reading
