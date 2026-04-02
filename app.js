@@ -738,15 +738,25 @@ async function runPipeline(raw, filename) {
     }
   } catch(e) { console.log('Supabase baseline load failed:', e.message); }
 
-  if (baseline && parseFloat(baseline.std_rms) > 0) {
-    // Real baseline comparison — sigma deviation from established baseline
+  if (baseline && parseFloat(baseline.mean_rms) > 0) {
     const blMean = parseFloat(baseline.mean_rms);
-    const blStd  = parseFloat(baseline.std_rms) || 1;
-    devSc  = (rms - blMean) / blStd;
-    devRow = classifyDeviation(Math.abs(devSc));
-    doneStage(2, devRow.classification+' ('+devSc.toFixed(2)+'σ vs baseline mean '+blMean.toFixed(3)+' mm/s)');
+    const blStd  = parseFloat(baseline.std_rms);
+    if (blStd > 0) {
+      // Full sigma comparison — baseline has std from multiple readings
+      devSc  = (rms - blMean) / blStd;
+      devRow = classifyDeviation(Math.abs(devSc));
+      doneStage(2, devRow.classification+' ('+devSc.toFixed(2)+'σ vs baseline '+blMean.toFixed(3)+'±'+blStd.toFixed(3)+' mm/s)');
+    } else {
+      // Single baseline reading — use % deviation from mean, normalised to typical 10% std assumption
+      // ISO 13373-2:2016 §8.1: single reference reading, flag >25% departure
+      const pctDev = (rms - blMean) / blMean;
+      const assumedStd = blMean * 0.10;  // 10% of baseline mean = 1 sigma assumption
+      devSc  = pctDev / 0.10;
+      devRow = classifyDeviation(Math.abs(devSc));
+      doneStage(2, devRow.classification+' ('+devSc.toFixed(2)+'σ vs baseline '+blMean.toFixed(3)+' mm/s · single reading)');
+    }
   } else {
-    // No baseline yet — use signal self-statistics (single-file mode)
+    // No baseline yet — use signal self-statistics
     devSc  = (rms - mean) / std;
     devRow = classifyDeviation(Math.abs(devSc));
     const baselineNote = isBaselineUpload ? ' · Will set baseline' : ' · No baseline yet';
