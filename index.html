@@ -249,6 +249,12 @@ main{padding-top:54px;position:relative;z-index:1;}
           <input class="param-input" id="p-asset-name" type="text" placeholder="e.g. Pump-01-NDE, FanMotor-B2-DE" oninput="onParamChange()">
           <div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:4px;">Auto-generated from machine class + type + RPM + point if left blank</div>
         </div>
+        <!-- Measurement date -->
+        <div class="param-group" style="margin-top:4px;">
+          <div class="param-label">Measurement Date <span>When was this reading taken?</span></div>
+          <input class="param-input" id="p-meas-date" type="date" oninput="onParamChange()">
+          <div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:2px;">Defaults to today — change to back-date historical readings</div>
+        </div>
         <!-- Baseline toggle -->
         <label class="baseline-toggle" id="baseline-toggle" style="cursor:pointer;">
           <input type="checkbox" id="baseline-checkbox" style="display:none;" onchange="onBaselineToggle()">
