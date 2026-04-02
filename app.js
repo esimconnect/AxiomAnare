@@ -572,8 +572,8 @@ window.onBearingInput = function(val) {
 // Makes multipliers available client-side for readMachineParams() lookup
 async function initBearingLibrary() {
   try {
-    const SUPA_URL = 'https://duedtedevbnrflfbnzba.supabase.co';
-    const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1ZWR0ZWRldmJucmZsZmJuemJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0OTIzNzIsImV4cCI6MjA5MDA2ODM3Mn0.u_ngs7Fct7xQof90C-aPLMKeMcrqtS-yccUgI7r2FrE';
+    const SUPA_URL = 'https://zjfhxutcvjxootoekade.supabase.co';
+    const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqZmh4dXRjdmp4b290b2VrYWRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMjgzODAsImV4cCI6MjA5MDcwNDM4MH0.5yGgSjALJhTQm5Ud3W-fU2Bgo-3PkziaS0oLrGMYQ9o';
     const res = await fetch(SUPA_URL + '/rest/v1/bearing_library?select=model,bpfo_mult,bpfi_mult,bsf_mult,ftf_mult&order=model', {
       headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
     });
