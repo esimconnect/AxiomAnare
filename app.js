@@ -779,10 +779,8 @@ async function runPipeline(raw, filename) {
         const hMean = vals.reduce((a,b)=>a+b,0) / vals.length;
         effectiveStd = Math.sqrt(vals.reduce((s,v)=>s+(v-hMean)**2,0) / vals.length) || (blMean * 0.05);
         stdSource = 'derived from '+vals.length+' Zone A readings';
-        // Update baseline in Supabase with the real std (non-blocking)
-        if (assetRecord?.id) {
-          saveBaseline(assetRecord.id, healthyHistory).catch(()=>{});
-        }
+        // Note: baseline auto-update removed — baseline only set via user checkbox
+        // to prevent contamination from fault readings
       } else {
         // Fallback: ISO 13373-2 §8.1 recommends ±10% as minimum acceptance band
         // for single-reading baselines. Use 5% (tighter) for well-controlled measurements.
