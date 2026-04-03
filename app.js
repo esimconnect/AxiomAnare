@@ -1629,10 +1629,14 @@ function classifyFaults(fft, cf, kurt, dataTypes, machineParams) {
       const ftfE  = eArr ? ber(eArr.freqs, eArr.mags, ftfHz, 0.20, 3) : 0;
       h2 = rule.harmonic_count;
       // ISO 13379-1:2012 §A.3: FTF modulation confirms ball defect
-      const effectiveBer = (ftfE > BEARING_BER_THRESHOLD) ? Math.max(bsfE, ftfE) : bsfE;
+      const effectiveBer = (ftfE > CONFIG.bearing_ber_threshold) ? Math.max(bsfE, ftfE) : bsfE;
       sc = berToScore(effectiveBer, rule.confidence_weight);
       sc += Math.round((cfB + kB) * rule.confidence_weight * snrFactor);
-      if (ftfE > BEARING_BER_THRESHOLD) sc = Math.round(sc * 1.2);
+      if (ftfE > CONFIG.bearing_ber_threshold) sc = Math.round(sc * 1.2);
+      // Ball defects produce weaker spectral signatures than race defects at the same size.
+      // ISO 13379-1:2012 §A.3: apply 1.35× uplift when roll band is the dominant bearing signal
+      // and race BER is not strongly elevated (< 2.5) — avoids false uplift on OR/IR cases.
+      if (effectiveBer > 1.0 && maxRaceBer < 2.5) sc = Math.round(sc * 1.35);
 
     // ── BEARING — CAGE DEFECT (FTF) ──────────────────────────────────────
     // ISO 13379-1:2012 Annex A §A.3 — roll band envelope BER
