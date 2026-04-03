@@ -199,6 +199,18 @@ document.addEventListener('DOMContentLoaded', function () {
 (function() { const el = document.getElementById('p-meas-date'); if (el) el.value = new Date().toISOString().split('T')[0]; })();
 initBearingLibrary();   // pre-load bearing library from Supabase for wizard lookup
 
+// ── Supabase keep-alive ping ──────────────────────────────────────────────
+// Free tier pauses after 7 days inactivity. Ping every 4 days to prevent pause.
+// Lightweight read-only query on bearing_library (smallest table).
+(function supabaseKeepAlive() {
+  const ping = () => SB.get('bearing_library', 'limit=1').then(r =>
+    console.log('[Supabase] keep-alive ping:', r ? 'OK' : 'no response')
+  ).catch(() => {});
+  ping(); // immediate ping on load
+  setInterval(ping, 4 * 24 * 60 * 60 * 1000); // every 4 days
+})();
+// ── End keep-alive ────────────────────────────────────────────────────────
+
 // == CONFIG LOOKUP HELPERS ==
 function getZonesForClass(id) {
   return CONFIG.iso_severity_zones.filter(z => z.class_id === id)
@@ -751,15 +763,35 @@ async function runPipeline(raw, filename) {
       // Full sigma comparison — baseline has std from multiple readings
       devSc  = (rms - blMean) / blStd;
       devRow = classifyDeviation(Math.abs(devSc));
-      doneStage(2, devRow.classification+' ('+devSc.toFixed(2)+'σ vs baseline '+blMean.toFixed(3)+'±'+blStd.toFixed(3)+' mm/s)');
+      doneStage(2, devRow.classification+' ('+devSc.toFixed(2)+'σ vs baseline '+blMean.toFixed(3)+'±'+blStd.toFixed(3)+' mm/s · '+baseline.sample_count+' samples)');
     } else {
-      // Single baseline reading — use % deviation from mean, normalised to typical 10% std assumption
-      // ISO 13373-2:2016 §8.1: single reference reading, flag >25% departure
-      const pctDev = (rms - blMean) / blMean;
-      const assumedStd = blMean * 0.10;  // 10% of baseline mean = 1 sigma assumption
-      devSc  = pctDev / 0.10;
+      // std=0 — only one baseline reading so far.
+      // Try to derive std from early healthy NVR history (Zone A readings).
+      // ISO 13373-2:2016 §8.1: baseline should be established from stable operating condition.
+      const healthyHistory = history.filter(r =>
+        r.iso_zone === 'A' && parseFloat(r.rms_mms) > 0
+      );
+      let effectiveStd;
+      let stdSource;
+      if (healthyHistory.length >= 2) {
+        // Compute real std from Zone A historical readings
+        const vals = healthyHistory.map(r => parseFloat(r.rms_mms));
+        const hMean = vals.reduce((a,b)=>a+b,0) / vals.length;
+        effectiveStd = Math.sqrt(vals.reduce((s,v)=>s+(v-hMean)**2,0) / vals.length) || (blMean * 0.05);
+        stdSource = 'derived from '+vals.length+' Zone A readings';
+        // Update baseline in Supabase with the real std (non-blocking)
+        if (assetRecord?.id) {
+          saveBaseline(assetRecord.id, healthyHistory).catch(()=>{});
+        }
+      } else {
+        // Fallback: ISO 13373-2 §8.1 recommends ±10% as minimum acceptance band
+        // for single-reading baselines. Use 5% (tighter) for well-controlled measurements.
+        effectiveStd = blMean * 0.05;
+        stdSource = 'single reading · ±5% band';
+      }
+      devSc  = (rms - blMean) / effectiveStd;
       devRow = classifyDeviation(Math.abs(devSc));
-      doneStage(2, devRow.classification+' ('+devSc.toFixed(2)+'σ vs baseline '+blMean.toFixed(3)+' mm/s · single reading)');
+      doneStage(2, devRow.classification+' ('+devSc.toFixed(2)+'σ vs baseline '+blMean.toFixed(3)+' mm/s · '+stdSource+')');
     }
   } else {
     // No baseline yet — use signal self-statistics
@@ -1520,9 +1552,9 @@ function classifyFaults(fft, cf, kurt, dataTypes, machineParams) {
   const maxBearingBer = Math.max(maxRaceBer, maxRollBer);
 
   // Mechanical suppression cap — ISO 13379-1:2012 §5.2
-  // Threshold 1.5: BER > 1.5 = fault band meaningfully elevated above background
-  const BEARING_BER_THRESHOLD = 1.5;
-  const mechCap = maxBearingBer > BEARING_BER_THRESHOLD ? 10 : 95;
+  // When bearing envelope BER exceeds threshold, mechanical fault scores capped at 10%
+  // Uses CONFIG value (currently 1.3) — tuned against CWRU dataset
+  const mechCap = maxBearingBer > CONFIG.bearing_ber_threshold ? 10 : 95;
 
   // ── MAIN RULE LOOP ────────────────────────────────────────────────────────
   return CONFIG.fault_frequency_rules.map(rule => {
