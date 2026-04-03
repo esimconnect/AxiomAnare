@@ -293,7 +293,7 @@ async function resolveAsset(assetName, machineClass, equipType, measPoint) {
 async function loadAssetHistory(assetId, limit=10) {
   if (!assetId) return [];
   const rows = await SB.get('nvr_records',
-    'asset_id=eq.'+assetId+'&order=recorded_at.desc&limit='+limit+'&select=rms_mms,kurtosis,crest_factor,iso_zone,top_fault,top_fault_pct,health_score,recorded_at,is_baseline'
+    'asset_id=eq.'+assetId+'&order=recorded_at.desc&limit='+limit+'&select=filename,rms_mms,kurtosis,crest_factor,iso_zone,top_fault,top_fault_pct,health_score,recorded_at,is_baseline'
   );
   return rows || [];
 }
@@ -1876,7 +1876,7 @@ function buildTrendChart(d, history) {
   if (history && history.length > 0) {
     [...history].reverse().forEach((r, i) => {
       readings.push({
-        label:     (r.filename || 'Reading') + '  ·  ' + formatDate(r.recorded_at),
+        label:     (r.filename ? r.filename.replace(/\.mat$/i,'') : 'Reading') + '  ·  ' + formatDate(r.recorded_at),
         date:      formatDate(r.recorded_at),
         rms:       parseFloat(r.rms_mms) || 0,
         health:    r.health_score != null ? parseFloat(r.health_score) : null,
@@ -1892,7 +1892,7 @@ function buildTrendChart(d, history) {
     ? d.machineParams.measDate : new Date().toISOString().split('T')[0];
   const curColour = readings.length === 0 ? '#4d9de0' : TREND_PT_COLOURS[readings.length % TREND_PT_COLOURS.length];
   readings.push({
-    label:     d.filename + '  ·  ' + formatDate(curDate) + '  (now)',
+    label:     d.filename.replace(/\.mat$/i,'') + '  ·  ' + formatDate(curDate) + '  (now)',
     date:      formatDate(curDate),
     rms:       parseFloat(d.rms),
     health:    d.healthIdx ? d.healthIdx.score : null,
