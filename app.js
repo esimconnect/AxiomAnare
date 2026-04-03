@@ -75,7 +75,7 @@ const CONFIG = {
       detection_note:"Sub-harmonic and multiple harmonics of shaft speed indicate structural looseness",
       iso_reference:"ISO 13379-1:2012 S5.4" },
     { rule_id:"r_imbal",       fault_type:"Mechanical Unbalance",  category:"mechanical", requires:"vibration",
-      freq_multiplier:1.0,  harmonic_count:1, bandwidth_pct:0.12, confidence_weight:0.44,
+      freq_multiplier:1.0,  harmonic_count:1, bandwidth_pct:0.12, confidence_weight:0.50,
       detection_note:"Dominant 1x shaft frequency component",
       iso_reference:"ISO 13379-1:2012 S5.2" },
     { rule_id:"r_misalign",    fault_type:"Shaft Misalignment",    category:"mechanical", requires:"vibration",
@@ -93,7 +93,7 @@ const CONFIG = {
       detection_note:"Ball pass frequency inner race harmonics with shaft-rate sidebands",
       iso_reference:"ISO 13379-1:2012 Annex A SA.3" },
     { rule_id:"r_bsf",  fault_type:"Bearing - Rolling Element",    category:"bearing",   requires:"vibration",
-      freq_multiplier:2.4,  harmonic_count:2, bandwidth_pct:0.20, confidence_weight:0.38,
+      freq_multiplier:2.4,  harmonic_count:2, bandwidth_pct:0.15, confidence_weight:0.30,
       detection_note:"Ball spin frequency - indicates rolling element surface defect",
       iso_reference:"ISO 13379-1:2012 Annex A SA.3" },
     { rule_id:"r_ftf",  fault_type:"Bearing - Cage Defect",        category:"bearing",   requires:"vibration",
@@ -1631,10 +1631,7 @@ function classifyFaults(fft, cf, kurt, dataTypes, machineParams) {
       sc = berToScore(effectiveBer, rule.confidence_weight);
       sc += Math.round((cfB + kB) * rule.confidence_weight * snrFactor);
       if (ftfE > CONFIG.bearing_ber_threshold) sc = Math.round(sc * 1.2);
-      // Ball defects produce weaker spectral signatures than race defects at the same size.
-      // ISO 13379-1:2012 §A.3: apply 1.35× uplift when roll band is the dominant bearing signal
-      // and race BER is not strongly elevated (< 2.5) — avoids false uplift on OR/IR cases.
-      if (effectiveBer > 1.0 && maxRaceBer < 2.5) sc = Math.round(sc * 1.35);
+
 
     // ── BEARING — CAGE DEFECT (FTF) ──────────────────────────────────────
     // ISO 13379-1:2012 Annex A §A.3 — roll band envelope BER
