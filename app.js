@@ -1856,7 +1856,8 @@ window.switchTrendTab = function(tab) {
   if (window._lastTrendArgs) buildTrendChart(...window._lastTrendArgs);
 };
 
-const TREND_COLOURS = ['#4d9de0','#2ecc71','#f39c12','#e74c3c','#9b59b6','#1abc9c','#e67e22','#00bcd4','#ff5722','#cddc39'];
+// Colour per reading — baseline always blue
+const TREND_PT_COLOURS = ['#4d9de0','#2ecc71','#f39c12','#e74c3c','#9b59b6','#1abc9c','#e67e22','#00bcd4'];
 
 function buildTrendChart(d, history) {
   window._lastTrendArgs = [d, history];
@@ -1870,117 +1871,123 @@ function buildTrendChart(d, history) {
     return dt.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'2-digit' });
   };
 
-  // Build one dataset per reading (history + current)
-  // Each reading = one named line with a single point on its date
-  const allReadings = [];
+  // Build ordered list of all readings
+  const readings = [];
   if (history && history.length > 0) {
-    [...history].reverse().forEach(r => {
-      allReadings.push({
-        label: (r.filename || 'Reading') + ' · ' + formatDate(r.recorded_at),
-        date:  formatDate(r.recorded_at),
-        rms:   parseFloat(r.rms_mms) || 0,
-        health: r.health_score !== null && r.health_score !== undefined ? parseFloat(r.health_score) : null,
-        fault: r.top_fault_pct || 0,
-        isBaseline: !!r.is_baseline
+    [...history].reverse().forEach((r, i) => {
+      readings.push({
+        label:     (r.filename || 'Reading') + '  ·  ' + formatDate(r.recorded_at),
+        date:      formatDate(r.recorded_at),
+        rms:       parseFloat(r.rms_mms) || 0,
+        health:    r.health_score != null ? parseFloat(r.health_score) : null,
+        fault:     r.top_fault_pct || 0,
+        isBaseline: !!r.is_baseline,
+        isCurrent: false,
+        colour:    i === 0 ? '#4d9de0' : TREND_PT_COLOURS[i % TREND_PT_COLOURS.length]
       });
     });
   }
   // Current reading
-  const curDate = (d.machineParams && d.machineParams.measDate) ? d.machineParams.measDate : new Date().toISOString().split('T')[0];
-  allReadings.push({
-    label: d.filename + ' · ' + formatDate(curDate) + ' (now)',
-    date:  formatDate(curDate),
-    rms:   parseFloat(d.rms),
-    health: d.healthIdx ? d.healthIdx.score : null,
-    fault: d.faults.find(f=>!f.locked&&f.pct>0)?.pct || 0,
+  const curDate = (d.machineParams && d.machineParams.measDate)
+    ? d.machineParams.measDate : new Date().toISOString().split('T')[0];
+  const curColour = readings.length === 0 ? '#4d9de0' : TREND_PT_COLOURS[readings.length % TREND_PT_COLOURS.length];
+  readings.push({
+    label:     d.filename + '  ·  ' + formatDate(curDate) + '  (now)',
+    date:      formatDate(curDate),
+    rms:       parseFloat(d.rms),
+    health:    d.healthIdx ? d.healthIdx.score : null,
+    fault:     d.faults.find(f=>!f.locked&&f.pct>0)?.pct || 0,
     isBaseline: false,
-    isCurrent: true
+    isCurrent:  true,
+    colour:    curColour
   });
 
-  const count = allReadings.length;
+  const count = readings.length;
   const badge = document.getElementById('trend-reading-count');
   if (badge) badge.textContent = count + ' reading' + (count===1?'':'s') + (count<3?' — need 3+ for trend':'');
   const chartBadge = document.getElementById('trend-chart-badge');
   if (chartBadge) {
     chartBadge.textContent = d.trendRow.code + ' — ' + d.trendRow.label;
-    const tC = { SWB:'b-green', DDU:'b-blue', PRS:'b-yellow', PRA:'b-red', RGI:'b-green', SCO:'b-red' };
-    chartBadge.className = 'badge ' + (tC[d.trendRow.code] || 'b-blue');
+    const tC = {SWB:'b-green',DDU:'b-blue',PRS:'b-yellow',PRA:'b-red',RGI:'b-green',SCO:'b-red'};
+    chartBadge.className = 'badge ' + (tC[d.trendRow.code]||'b-blue');
   }
 
-  // All readings share the same x-axis (dates as labels)
-  const allDates = [...new Set(allReadings.map(r => r.date))];
-
   const isRMS = trendTab === 'rms';
+  const labels = readings.map(r => r.date);
+  const values = readings.map(r => isRMS ? r.rms : r.health);
+  const ptColours = readings.map(r => r.isBaseline ? '#4d9de0' : r.colour);
+  const ptBorder  = readings.map(r => r.isCurrent ? '#ffffff' : '#1a2030');
+  const ptRadius  = readings.map(r => r.isCurrent ? 9 : r.isBaseline ? 8 : 7);
+  const ptStyle   = readings.map(r => r.isBaseline ? 'rectRot' : 'circle');
 
-  // One dataset per reading — single point on its date, null elsewhere
-  const datasets = allReadings.map((r, i) => {
-    const colour = r.isBaseline ? '#4d9de0' : TREND_COLOURS[i % TREND_COLOURS.length];
-    const data = allDates.map(dt => dt === r.date ? (isRMS ? r.rms : r.health) : null);
-    return {
-      label: r.label,
-      data,
-      borderColor: colour,
-      backgroundColor: colour + '22',
-      pointBackgroundColor: r.isCurrent ? '#ffffff' : colour,
-      pointBorderColor: colour,
-      pointBorderWidth: r.isBaseline ? 3 : 2,
-      pointRadius: r.isCurrent ? 8 : 6,
-      pointStyle: r.isBaseline ? 'star' : 'circle',
+  // Baseline reference line (horizontal dashed)
+  const baselineVal = readings.find(r => r.is_baseline || readings.indexOf(r)===0);
+  const baselineY   = isRMS ? (baselineVal?.rms||null) : (baselineVal?.health||null);
+
+  const datasets = [
+    // Main connected trend line
+    {
+      label: isRMS ? 'RMS mm/s' : 'Health Index',
+      data: values,
+      borderColor: 'rgba(255,255,255,0.25)',
+      backgroundColor: 'transparent',
       borderWidth: 1.5,
-      borderDash: r.isBaseline ? [] : [4,3],
-      tension: 0,
-      spanGaps: false
-    };
-  });
+      borderDash: [5,4],
+      pointRadius: ptRadius,
+      pointBackgroundColor: ptColours,
+      pointBorderColor: ptBorder,
+      pointBorderWidth: 2,
+      pointStyle: ptStyle,
+      tension: 0.35,
+      spanGaps: true,
+      fill: false
+    }
+  ];
 
-  // Also add a trend line (connect all points)
-  const trendLineData = allDates.map(dt => {
-    const match = allReadings.find(r => r.date === dt);
-    return match ? (isRMS ? match.rms : match.health) : null;
-  });
-  datasets.unshift({
-    label: 'Trend',
-    data: trendLineData,
-    borderColor: 'rgba(255,255,255,0.15)',
-    backgroundColor: 'transparent',
-    pointRadius: 0,
-    borderWidth: 1,
-    borderDash: [2,4],
-    tension: 0.35,
-    spanGaps: true,
-    order: 10
-  });
+  // Baseline reference horizontal line
+  if (baselineY !== null) {
+    datasets.push({
+      label: 'Baseline reference',
+      data: readings.map(() => baselineY),
+      borderColor: '#4d9de0',
+      backgroundColor: 'transparent',
+      borderWidth: 1,
+      borderDash: [3,5],
+      pointRadius: 0,
+      tension: 0,
+      fill: false
+    });
+  }
 
   trendInst = new Chart(ctx.getContext('2d'), {
     type: 'line',
-    data: { labels: allDates, datasets },
+    data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: {
-          display: true,
-          position: 'bottom',
-          labels: {
-            color: '#7f93aa', font: { size: 9 },
-            filter: item => item.text !== 'Trend',
-            boxWidth: 12, padding: 10
-          }
-        },
+        legend: { display: false },
         tooltip: {
-          backgroundColor: '#1a2030', borderColor: '#3a5070', borderWidth: 1,
-          padding: 10, titleColor: '#ffffff', bodyColor: '#c0cfe0',
-          filter: item => item.dataset.label !== 'Trend' && item.raw !== null,
+          backgroundColor: '#1a2030',
+          borderColor: '#3a5070',
+          borderWidth: 1,
+          padding: 10,
+          titleColor: '#ffffff',
+          bodyColor: '#c0cfe0',
           callbacks: {
+            title: items => readings[items[0].dataIndex]?.label || items[0].label,
             label: c => {
+              if (c.dataset.label === 'Baseline reference') return ' Baseline: ' + (isRMS ? baselineY.toFixed(3)+' mm/s' : baselineY+'/100');
               if (c.raw === null) return null;
               return isRMS
-                ? ' ' + c.dataset.label.split(' · ')[0] + ': ' + (c.raw||0).toFixed(3) + ' mm/s'
-                : ' ' + c.dataset.label.split(' · ')[0] + ': ' + c.raw + '/100';
+                ? ' RMS: ' + (c.raw||0).toFixed(3) + ' mm/s'
+                : ' Health: ' + c.raw + '/100';
             }
           }
-        }
+        },
+        // Coloured point annotations in legend area
+        annotation: {}
       },
       scales: {
         x: {
@@ -2000,6 +2007,17 @@ function buildTrendChart(d, history) {
       }
     }
   });
+
+  // Build custom colour legend below chart
+  const legendEl = document.getElementById('trend-legend');
+  if (legendEl) {
+    legendEl.innerHTML = readings.map(r =>
+      '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:9px;color:var(--muted);font-family:IBM Plex Mono,monospace;">'
+      + '<span style="width:10px;height:10px;border-radius:50%;background:'+r.colour+';border:1.5px solid '+(r.isBaseline?'#fff':'#1a2030')+';flex-shrink:0;"></span>'
+      + r.label
+      + '</span>'
+    ).join('');
+  }
 }
 // == END TREND CHART =========================================================
 

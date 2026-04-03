@@ -515,12 +515,13 @@ main{padding-top:54px;position:relative;z-index:1;}
       </div>
     </div>
     <div class="trend-tabs">
-      <button class="trend-tab active" data-tab="rms" onclick="switchTrendTab('rms')">RMS + Fault Score</button>
+      <button class="trend-tab active" data-tab="rms" onclick="switchTrendTab('rms')">RMS Velocity</button>
       <button class="trend-tab" data-tab="health" onclick="switchTrendTab('health')">Health Index</button>
     </div>
-    <div style="position:relative;height:220px;">
+    <div style="position:relative;height:240px;">
       <canvas id="trendChart"></canvas>
     </div>
+    <div id="trend-legend" style="margin-top:10px;line-height:2;"></div>
   </div>
 
   <!-- ROW 3: AI Recommendations -->
