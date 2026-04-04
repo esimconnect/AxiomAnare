@@ -105,11 +105,11 @@ const CONFIG = {
     // These are detectable from vibration as the mechanical effects of electrical faults.
     // Confidence is lower than direct MCSA measurement. Labelled as "vibration-derived".
     { rule_id:"r_rotor_bar",   fault_type:"Electrical - Rotor Bar",    category:"electrical", requires:"vibration",
-      freq_multiplier:1.0,  harmonic_count:4, bandwidth_pct:0.08, confidence_weight:0.30,
+      freq_multiplier:1.0,  harmonic_count:4, bandwidth_pct:0.08, confidence_weight:0.20,
       detection_note:"Rotor bar defects create amplitude modulation at 1x +/- slip frequency. Vibration-derived indicator  -  confirm with MCSA.",
       iso_reference:"IEC 60034-14:2003 S5.2" },
     { rule_id:"r_stator_ecc",  fault_type:"Electrical - Stator Eccentricity", category:"electrical", requires:"vibration",
-      freq_multiplier:2.0,  harmonic_count:2, bandwidth_pct:0.10, confidence_weight:0.25,
+      freq_multiplier:2.0,  harmonic_count:2, bandwidth_pct:0.10, confidence_weight:0.18,
       detection_note:"Air gap variation from stator eccentricity produces vibration at twice line frequency (100/120 Hz). Vibration-derived indicator.",
       iso_reference:"IEC 60034-14:2003 S5.1" },
 
@@ -1692,7 +1692,10 @@ function classifyFaults(fft, cf, kurt, dataTypes, machineParams) {
       sc = berToScore(avgBer, rule.confidence_weight);
     }
 
-    const cap = isVibDerived ? 65 : 95;
+    // IEC 60034-14: vibration-derived electrical faults are indirect indicators only.
+    // Cap at 19 (Low tier) — they should not outrank direct vibration mechanical/bearing findings.
+    // Direct MCSA unlocks full scoring range.
+    const cap = isVibDerived ? 19 : (rule.category === 'mechanical' ? mechCap : 95);
 
     return {
       name:             rule.fault_type,
