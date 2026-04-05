@@ -1920,6 +1920,7 @@ function buildTrendChart(d, history) {
         rms:       parseFloat(r.rms_mms) || 0,
         health:    r.health_score != null ? parseFloat(r.health_score) : null,
         fault:     r.top_fault_pct || 0,
+        topFault:  r.top_fault ? r.top_fault.replace('Bearing - ','').replace('Electrical - ','').replace('Mechanical ','') : null,
         isBaseline: !!r.is_baseline,
         isCurrent: false,
         colour:    i === 0 ? '#4d9de0' : TREND_PT_COLOURS[i % TREND_PT_COLOURS.length]
@@ -1936,6 +1937,7 @@ function buildTrendChart(d, history) {
     rms:       parseFloat(d.rms),
     health:    d.healthIdx ? d.healthIdx.score : null,
     fault:     d.faults.find(f=>!f.locked&&f.pct>0)?.pct || 0,
+    topFault:  (()=>{ const f=d.faults.find(f=>!f.locked&&f.pct>0); return f ? f.name.replace('Bearing - ','').replace('Electrical - ','').replace('Mechanical ','') : null; })(),
     isBaseline: false,
     isCurrent:  true,
     colour:    curColour
@@ -2051,9 +2053,10 @@ function buildTrendChart(d, history) {
   const legendEl = document.getElementById('trend-legend');
   if (legendEl) {
     legendEl.innerHTML = readings.map(r =>
-      '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:9px;color:var(--muted);font-family:IBM Plex Mono,monospace;">'
+      '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;margin-bottom:2px;font-size:9px;color:var(--muted);font-family:IBM Plex Mono,monospace;">'
       + '<span style="width:10px;height:10px;border-radius:50%;background:'+r.colour+';border:1.5px solid '+(r.isBaseline?'#fff':'#1a2030')+';flex-shrink:0;"></span>'
       + r.label
+      + (r.topFault ? '<span style="color:'+r.colour+';margin-left:3px;">· '+r.topFault+'</span>' : '')
       + '</span>'
     ).join('');
   }
