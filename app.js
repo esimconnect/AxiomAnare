@@ -1212,17 +1212,22 @@ function applyFaultOverride(zoneRow, rulR, faults, kurt, cf, classRow) {
   const isBearing   = topFault?.category === 'bearing';
 
   // Rule 1: Bearing fault overrides RMS zone — ISO 13379-1:2012 §5.4
-  if (isBearing && topPct >= 60) {
+  // Threshold: 40 = Elevated tier — if fault engine calls it Elevated or higher,
+  // frequency analysis overrides RMS-based zone classification.
+  if (isBearing && topPct >= 40) {
     result.overrideActive = true;
-    if (zoneRow.zone_label === 'A' || (zoneRow.zone_label === 'B' && topPct >= 80)) {
+    if (zoneRow.zone_label === 'A' || zoneRow.zone_label === 'B') {
+      const newZone = topPct >= 80 ? 'C' : topPct >= 60 ? 'B' : 'B';
       result.zoneRow = {
         ...zoneRow,
-        zone_label: topPct >= 80 ? 'C' : 'B',
+        zone_label: newZone,
         action_required: topPct >= 80
           ? 'BEARING FAULT DETECTED — Corrective maintenance required. RMS underestimates severity for impulsive faults.'
-          : 'BEARING FAULT DETECTED — Schedule inspection. Frequency analysis indicates bearing defect despite low RMS.'
+          : topPct >= 60
+          ? 'BEARING FAULT DETECTED — Schedule inspection. Frequency analysis indicates bearing defect despite low RMS.'
+          : 'BEARING FAULT ELEVATED — Bearing defect detected. Inspection recommended. RMS does not yet reflect fault severity.'
       };
-      const rulFactor = topPct >= 80 ? 0.4 : 0.6;
+      const rulFactor = topPct >= 80 ? 0.4 : topPct >= 60 ? 0.6 : 0.75;
       result.rulR = { ...rulR, days: Math.round(rulR.days * rulFactor), ci: Math.round(rulR.ci * rulFactor), overridden: true };
     }
     result.overrideReason = 'Bearing fault indicator: ' + faultIndicatorLabel(topPct) + ' (' + topName + ') — frequency analysis overrides RMS zone per ISO 13379-1:2012 §5.4';
