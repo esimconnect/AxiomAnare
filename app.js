@@ -2169,7 +2169,7 @@ async function streamClaude(){
     '6. RUL & PROGNOSTIC NOTE  -  Quote days and CI. Cite ISO 13381-1 clause. State limitations.',
   ].join('\n');
   try{
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:CONFIG.chatbot_config.model_version,max_tokens:CONFIG.chatbot_config.max_output_tokens,stream:true,messages:[{role:'user',content:prompt}]})});
+    const resp=await fetch('https://axiomanare-proxy.kairosventure-io.workers.dev/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:CONFIG.chatbot_config.model_version,max_tokens:CONFIG.chatbot_config.max_output_tokens,stream:true,messages:[{role:'user',content:prompt}]})});
     document.getElementById('stream-thinking').style.display='none';
     if(!resp.ok)throw new Error(await resp.text());
     const reader=resp.body.getReader(),dec=new TextDecoder();let buf='';
