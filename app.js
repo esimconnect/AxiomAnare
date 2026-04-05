@@ -184,11 +184,11 @@ const CONFIG = {
   // Envelope demodulation bands -- ISO 13373-2:2016 §7.5
   // race: high-freq resonance band for race faults (BPFO, BPFI)
   // roll: mid-freq band for rolling element / cage faults (BSF, FTF)
-  envelope_bands: { race: { lo: 3000, hi: 4500 }, roll: { lo: 700, hi: 1800 } },
+  envelope_bands: { race: { lo: 3000, hi: 4500 }, roll: { lo: 50, hi: 1800 } },
 
   // Bearing BER suppression threshold -- ISO 13379-1:2012 §5.2
   // When bearing envelope BER > threshold, mechanical scores capped at 10%
-  bearing_ber_threshold: 1.3
+  bearing_ber_threshold: 1.1
 };
 
 
@@ -1696,7 +1696,7 @@ function classifyFaults(fft, cf, kurt, dataTypes, machineParams) {
     // IEC 60034-14: vibration-derived electrical faults are indirect indicators only.
     // Cap at 19 (Low tier) — they should not outrank direct vibration mechanical/bearing findings.
     // Direct MCSA unlocks full scoring range.
-    const cap = isVibDerived ? 19 : (rule.category === 'mechanical' ? mechCap : 95);
+    const cap = isVibDerived ? 14 : (rule.category === 'mechanical' ? mechCap : 95);
 
     return {
       name:             rule.fault_type,
@@ -1713,6 +1713,10 @@ function classifyFaults(fft, cf, kurt, dataTypes, machineParams) {
   }).sort((a, b) => {
     if (a.locked && !b.locked) return 1;
     if (!a.locked && b.locked) return -1;
+    // Bearing faults rank above vib-derived electrical at equal scores
+    const aElec = a.vibration_derived ? 1 : 0;
+    const bElec = b.vibration_derived ? 1 : 0;
+    if (aElec !== bElec) return aElec - bElec;
     return b.pct - a.pct;
   });
 }
