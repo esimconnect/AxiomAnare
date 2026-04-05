@@ -93,7 +93,7 @@ const CONFIG = {
       detection_note:"Ball pass frequency inner race harmonics with shaft-rate sidebands",
       iso_reference:"ISO 13379-1:2012 Annex A SA.3" },
     { rule_id:"r_bsf",  fault_type:"Bearing - Rolling Element",    category:"bearing",   requires:"vibration",
-      freq_multiplier:2.4,  harmonic_count:2, bandwidth_pct:0.15, confidence_weight:0.30,
+      freq_multiplier:2.4,  harmonic_count:3, bandwidth_pct:0.20, confidence_weight:0.35,
       detection_note:"Ball spin frequency - indicates rolling element surface defect",
       iso_reference:"ISO 13379-1:2012 Annex A SA.3" },
     { rule_id:"r_ftf",  fault_type:"Bearing - Cage Defect",        category:"bearing",   requires:"vibration",
@@ -105,7 +105,7 @@ const CONFIG = {
     // These are detectable from vibration as the mechanical effects of electrical faults.
     // Confidence is lower than direct MCSA measurement. Labelled as "vibration-derived".
     { rule_id:"r_rotor_bar",   fault_type:"Electrical - Rotor Bar",    category:"electrical", requires:"vibration",
-      freq_multiplier:1.0,  harmonic_count:4, bandwidth_pct:0.08, confidence_weight:0.20,
+      freq_multiplier:1.0,  harmonic_count:3, bandwidth_pct:0.06, confidence_weight:0.20,
       detection_note:"Rotor bar defects create amplitude modulation at 1x +/- slip frequency. Vibration-derived indicator  -  confirm with MCSA.",
       iso_reference:"IEC 60034-14:2003 S5.2" },
     { rule_id:"r_stator_ecc",  fault_type:"Electrical - Stator Eccentricity", category:"electrical", requires:"vibration",
@@ -167,7 +167,7 @@ const CONFIG = {
   rul_zone_base_days: [ { zone:"A", base_days:365, iso_reference:"ISO 13381-1:2015 S5.2" }, { zone:"B", base_days:180, iso_reference:"ISO 13381-1:2015 S5.2" }, { zone:"C", base_days:60, iso_reference:"ISO 13381-1:2015 S5.2" }, { zone:"D", base_days:7, iso_reference:"ISO 13381-1:2015 S5.2" } ],
   rul_trend_modifiers: [ { trend_code:"SWB", multiplier:1.00 }, { trend_code:"DDU", multiplier:0.90 }, { trend_code:"PRS", multiplier:0.65 }, { trend_code:"PRA", multiplier:0.40 }, { trend_code:"RGI", multiplier:1.30 }, { trend_code:"SCO", multiplier:0.20 } ],
   rul_ci_fraction: 0.22,
-  kurtosis_thresholds: [ { label:"Normal", lower:0, upper:3.0, score_bonus:0, iso_reference:"ISO 13373-2:2016 S7.4" }, { label:"Minor impacting", lower:3.0, upper:4.0, score_bonus:15, iso_reference:"ISO 13373-2:2016 S7.4" }, { label:"Elevated", lower:4.0, upper:6.0, score_bonus:30, iso_reference:"ISO 13373-2:2016 S7.4" }, { label:"High impacting", lower:6.0, upper:9999, score_bonus:50, iso_reference:"ISO 13373-2:2016 S7.4" } ],
+  kurtosis_thresholds: [ { label:"Normal", lower:0, upper:2.8, score_bonus:0, iso_reference:"ISO 13373-2:2016 S7.4" }, { label:"Minor impacting", lower:2.8, upper:4.0, score_bonus:15, iso_reference:"ISO 13373-2:2016 S7.4" }, { label:"Elevated", lower:4.0, upper:6.0, score_bonus:30, iso_reference:"ISO 13373-2:2016 S7.4" }, { label:"High impacting", lower:6.0, upper:9999, score_bonus:50, iso_reference:"ISO 13373-2:2016 S7.4" } ],
   crest_factor_thresholds: [ { label:"Normal", lower:0, upper:3.5, score_bonus:0, iso_reference:"ISO 13373-2:2016 S7.3" }, { label:"Elevated", lower:3.5, upper:5.0, score_bonus:10, iso_reference:"ISO 13373-2:2016 S7.3" }, { label:"High", lower:5.0, upper:9999, score_bonus:20, iso_reference:"ISO 13373-2:2016 S7.3" } ],
   monitoring_intervals: [ { condition:"zone_D", interval_desc:"Continuous until shutdown", iso_reference:"ISO 13373-1:2002 S7.3" }, { condition:"zone_C", interval_desc:"Daily", iso_reference:"ISO 13373-1:2002 S7.3" }, { condition:"trend_PRA", interval_desc:"Every 3 days", iso_reference:"ISO 13373-1:2002 S7.3" }, { condition:"trend_PRS", interval_desc:"Weekly", iso_reference:"ISO 13373-1:2002 S7.3" }, { condition:"zone_B_or_below", interval_desc:"Monthly", iso_reference:"ISO 13373-1:2002 S7.3" } ],
   minimum_fault_confidence_pct: 8,
