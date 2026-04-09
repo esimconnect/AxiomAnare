@@ -1787,41 +1787,64 @@ function renderMgmtCard(d) {
   // ── Determine overall RAG status ─────────────────────────────────────────
   let rag, iconChar, statusText, findingText;
 
-  // RAG logic:
-  // GREEN  — Zone A AND fault indicator Trace/Low (topPct < 20) AND health >= 65
-  // AMBER  — Zone A with Indicative+ fault, OR Zone B with low-moderate fault
-  // RED    — Zone C/D, OR Health < 40, OR PRA trend with elevated fault
-  if (zone === 'A' && topPct < 20 && hi >= 65) {
+  // RAG logic — FAULT INDICATOR OVERRIDES EVERYTHING
+  // Policy: if a confirmed fault is Indicative or above, fault wins regardless of zone/health.
+  // This prevents a false "Healthy" green when a fault is clearly developing.
+  //
+  // Fault indicator tiers: Trace<8, Low<20, Indicative<40, Elevated<65, Strong<80, Critical>=80
+  // GREEN  — Trace/Low only (topPct < 20) AND Zone A AND health >= 65
+  // AMBER  — Indicative fault (20-39) OR Zone B moderate OR health 40-64
+  // RED    — Elevated+ fault (>=40) OR Zone C/D OR health < 40 OR PRA trend
+
+  if (topPct >= 65) {
+    // Strong or Critical fault — always red, urgent
+    rag = 'red';
+    iconChar = '&#128308;';
+    statusText = 'Immediate Action Required';
+    findingText = top
+      ? plainFaultText(top) + ' Fault severity is high. Arrange inspection immediately — do not defer.'
+      : 'Critical vibration fault detected. Immediate engineering review required.';
+  } else if (topPct >= 40) {
+    // Elevated fault — red regardless of zone
+    rag = 'red';
+    iconChar = '&#128308;';
+    statusText = 'Action Required';
+    findingText = top
+      ? plainFaultText(top) + ' Do not defer — arrange inspection within ' + (rul < 30 ? '7' : rul < 90 ? '30' : '90') + ' days.'
+      : 'Elevated fault detected. Engineering review required.';
+  } else if (topPct >= 20) {
+    // Indicative fault — amber minimum regardless of zone/health
+    rag = 'amber';
+    iconChar = '&#128993;';
+    statusText = 'Monitor Closely';
+    findingText = top
+      ? plainFaultText(top) + ' Fault signal is developing. Schedule inspection at next planned maintenance window.'
+      : 'Developing fault signal detected. Increase monitoring frequency.';
+  } else if (zone === 'A' && hi >= 65) {
+    // No confirmed fault, Zone A, good health — green
     rag = 'green';
     iconChar = '&#128994;';
     statusText = 'Machine is Healthy';
     findingText = topPct >= 8
       ? 'No significant faults detected. A weak background signal was noted — no action required. Continue routine monitoring.'
       : 'No faults detected. Machine is operating normally. Continue routine monitoring schedule.';
-  } else if ((zone === 'A' && topPct >= 20) || (zone === 'B' && topPct < 40 && hi >= 40)) {
-    rag = 'amber';
-    iconChar = '&#128993;';
-    statusText = 'Monitor Closely';
-    findingText = top
-      ? plainFaultText(top) + ' Schedule inspection at next planned maintenance window.'
-      : 'Elevated vibration detected. Condition is changing — increase monitoring frequency.';
-  } else if (zone === 'B' && hi >= 65) {
+  } else if (zone === 'B' || hi >= 40) {
+    // Zone B or degraded health but no confirmed fault
     rag = 'amber';
     iconChar = '&#128993;';
     statusText = 'Plan Maintenance';
-    findingText = top
-      ? plainFaultText(top) + ' Plan maintenance within the next monitoring interval.'
-      : 'Vibration elevated above baseline. Review at next maintenance window.';
+    findingText = 'Vibration elevated above baseline. No confirmed fault — review at next maintenance window.';
   } else {
+    // Zone C/D or health < 40
     rag = 'red';
     iconChar = '&#128308;';
     statusText = 'Action Required';
     findingText = top
-      ? plainFaultText(top) + ' Do not defer — arrange inspection within ' + (rul < 30 ? '7' : rul < 90 ? '30' : '90') + ' days.'
+      ? plainFaultText(top) + ' Condition is poor. Arrange inspection within ' + (rul < 30 ? '7' : rul < 90 ? '30' : '90') + ' days.'
       : 'Severe vibration detected. Immediate engineering review required.';
   }
 
-  // Override to red if trend is PRA regardless of zone
+  // Final override — PRA trend with any amber upgrades to red
   if (trend === 'PRA' && rag === 'amber') {
     rag = 'red';
     iconChar = '&#128308;';
