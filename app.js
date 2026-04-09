@@ -559,6 +559,9 @@ function readMachineParams() {
   // Measurement date — user-entered or today
   const measDateEl = document.getElementById('p-meas-date');
   params.measDate = (measDateEl && measDateEl.value) ? measDateEl.value : new Date().toISOString().split('T')[0];
+  // Sampling rate — user declared or auto-detected from file
+  const srEl = document.getElementById('p-sample-rate');
+  params.declaredSampleRate = (srEl && srEl.value) ? parseInt(srEl.value) : null;
   params.loadZonePosition = 'centered';
 
   return params;
@@ -716,7 +719,8 @@ async function runPipeline(raw, filename) {
   }
   if (!parsed || parsed.values.length < 10) { doneStage(1,'QUARANTINED'); setNote('(!) Cannot extract numeric data.'); return; }
   const cu = CONFIG.unit_conversion_factors.find(r => r.canonical_flag === 1).to_unit;
-  const sr = parsed.sampleRate || CONFIG.default_sample_rate_hz;
+  // Sampling rate priority: user declaration > auto-detected from file > CONFIG default
+  const sr = machineParams.declaredSampleRate || parsed.sampleRate || CONFIG.default_sample_rate_hz;
   // Detect what type of data we have from column headers
   const dataTypes = detectDataTypes(parsed.allHeaders || [parsed.colName]);
   const dataBanner = getDataTypeBanner(dataTypes);
@@ -725,7 +729,7 @@ async function runPipeline(raw, filename) {
     const rf = computeFFT(parsed.values, sr); const hz = detectShaft(rf);
     vals = parsed.values.map(v => toCanonicalUnit(v, parsed.unit, hz));
   } else { vals = parsed.values.map(v => toCanonicalUnit(v, parsed.unit, null)); }
-  doneStage(1, vals.length+' samples . '+parsed.unit+'->'+cu);
+  doneStage(1, vals.length+' samples . '+parsed.unit+'->'+cu+' . '+sr+'Hz');
 
   // Stage 2  -  Baseline Comparison
   await activateStage(2);
@@ -1757,6 +1761,99 @@ function resetApp(){
 }
 
 // == RENDER ==
+
+// == MANAGEMENT SUMMARY CARD ================================================
+// Plain-English status card for non-engineering management audience.
+// Combines Health Index + Fault Indicator + Zone + RUL into one clear signal.
+function renderMgmtCard(d) {
+  const card   = document.getElementById('mgmt-card');
+  const icon   = document.getElementById('mgmt-icon');
+  const status = document.getElementById('mgmt-status');
+  const finding= document.getElementById('mgmt-finding');
+  const pills  = document.getElementById('mgmt-pills');
+  const rulEl  = document.getElementById('mgmt-rul');
+  const rulSub = document.getElementById('mgmt-rul-sub');
+  if (!card) return;
+
+  card.style.display = 'flex';
+
+  const hi    = d.healthIdx ? d.healthIdx.score : 80;
+  const top   = d.faults.find(f => !f.locked && f.pct > 0);
+  const topPct= top ? top.pct : 0;
+  const zone  = d.zoneRow.zone_label;
+  const rul   = d.rulR.days;
+  const trend = d.trendRow.code;
+
+  // ── Determine overall RAG status ─────────────────────────────────────────
+  let rag, iconChar, statusText, findingText;
+
+  if (hi >= 85 && zone === 'A') {
+    rag = 'green';
+    iconChar = '&#128994;';  // green circle
+    statusText = 'Machine is Healthy';
+    findingText = topPct >= 8
+      ? 'No significant faults detected. A weak spectral signal was noted — no action required at this stage.'
+      : 'No faults detected. Machine is operating normally. Continue routine monitoring schedule.';
+  } else if (hi >= 65 || zone === 'B') {
+    rag = 'amber';
+    iconChar = '&#128993;';  // amber circle
+    statusText = 'Monitor Closely';
+    findingText = top
+      ? plainFaultText(top) + ' Schedule inspection at next planned maintenance window.'
+      : 'Elevated vibration detected. Condition is changing — increase monitoring frequency.';
+  } else {
+    rag = 'red';
+    iconChar = '&#128308;';  // red circle
+    statusText = 'Action Required';
+    findingText = top
+      ? plainFaultText(top) + ' Do not defer — arrange inspection within ' + (rul < 30 ? '7' : rul < 90 ? '30' : '90') + ' days.'
+      : 'Severe vibration detected. Immediate engineering review required.';
+  }
+
+  // Override to red if trend is PRA regardless of zone
+  if (trend === 'PRA' && rag === 'amber') {
+    rag = 'red';
+    iconChar = '&#128308;';
+    statusText = 'Worsening — Act Soon';
+    findingText = (top ? plainFaultText(top) : 'Vibration') + ' Condition is deteriorating rapidly. Schedule maintenance now.';
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  card.className = 'mgmt-card ' + rag;
+  icon.innerHTML = iconChar;
+  status.textContent = statusText;
+  finding.textContent = findingText;
+
+  // Pills
+  const pillDefs = [
+    { label: 'Zone ' + zone, colour: zone === 'A' ? 'green' : zone === 'B' ? 'amber' : 'red' },
+    { label: 'Health ' + hi + '/100', colour: hi >= 85 ? 'green' : hi >= 65 ? 'amber' : 'red' },
+    { label: trend + ' trend', colour: trend === 'SWB' || trend === 'RGI' ? 'green' : trend === 'DDU' ? 'blue' : 'red' },
+    top ? { label: faultIndicatorLabel(topPct) + ' fault signal', colour: topPct >= 40 ? 'red' : topPct >= 20 ? 'amber' : 'blue' } : null
+  ].filter(Boolean);
+
+  pills.innerHTML = pillDefs.map(p =>
+    '<span class="mgmt-pill ' + p.colour + '">' + p.label + '</span>'
+  ).join('');
+
+  // RUL
+  rulEl.textContent  = rul;
+  rulSub.textContent = rul < 60 ? 'days — plan now' : rul < 180 ? 'days remaining' : 'days — good condition';
+}
+
+function plainFaultText(fault) {
+  const n = fault.name;
+  if (n.includes('Outer Race')) return 'Outer bearing surface wear detected.';
+  if (n.includes('Inner Race')) return 'Inner bearing surface wear detected.';
+  if (n.includes('Rolling Element')) return 'Bearing ball/roller wear detected.';
+  if (n.includes('Cage'))        return 'Bearing cage wear detected.';
+  if (n.includes('Imbalance'))   return 'Shaft imbalance detected — rotor may need balancing.';
+  if (n.includes('Misalignment'))return 'Shaft misalignment detected — check coupling alignment.';
+  if (n.includes('Looseness'))   return 'Mechanical looseness detected — check hold-down bolts.';
+  return n + ' detected.';
+}
+// == END MANAGEMENT SUMMARY CARD ============================================
+
 function renderResults(){
   const d=nvr;
 
@@ -1785,6 +1882,9 @@ function renderResults(){
       + '</div>';
     }
   }
+
+  // Management summary card
+  renderMgmtCard(d);
 
   // Override banner
   if (d.override && d.override.overrideActive) {

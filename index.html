@@ -205,6 +205,19 @@ main{padding-top:54px;position:relative;z-index:1;}
     }
     .baseline-toggle.active .baseline-toggle-label { color: #22c55e; }
     .baseline-toggle-sub { font-size: 9px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+    .mgmt-card { border-radius: var(--border-radius-lg); padding: 18px 22px; margin-bottom: 18px; border: 1.5px solid; display: flex; align-items: center; gap: 20px; }
+    .mgmt-card.green  { background: rgba(34,197,94,0.07);  border-color: #22c55e; }
+    .mgmt-card.amber  { background: rgba(245,158,11,0.07); border-color: #f59e0b; }
+    .mgmt-card.red    { background: rgba(239,68,68,0.08);  border-color: #ef4444; }
+    .mgmt-icon { font-size: 36px; flex-shrink: 0; }
+    .mgmt-status { font-size: 18px; font-weight: 500; color: var(--text); margin-bottom: 4px; }
+    .mgmt-finding { font-size: 13px; color: var(--text); margin-bottom: 6px; line-height: 1.5; }
+    .mgmt-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+    .mgmt-pill { font-size: 10px; font-family: 'IBM Plex Mono',monospace; padding: 3px 10px; border-radius: 20px; border: 1px solid; }
+    .mgmt-pill.green { color: #22c55e; border-color: #22c55e; }
+    .mgmt-pill.amber { color: #f59e0b; border-color: #f59e0b; }
+    .mgmt-pill.red   { color: #ef4444; border-color: #ef4444; }
+    .mgmt-pill.blue  { color: var(--accent); border-color: var(--accent); }
     .trend-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
     .trend-tab { padding: 4px 14px; font-size: 10px; font-family: 'IBM Plex Mono',monospace; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; color: var(--muted); background: transparent; transition: all 0.15s; }
     .trend-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -287,6 +300,12 @@ main{padding-top:54px;position:relative;z-index:1;}
             <div class="param-label">Nameplate Speed <span>From motor nameplate</span></div>
             <input class="param-input" id="p-rpm" type="number" placeholder="e.g. 1480" min="100" max="50000" oninput="onParamChange()">
           </div>
+        </div>
+        <!-- Sampling rate -->
+        <div class="param-group">
+          <div class="param-label">Sampling Rate (Hz) <span>From your analyser settings — default 12000</span></div>
+          <input class="param-input" id="p-sample-rate" type="number" placeholder="e.g. 12000" min="100" max="100000" oninput="onParamChange()">
+          <div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:2px;">Common: 3000 (Epson) · 12000 (CWRU) · 25600 (XJTU) · Auto-detected if time column present</div>
         </div>
         <!-- Row 2: Bearing model -->
         <div class="param-group">
@@ -392,6 +411,21 @@ main{padding-top:54px;position:relative;z-index:1;}
   <div class="results-header"><div><div class="results-title">Diagnostic Report</div><div class="results-meta" id="results-meta">—</div></div><button class="btn" id="new-upload-btn">&#11014; New Upload</button></div>
   <div class="ew-banner" id="ew-banner"><div style="font-size:18px;flex-shrink:0;">&#9889;</div><div><div class="ew-title">Early Warning — Pre-Zone Breach Alert</div><div class="ew-desc" id="ew-desc">—</div><div style="margin-top:4px;" id="ew-clause"></div></div></div>
   <div class="data-banner" id="data-type-banner">&#128268; —</div>
+
+  <!-- MANAGEMENT SUMMARY CARD -->
+  <div id="mgmt-card" class="mgmt-card green" style="display:none;">
+    <div class="mgmt-icon" id="mgmt-icon">&#128994;</div>
+    <div style="flex:1;">
+      <div class="mgmt-status" id="mgmt-status">—</div>
+      <div class="mgmt-finding" id="mgmt-finding">—</div>
+      <div class="mgmt-pills" id="mgmt-pills"></div>
+    </div>
+    <div style="text-align:right;flex-shrink:0;">
+      <div style="font-size:11px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:4px;">Est. days to action</div>
+      <div style="font-size:28px;font-weight:500;color:var(--text);" id="mgmt-rul">—</div>
+      <div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;" id="mgmt-rul-sub">days</div>
+    </div>
+  </div>
 
   <!-- ROW 1: NVR metrics · ISO Zone/RUL · Radar -->
   <div class="grid-top">
