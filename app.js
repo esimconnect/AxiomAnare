@@ -93,7 +93,7 @@ const CONFIG = {
       detection_note:"Ball pass frequency inner race harmonics with shaft-rate sidebands",
       iso_reference:"ISO 13379-1:2012 Annex A SA.3" },
     { rule_id:"r_bsf",  fault_type:"Bearing - Rolling Element",    category:"bearing",   requires:"vibration",
-      freq_multiplier:2.4,  harmonic_count:3, bandwidth_pct:0.20, confidence_weight:0.35,
+      freq_multiplier:2.4,  harmonic_count:2, bandwidth_pct:0.15, confidence_weight:0.30,
       detection_note:"Ball spin frequency - indicates rolling element surface defect",
       iso_reference:"ISO 13379-1:2012 Annex A SA.3" },
     { rule_id:"r_ftf",  fault_type:"Bearing - Cage Defect",        category:"bearing",   requires:"vibration",
@@ -105,7 +105,7 @@ const CONFIG = {
     // These are detectable from vibration as the mechanical effects of electrical faults.
     // Confidence is lower than direct MCSA measurement. Labelled as "vibration-derived".
     { rule_id:"r_rotor_bar",   fault_type:"Electrical - Rotor Bar",    category:"electrical", requires:"vibration",
-      freq_multiplier:1.0,  harmonic_count:3, bandwidth_pct:0.06, confidence_weight:0.20,
+      freq_multiplier:1.0,  harmonic_count:4, bandwidth_pct:0.08, confidence_weight:0.20,
       detection_note:"Rotor bar defects create amplitude modulation at 1x +/- slip frequency. Vibration-derived indicator  -  confirm with MCSA.",
       iso_reference:"IEC 60034-14:2003 S5.2" },
     { rule_id:"r_stator_ecc",  fault_type:"Electrical - Stator Eccentricity", category:"electrical", requires:"vibration",
@@ -167,7 +167,7 @@ const CONFIG = {
   rul_zone_base_days: [ { zone:"A", base_days:365, iso_reference:"ISO 13381-1:2015 S5.2" }, { zone:"B", base_days:180, iso_reference:"ISO 13381-1:2015 S5.2" }, { zone:"C", base_days:60, iso_reference:"ISO 13381-1:2015 S5.2" }, { zone:"D", base_days:7, iso_reference:"ISO 13381-1:2015 S5.2" } ],
   rul_trend_modifiers: [ { trend_code:"SWB", multiplier:1.00 }, { trend_code:"DDU", multiplier:0.90 }, { trend_code:"PRS", multiplier:0.65 }, { trend_code:"PRA", multiplier:0.40 }, { trend_code:"RGI", multiplier:1.30 }, { trend_code:"SCO", multiplier:0.20 } ],
   rul_ci_fraction: 0.22,
-  kurtosis_thresholds: [ { label:"Normal", lower:0, upper:2.8, score_bonus:0, iso_reference:"ISO 13373-2:2016 S7.4" }, { label:"Minor impacting", lower:2.8, upper:4.0, score_bonus:15, iso_reference:"ISO 13373-2:2016 S7.4" }, { label:"Elevated", lower:4.0, upper:6.0, score_bonus:30, iso_reference:"ISO 13373-2:2016 S7.4" }, { label:"High impacting", lower:6.0, upper:9999, score_bonus:50, iso_reference:"ISO 13373-2:2016 S7.4" } ],
+  kurtosis_thresholds: [ { label:"Normal", lower:0, upper:3.0, score_bonus:0, iso_reference:"ISO 13373-2:2016 S7.4" }, { label:"Minor impacting", lower:3.0, upper:4.0, score_bonus:15, iso_reference:"ISO 13373-2:2016 S7.4" }, { label:"Elevated", lower:4.0, upper:6.0, score_bonus:30, iso_reference:"ISO 13373-2:2016 S7.4" }, { label:"High impacting", lower:6.0, upper:9999, score_bonus:50, iso_reference:"ISO 13373-2:2016 S7.4" } ],
   crest_factor_thresholds: [ { label:"Normal", lower:0, upper:3.5, score_bonus:0, iso_reference:"ISO 13373-2:2016 S7.3" }, { label:"Elevated", lower:3.5, upper:5.0, score_bonus:10, iso_reference:"ISO 13373-2:2016 S7.3" }, { label:"High", lower:5.0, upper:9999, score_bonus:20, iso_reference:"ISO 13373-2:2016 S7.3" } ],
   monitoring_intervals: [ { condition:"zone_D", interval_desc:"Continuous until shutdown", iso_reference:"ISO 13373-1:2002 S7.3" }, { condition:"zone_C", interval_desc:"Daily", iso_reference:"ISO 13373-1:2002 S7.3" }, { condition:"trend_PRA", interval_desc:"Every 3 days", iso_reference:"ISO 13373-1:2002 S7.3" }, { condition:"trend_PRS", interval_desc:"Weekly", iso_reference:"ISO 13373-1:2002 S7.3" }, { condition:"zone_B_or_below", interval_desc:"Monthly", iso_reference:"ISO 13373-1:2002 S7.3" } ],
   minimum_fault_confidence_pct: 8,
@@ -184,11 +184,11 @@ const CONFIG = {
   // Envelope demodulation bands -- ISO 13373-2:2016 §7.5
   // race: high-freq resonance band for race faults (BPFO, BPFI)
   // roll: mid-freq band for rolling element / cage faults (BSF, FTF)
-  envelope_bands: { race: { lo: 3000, hi: 4500 }, roll: { lo: 50, hi: 1800 } },
+  envelope_bands: { race: { lo: 3000, hi: 4500 }, roll: { lo: 700, hi: 1800 } },
 
   // Bearing BER suppression threshold -- ISO 13379-1:2012 §5.2
   // When bearing envelope BER > threshold, mechanical scores capped at 10%
-  bearing_ber_threshold: 1.1
+  bearing_ber_threshold: 1.3
 };
 
 
@@ -255,7 +255,6 @@ let selClassId = CONFIG.iso_machine_classes[1].class_id;
 let radarInst = null, fftInst = null, nvr = {};
 let pendingFile = null, pendingRaw = null, pendingMatBuffer = false;
 let machineParams = {};   // RPM, bearing model, load zone from wizard step 2
-let isBaselineUpload = false;
 
 
 // == FAULT INDICATOR LABEL ==
@@ -1212,22 +1211,17 @@ function applyFaultOverride(zoneRow, rulR, faults, kurt, cf, classRow) {
   const isBearing   = topFault?.category === 'bearing';
 
   // Rule 1: Bearing fault overrides RMS zone — ISO 13379-1:2012 §5.4
-  // Threshold: 40 = Elevated tier — if fault engine calls it Elevated or higher,
-  // frequency analysis overrides RMS-based zone classification.
-  if (isBearing && topPct >= 40) {
+  if (isBearing && topPct >= 60) {
     result.overrideActive = true;
-    if (zoneRow.zone_label === 'A' || zoneRow.zone_label === 'B') {
-      const newZone = topPct >= 80 ? 'C' : topPct >= 60 ? 'B' : 'B';
+    if (zoneRow.zone_label === 'A' || (zoneRow.zone_label === 'B' && topPct >= 80)) {
       result.zoneRow = {
         ...zoneRow,
-        zone_label: newZone,
+        zone_label: topPct >= 80 ? 'C' : 'B',
         action_required: topPct >= 80
           ? 'BEARING FAULT DETECTED — Corrective maintenance required. RMS underestimates severity for impulsive faults.'
-          : topPct >= 60
-          ? 'BEARING FAULT DETECTED — Schedule inspection. Frequency analysis indicates bearing defect despite low RMS.'
-          : 'BEARING FAULT ELEVATED — Bearing defect detected. Inspection recommended. RMS does not yet reflect fault severity.'
+          : 'BEARING FAULT DETECTED — Schedule inspection. Frequency analysis indicates bearing defect despite low RMS.'
       };
-      const rulFactor = topPct >= 80 ? 0.4 : topPct >= 60 ? 0.6 : 0.75;
+      const rulFactor = topPct >= 80 ? 0.4 : 0.6;
       result.rulR = { ...rulR, days: Math.round(rulR.days * rulFactor), ci: Math.round(rulR.ci * rulFactor), overridden: true };
     }
     result.overrideReason = 'Bearing fault indicator: ' + faultIndicatorLabel(topPct) + ' (' + topName + ') — frequency analysis overrides RMS zone per ISO 13379-1:2012 §5.4';
@@ -1701,7 +1695,7 @@ function classifyFaults(fft, cf, kurt, dataTypes, machineParams) {
     // IEC 60034-14: vibration-derived electrical faults are indirect indicators only.
     // Cap at 19 (Low tier) — they should not outrank direct vibration mechanical/bearing findings.
     // Direct MCSA unlocks full scoring range.
-    const cap = isVibDerived ? 14 : (rule.category === 'mechanical' ? mechCap : 95);
+    const cap = isVibDerived ? 19 : (rule.category === 'mechanical' ? mechCap : 95);
 
     return {
       name:             rule.fault_type,
@@ -1718,10 +1712,6 @@ function classifyFaults(fft, cf, kurt, dataTypes, machineParams) {
   }).sort((a, b) => {
     if (a.locked && !b.locked) return 1;
     if (!a.locked && b.locked) return -1;
-    // Bearing faults rank above vib-derived electrical at equal scores
-    const aElec = a.vibration_derived ? 1 : 0;
-    const bElec = b.vibration_derived ? 1 : 0;
-    if (aElec !== bElec) return aElec - bElec;
     return b.pct - a.pct;
   });
 }
@@ -1925,7 +1915,6 @@ function buildTrendChart(d, history) {
         rms:       parseFloat(r.rms_mms) || 0,
         health:    r.health_score != null ? parseFloat(r.health_score) : null,
         fault:     r.top_fault_pct || 0,
-        topFault:  r.top_fault ? r.top_fault.replace('Bearing - ','').replace('Electrical - ','').replace('Mechanical ','') : null,
         isBaseline: !!r.is_baseline,
         isCurrent: false,
         colour:    i === 0 ? '#4d9de0' : TREND_PT_COLOURS[i % TREND_PT_COLOURS.length]
@@ -1942,7 +1931,6 @@ function buildTrendChart(d, history) {
     rms:       parseFloat(d.rms),
     health:    d.healthIdx ? d.healthIdx.score : null,
     fault:     d.faults.find(f=>!f.locked&&f.pct>0)?.pct || 0,
-    topFault:  (()=>{ const f=d.faults.find(f=>!f.locked&&f.pct>0); return f ? f.name.replace('Bearing - ','').replace('Electrical - ','').replace('Mechanical ','') : null; })(),
     isBaseline: false,
     isCurrent:  true,
     colour:    curColour
@@ -2058,10 +2046,9 @@ function buildTrendChart(d, history) {
   const legendEl = document.getElementById('trend-legend');
   if (legendEl) {
     legendEl.innerHTML = readings.map(r =>
-      '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;margin-bottom:2px;font-size:9px;color:var(--muted);font-family:IBM Plex Mono,monospace;">'
+      '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:9px;color:var(--muted);font-family:IBM Plex Mono,monospace;">'
       + '<span style="width:10px;height:10px;border-radius:50%;background:'+r.colour+';border:1.5px solid '+(r.isBaseline?'#fff':'#1a2030')+';flex-shrink:0;"></span>'
       + r.label
-      + (r.topFault ? '<span style="color:'+r.colour+';margin-left:3px;">· '+r.topFault+'</span>' : '')
       + '</span>'
     ).join('');
   }
@@ -2182,7 +2169,7 @@ async function streamClaude(){
     '6. RUL & PROGNOSTIC NOTE  -  Quote days and CI. Cite ISO 13381-1 clause. State limitations.',
   ].join('\n');
   try{
-    const resp=await fetch('https://axiomanare-proxy.kairosventure-io.workers.dev/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:CONFIG.chatbot_config.model_version,max_tokens:CONFIG.chatbot_config.max_output_tokens,stream:true,messages:[{role:'user',content:prompt}]})});
+    const resp=await fetch('https://restless-tree-eac8.kairosventure-io.workers.dev',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:CONFIG.chatbot_config.model_version,max_tokens:CONFIG.chatbot_config.max_output_tokens,stream:true,messages:[{role:'user',content:prompt}]})});
     document.getElementById('stream-thinking').style.display='none';
     if(!resp.ok)throw new Error(await resp.text());
     const reader=resp.body.getReader(),dec=new TextDecoder();let buf='';
