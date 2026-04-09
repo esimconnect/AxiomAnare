@@ -1787,23 +1787,34 @@ function renderMgmtCard(d) {
   // ── Determine overall RAG status ─────────────────────────────────────────
   let rag, iconChar, statusText, findingText;
 
-  if (hi >= 85 && zone === 'A') {
+  // RAG logic:
+  // GREEN  — Zone A AND fault indicator Trace/Low (topPct < 20) AND health >= 65
+  // AMBER  — Zone A with Indicative+ fault, OR Zone B with low-moderate fault
+  // RED    — Zone C/D, OR Health < 40, OR PRA trend with elevated fault
+  if (zone === 'A' && topPct < 20 && hi >= 65) {
     rag = 'green';
-    iconChar = '&#128994;';  // green circle
+    iconChar = '&#128994;';
     statusText = 'Machine is Healthy';
     findingText = topPct >= 8
-      ? 'No significant faults detected. A weak spectral signal was noted — no action required at this stage.'
+      ? 'No significant faults detected. A weak background signal was noted — no action required. Continue routine monitoring.'
       : 'No faults detected. Machine is operating normally. Continue routine monitoring schedule.';
-  } else if (hi >= 65 || zone === 'B') {
+  } else if ((zone === 'A' && topPct >= 20) || (zone === 'B' && topPct < 40 && hi >= 40)) {
     rag = 'amber';
-    iconChar = '&#128993;';  // amber circle
+    iconChar = '&#128993;';
     statusText = 'Monitor Closely';
     findingText = top
       ? plainFaultText(top) + ' Schedule inspection at next planned maintenance window.'
       : 'Elevated vibration detected. Condition is changing — increase monitoring frequency.';
+  } else if (zone === 'B' && hi >= 65) {
+    rag = 'amber';
+    iconChar = '&#128993;';
+    statusText = 'Plan Maintenance';
+    findingText = top
+      ? plainFaultText(top) + ' Plan maintenance within the next monitoring interval.'
+      : 'Vibration elevated above baseline. Review at next maintenance window.';
   } else {
     rag = 'red';
-    iconChar = '&#128308;';  // red circle
+    iconChar = '&#128308;';
     statusText = 'Action Required';
     findingText = top
       ? plainFaultText(top) + ' Do not defer — arrange inspection within ' + (rul < 30 ? '7' : rul < 90 ? '30' : '90') + ' days.'
