@@ -1,0 +1,291 @@
+/* ============================================================
+   AxiomAnare — Agnostic Parser UI  (agnosticParser.css)
+   Add to your main stylesheet or <style> block
+   ============================================================ */
+
+/* ── Parse Confidence Card ─────────────────────────────────── */
+.pcc {
+  background: var(--surface-2, #131328);
+  border: 1px solid var(--border, #252545);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin: 10px 0 4px;
+  font-size: 0.82rem;
+}
+
+.pcc-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border, #252545);
+}
+
+.pcc-vendor-block {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pcc-vendor-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text, #f0f0f0);
+}
+
+.pcc-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.pcc-badge--auto    { background: rgba(81,207,102,0.15); color: #51cf66; border: 1px solid rgba(81,207,102,0.3); }
+.pcc-badge--profile { background: rgba(0,196,255,0.12);  color: #00c4ff; border: 1px solid rgba(0,196,255,0.25); }
+.pcc-badge--unknown { background: rgba(255,200,0,0.12);  color: #ffd43b; border: 1px solid rgba(255,200,0,0.25); }
+
+.pcc-conf {
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Metadata grid */
+.pcc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px 20px;
+  margin-bottom: 14px;
+}
+
+.pcc-cell-label {
+  font-size: 0.69rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted, #888);
+  margin-bottom: 2px;
+}
+
+.pcc-cell-val {
+  font-size: 0.83rem;
+  color: var(--text, #f0f0f0);
+}
+
+.pcc-ok      { color: #51cf66; }
+.pcc-missing { color: #ff922b; }
+
+.pcc-src {
+  font-size: 0.69rem;
+  color: var(--muted, #888);
+  margin-left: 5px;
+}
+
+/* Signal channel table */
+.pcc-section-label {
+  font-size: 0.69rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted, #888);
+  margin: 0 0 6px;
+}
+
+.pcc-ch-table {
+  border: 1px solid var(--border, #252545);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.pcc-ch-head,
+.pcc-ch-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.9fr 1.4fr 1.2fr;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 0.77rem;
+}
+
+.pcc-ch-head {
+  background: var(--surface-3, #0d0d20);
+  color: var(--muted, #888);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.pcc-ch-row { border-top: 1px solid var(--border, #252545); }
+
+.pcc-ch-name   { font-family: monospace; color: #74c0fc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcc-ch-unit   { color: #ffd43b; }
+.pcc-ch-method { color: var(--muted, #888); font-size: 0.72rem; }
+.pcc-ch-map    { color: var(--text-dim, #aaa); }
+
+/* Vendor notes */
+.pcc-vendor-notes {
+  font-size: 0.78rem;
+  color: var(--muted, #999);
+  background: var(--surface-3, #0d0d20);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+/* Warning rows */
+.pcc-warn {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 7px 10px;
+  border-radius: 6px;
+  margin-bottom: 5px;
+  font-size: 0.79rem;
+  line-height: 1.4;
+}
+.pcc-warn--critical { background: rgba(255,68,68,0.1);  border: 1px solid rgba(255,68,68,0.25);  color: #ff8888; }
+.pcc-warn--warning  { background: rgba(255,146,43,0.1); border: 1px solid rgba(255,146,43,0.25); color: #ff922b; }
+.pcc-warn--info     { background: rgba(0,196,255,0.07); border: 1px solid rgba(0,196,255,0.2);   color: #74c0fc; }
+.pcc-warn-icon { font-size: 0.85rem; flex-shrink: 0; margin-top: 1px; }
+
+/* ── Vendor Hint Box ───────────────────────────────────────── */
+.pcc-hint-box {
+  border: 1px solid var(--border, #252545);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 10px;
+  background: var(--surface-3, #0d0d20);
+}
+
+.pcc-hint-label {
+  font-size: 0.8rem;
+  color: var(--text, #f0f0f0);
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.pcc-hint-optional {
+  color: var(--muted, #888);
+  font-size: 0.77rem;
+  margin-left: 4px;
+}
+
+.pcc-hint-row {
+  margin-bottom: 8px;
+}
+
+.pcc-hint-row select {
+  width: 100%;
+  background: var(--surface-2, #131328);
+  border: 1px solid var(--border, #252545);
+  color: var(--text, #f0f0f0);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 0.83rem;
+  font-family: inherit;
+}
+
+.pcc-hint-row select:focus {
+  outline: none;
+  border-color: var(--accent, #00c4ff);
+}
+
+.pcc-hint-notes {
+  font-size: 0.77rem;
+  color: var(--muted, #999);
+  background: rgba(0,196,255,0.05);
+  border: 1px solid rgba(0,196,255,0.15);
+  border-radius: 6px;
+  padding: 7px 10px;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.pcc-hint-fs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.pcc-fs-label {
+  font-size: 0.78rem;
+  color: var(--muted, #aaa);
+  white-space: nowrap;
+}
+
+.pcc-hint-fs-row select,
+.pcc-hint-fs-row input[type="number"] {
+  background: var(--surface-2, #131328);
+  border: 1px solid var(--border, #252545);
+  color: var(--text, #f0f0f0);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 0.82rem;
+  font-family: inherit;
+}
+
+.pcc-hint-fs-row input[type="number"] { width: 160px; }
+
+/* ── Multi-Channel Suggestion Banner ──────────────────────── */
+#multiChannelSuggestion {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(0,196,255,0.07);
+  border: 1px solid rgba(0,196,255,0.2);
+  border-radius: 8px;
+  padding: 9px 14px;
+  margin: 6px 0;
+  font-size: 0.81rem;
+  color: var(--text, #f0f0f0);
+}
+
+#multiChannelSuggestion button {
+  background: rgba(0,196,255,0.14);
+  border: 1px solid rgba(0,196,255,0.4);
+  border-radius: 6px;
+  color: #00c4ff;
+  font-size: 0.79rem;
+  padding: 5px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+#multiChannelSuggestion button:hover { background: rgba(0,196,255,0.22); }
+
+/* ── Progress / Error strips ──────────────────────────────── */
+#parseProgress {
+  display: none;
+  font-size: 0.8rem;
+  color: var(--muted, #888);
+  padding: 4px 0 6px;
+}
+
+#parseError {
+  display: none;
+  background: rgba(255,68,68,0.09);
+  border: 1px solid rgba(255,68,68,0.25);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.8rem;
+  color: #ff8888;
+  margin: 6px 0;
+  white-space: pre-wrap;
+}
+
+/* ── Responsive ────────────────────────────────────────────── */
+@media (max-width: 580px) {
+  .pcc-grid { grid-template-columns: 1fr 1fr; }
+  .pcc-ch-head,
+  .pcc-ch-row { grid-template-columns: 1fr 1fr; }
+  .pcc-ch-method,
+  .pcc-ch-head span:nth-child(3) { display: none; }
+}

@@ -11,6 +11,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mat-for-js@1.1.0/dist/readmat.min.js"></script>
+<!-- ── INSERT 1 of 4 ── Agnostic parser (must be before app.js) -->
+<link rel="stylesheet" href="agnosticParser.css">
+<script src="agnosticParser.js"></script>
+<!-- ── END INSERT 1 ── -->
 <!-- CONFIG in app.js -->
 <style>
 :root{
@@ -371,6 +375,19 @@ main{padding-top:54px;position:relative;z-index:1;}
       </div>
       <input type="file" id="fileInput" accept=".csv,.tsv,.xlsx,.xls,.json,.txt,.mat" style="display:none">
     </div>
+    <!-- ── INSERT 2 of 4 ── Parse card + status strips -->
+    <!-- Sits between the drop-zone step-card and the run step-card -->
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      <!-- Brief "detecting format…" text shown during file read -->
+      <div id="parseProgress" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);padding:2px 4px;display:none;"></div>
+      <!-- Shown only when file cannot be parsed at all -->
+      <div id="parseError" style="display:none;background:rgba(231,76,60,0.09);border:1px solid rgba(231,76,60,0.25);border-radius:8px;padding:9px 13px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#ff8888;"></div>
+      <!-- Banner appears when parser detects more than 1 signal column -->
+      <div id="multiChannelSuggestion" style="display:none;align-items:center;justify-content:space-between;gap:12px;background:rgba(77,157,224,0.07);border:1px solid rgba(77,157,224,0.2);border-radius:8px;padding:8px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text);"></div>
+      <!-- Parse confidence card — hidden until a file is uploaded -->
+      <div id="parseConfidenceCard" style="display:none;"></div>
+    </div>
+    <!-- ── END INSERT 2 ── -->
     <div class="step-card" id="step3-card" style="display:none;border-color:rgba(0,102,204,0.4);background:rgba(0,102,204,0.04);">
       <div class="step-header"><div class="step-num" style="background:var(--accent);color:var(--bg);border-color:var(--accent);font-size:13px;">4</div><div class="step-label">Run Diagnostic Analysis</div><div class="step-note" id="step3-note">—</div></div>
       <div class="run-card">
@@ -568,6 +585,9 @@ main{padding-top:54px;position:relative;z-index:1;}
     <div class="reco-text typing" id="reco-text"></div>
     <div class="disclaimer-box" id="disclaimer-box"></div>
   </div>
+  <!-- ── INSERT 3 of 4 ── Multi-channel results placeholder -->
+  <div id="multiChannelResults"></div>
+  <!-- ── END INSERT 3 ── -->
 </div>
 </main>
 <script src="app.js"></script>
