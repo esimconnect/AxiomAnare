@@ -255,6 +255,7 @@ let selClassId = CONFIG.iso_machine_classes[1].class_id;
 let radarInst = null, fftInst = null, nvr = {};
 let pendingFile = null, pendingRaw = null, pendingMatBuffer = false;
 let machineParams = {};   // RPM, bearing model, load zone from wizard step 2
+let isBaselineUpload = false;  // set true when user ticks baseline checkbox
 
 
 // == FAULT INDICATOR LABEL ==
