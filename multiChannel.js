@@ -517,26 +517,92 @@ function mcBuildRadar(channelResults) {
   if (mcRadarInst) { mcRadarInst.destroy(); mcRadarInst = null; }
   const canvas = document.getElementById('mc-radarChart');
   if (!canvas || !channelResults.length) return;
+
   const faultMap = {};
   channelResults.forEach(ch => (ch.faults||[]).filter(f=>!f.locked).forEach(f => {
     if (!faultMap[f.name] || faultMap[f.name] < f.pct) faultMap[f.name] = f.pct;
   }));
   const sorted = Object.entries(faultMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
-  const labels  = sorted.map(([n])=>n.split(' - ').pop().trim().split(' ').slice(0,3).join(' '));
+  const labels     = sorted.map(([n])=>n.split(' - ').pop().trim().split(' ').slice(0,3).join(' '));
   const faultNames = sorted.map(([n])=>n);
-  const datasets = channelResults.map((ch,i)=>{
-    const col = MC_CH_COLORS[i]||MC_CH_COLORS[0];
-    return { label:`${ch.location} (${ch.axis})`, data: faultNames.map(n=>{const f=(ch.faults||[]).find(f=>f.name===n);return f?f.pct:0;}),
-      backgroundColor:col.fill, borderColor:col.line, borderWidth:2,
-      pointBackgroundColor:col.line, pointBorderColor:'#fff', pointBorderWidth:1.5, pointRadius:4 };
+
+  // Dynamic scale: set max to highest score rounded up to next 10, minimum ceiling of 40
+  // Apply a display floor: remap scores so even low values show spread across the chart.
+  // Floor lifts all non-zero scores to at least 15% of the scale for visibility.
+  const maxScore = Math.max(...Object.values(faultMap), 1);
+  const scaleMax = Math.max(40, Math.ceil(maxScore / 10) * 10 + 10);
+  const floor = scaleMax * 0.12; // minimum visible radius for any non-zero value
+
+  const remap = pct => pct > 0 ? Math.max(floor, pct) : 0;
+
+  const datasets = channelResults.map((ch, i) => {
+    const col = MC_CH_COLORS[i] || MC_CH_COLORS[0];
+    const data = faultNames.map(n => {
+      const f = (ch.faults||[]).find(f => f.name === n);
+      return f ? remap(f.pct) : 0;
+    });
+    return {
+      label: `${ch.location} (${ch.axis})`,
+      data,
+      backgroundColor: col.fill,
+      borderColor: col.line,
+      borderWidth: 2,
+      pointBackgroundColor: col.line,
+      pointBorderColor: '#fff',
+      pointBorderWidth: 2,
+      pointRadius: 5,
+      pointHoverRadius: 7,
+    };
   });
-  mcRadarInst = new Chart(canvas.getContext('2d'), { type:'radar', data:{labels,datasets},
-    options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false}, tooltip:{backgroundColor:'#1a2030',borderColor:'#4d9de0',borderWidth:1,callbacks:{label:c=>` ${c.dataset.label}: ${c.raw.toFixed(0)}%`}} },
-      scales:{ r:{ min:0, max:100, ticks:{stepSize:20,backdropColor:'rgba(26,36,53,0.8)',color:'#7f93aa',font:{size:9}},
-        grid:{color:'rgba(77,157,224,0.2)'}, angleLines:{color:'rgba(77,157,224,0.25)'}, pointLabels:{color:'#e8edf5',font:{size:9,weight:'bold'}} } } } });
+
+  // Tooltip shows real pct, not remapped value
+  const realPct = (datasetIndex, dataIndex) => {
+    const ch = channelResults[datasetIndex];
+    if (!ch) return 0;
+    const f = (ch.faults||[]).find(f => f.name === faultNames[dataIndex]);
+    return f ? f.pct : 0;
+  };
+
+  const stepSize = scaleMax <= 40 ? 10 : scaleMax <= 60 ? 10 : 20;
+
+  mcRadarInst = new Chart(canvas.getContext('2d'), {
+    type: 'radar',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a2030', borderColor: '#4d9de0', borderWidth: 1,
+          callbacks: {
+            label: c => ` ${c.dataset.label}: ${realPct(c.datasetIndex, c.dataIndex).toFixed(0)}%`,
+          }
+        }
+      },
+      scales: {
+        r: {
+          min: 0,
+          max: scaleMax,
+          ticks: {
+            stepSize,
+            backdropColor: 'rgba(26,36,53,0.8)',
+            color: '#7f93aa',
+            font: { size: 9 },
+            callback: v => v + '%',
+          },
+          grid:        { color: 'rgba(77,157,224,0.2)' },
+          angleLines:  { color: 'rgba(77,157,224,0.25)' },
+          pointLabels: { color: '#e8edf5', font: { size: 9, weight: 'bold' } },
+        }
+      }
+    }
+  });
+
   const leg = document.getElementById('mc-radar-legend');
-  if (leg) leg.innerHTML = channelResults.map((ch,i)=>{const col=MC_CH_COLORS[i]||MC_CH_COLORS[0];return`<div class="mc-legend-item"><div class="mc-legend-dot" style="background:${col.line}"></div>${ch.location} (${ch.axis})</div>`;}).join('');
+  if (leg) leg.innerHTML = channelResults.map((ch, i) => {
+    const col = MC_CH_COLORS[i] || MC_CH_COLORS[0];
+    return `<div class="mc-legend-item"><div class="mc-legend-dot" style="background:${col.line}"></div>${ch.location} (${ch.axis})</div>`;
+  }).join('');
 }
 
 // ── MC FFT Chart — overlaid spectra ──────────────────────────
