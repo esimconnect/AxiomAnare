@@ -359,6 +359,22 @@ main{padding-top:54px;position:relative;z-index:1;}
           <span>&#10003;</span>
           <span id="param-accuracy-text">Parameters entered — fault detection accuracy improved</span>
         </div>
+        <!-- ── Multi-Channel Mode Toggle ── -->
+        <div class="mc-mode-row" id="mc-mode-row" onclick="document.getElementById('mc-mode-toggle').click()">
+          <label class="mc-mode-toggle-wrap" onclick="event.stopPropagation()">
+            <input type="checkbox" id="mc-mode-toggle" onchange="mcSetEnabled(this.checked)">
+            <span class="mc-slider"></span>
+          </label>
+          <div style="flex:1;">
+            <div class="mc-mode-label">&#128290; Multi-Channel Mode</div>
+            <div style="font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:2px;">Up to 6 channels · X / Y / Z axes · Drive End / Fan End / Gearbox · ISO 13373-1</div>
+          </div>
+          <div class="mc-mode-sub">Off by default<br>Auto-suggested on multi-col files</div>
+        </div>
+        <!-- Channel mapping UI — populated by multiChannel.js after file upload -->
+        <div id="mc-mapping-section" style="display:none;">
+          <div id="mc-mapping-container"></div>
+        </div>
       </div>
     </div>
 
@@ -425,6 +441,10 @@ main{padding-top:54px;position:relative;z-index:1;}
 <!-- RESULTS -->
 <div id="results-screen">
   <div class="results-header"><div><div class="results-title">Diagnostic Report</div><div class="results-meta" id="results-meta">—</div></div><button class="btn" id="new-upload-btn">&#11014; New Upload</button></div>
+  <!-- Multi-channel results render here (shown instead of single-channel content) -->
+  <div id="multiChannelResults"></div>
+  <!-- Single-channel results — hidden when MC mode is active -->
+  <div id="single-channel-results">
   <div class="ew-banner" id="ew-banner"><div style="font-size:18px;flex-shrink:0;">&#9889;</div><div><div class="ew-title">Early Warning — Pre-Zone Breach Alert</div><div class="ew-desc" id="ew-desc">—</div><div style="margin-top:4px;" id="ew-clause"></div></div></div>
   <div class="data-banner" id="data-type-banner">&#128268; —</div>
 
@@ -584,11 +604,10 @@ main{padding-top:54px;position:relative;z-index:1;}
     <div class="reco-text typing" id="reco-text"></div>
     <div class="disclaimer-box" id="disclaimer-box"></div>
   </div>
-  <!-- ── INSERT 3 of 4 ── Multi-channel results placeholder -->
-  <div id="multiChannelResults"></div>
-  <!-- ── END INSERT 3 ── -->
+  </div><!-- /#single-channel-results -->
 </div>
 </main>
 <script src="app.js"></script>
+<script src="multiChannel.js"></script>
 </body>
 </html>

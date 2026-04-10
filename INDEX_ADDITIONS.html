@@ -1,0 +1,119 @@
+<!--
+  AxiomAnare — index.html additions
+  ===================================
+  Four precise insertion points. Search for each anchor comment.
+  No existing code is removed — only additions.
+-->
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     INSERT 1 — inside <head>, before your closing </head>
+     ═══════════════════════════════════════════════════════════ -->
+
+  <!-- SheetJS — Excel file support -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- Agnostic parser -->
+  <link rel="stylesheet" href="agnosticParser.css">
+  <script src="agnosticParser.js"></script>
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     INSERT 2 — inside Step 2 wizard, BEFORE existing fields
+     (after the <div class="wizard-step" id="step2"> or equiv)
+     ═══════════════════════════════════════════════════════════ -->
+
+  <!-- Channel mode toggle -->
+  <div class="channel-mode-toggle">
+    <div class="toggle-pills">
+      <button class="pill active" id="btnSingleChannel" onclick="setChannelMode('single')">
+        Single channel
+      </button>
+      <button class="pill" id="btnMultiChannel" onclick="setChannelMode('multi')">
+        Multi-channel <span class="pill-badge">up to 6</span>
+      </button>
+    </div>
+    <p class="toggle-hint" id="channelModeHint">Single channel: one vibration axis per upload.</p>
+  </div>
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     INSERT 3 — inside Step 3 (file upload section)
+     Place AFTER the drop zone / file input elements
+     ═══════════════════════════════════════════════════════════ -->
+
+  <!-- Parser status -->
+  <div id="parseProgress"></div>
+  <div id="parseError"></div>
+
+  <!-- Multi-channel auto-detect banner -->
+  <div id="multiChannelSuggestion"></div>
+
+  <!-- Parse confidence card — populated by agnosticParser.js -->
+  <div id="parseConfidenceCard" style="display:none"></div>
+
+  <!-- Channel mapping panel — populated by buildChannelMappingPanel() -->
+  <div id="channelMappingPanel"></div>
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     INSERT 4 — in the results section, after your existing
+     single-channel result card
+     ═══════════════════════════════════════════════════════════ -->
+
+  <!-- Multi-channel progress -->
+  <div id="multiChannelProgress" style="display:none">
+    <div class="mcp-header">Analysing <span id="mcpTotal">0</span> channels</div>
+    <div id="mcpChannelList"></div>
+  </div>
+
+  <!-- Multi-channel results tabs + cross-axis panel -->
+  <div id="multiChannelResults"></div>
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     WIRE UP — replace your existing file input handler
+     Find wherever you handle file upload and swap the body
+     ═══════════════════════════════════════════════════════════
+
+  BEFORE (your current handler — something like):
+
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      // ... your existing CSV parse logic ...
+    });
+
+  AFTER (drop-in replacement):
+
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      await handleFile(file);
+      // handleFile() sets appState.parseResult and appState.detectedColumns
+      // It also auto-fills wizard fields and renders the confidence card
+    });
+
+    // Same for drag-drop handler:
+    dropZone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+      await handleFile(file);
+    });
+
+
+  ALSO UPDATE — your existing extractColumn() function:
+
+    // Old extractColumn that read from raw parsedData:
+    function extractColumn(parsedData, colIndex) { ... }
+
+    // New version — reads pre-converted signals from parser:
+    function extractColumn(parsedData, colIndex) {
+      const sig = getChannelSignal(colIndex);  // from agnosticParser.js
+      if (sig && sig.length > 0) return sig;
+      // Fallback to raw if parser not available
+      if (Array.isArray(parsedData[0])) return parsedData.map(r => r[colIndex]);
+      const key = Object.keys(parsedData[0])[colIndex];
+      return parsedData.map(r => parseFloat(r[key]));
+    }
+
+  ═══════════════════════════════════════════════════════════ -->

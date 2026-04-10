@@ -476,12 +476,12 @@ function stageFile(file) {
   // Read file
   if (['xlsx','xls'].includes(ext)) {
     const r = new FileReader();
-    r.onload = ev => { try { const wb=XLSX.read(ev.target.result,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; pendingRaw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''}).map(row=>row.join(',')).join('\n'); } catch(e){ showFileError('Cannot parse: '+e.message); } };
+    r.onload = ev => { try { const wb=XLSX.read(ev.target.result,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; pendingRaw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''}).map(row=>row.join(',')).join('\n'); try { const p=parseData(pendingRaw); if(window.mcOnFileReady) mcOnFileReady(pendingRaw,p); } catch(e){} } catch(e){ showFileError('Cannot parse: '+e.message); } };
     r.onerror = () => showFileError('File read failed.');
     r.readAsArrayBuffer(file);
   } else if (ext === 'json') {
     const r = new FileReader();
-    r.onload = ev => { try { const a=[].concat(JSON.parse(ev.target.result)); const k=Object.keys(a[0]); pendingRaw=[k.join(','),...a.map(row=>k.map(x=>row[x]).join(','))].join('\n'); } catch { pendingRaw=ev.target.result; } };
+    r.onload = ev => { try { const a=[].concat(JSON.parse(ev.target.result)); const k=Object.keys(a[0]); pendingRaw=[k.join(','),...a.map(row=>k.map(x=>row[x]).join(','))].join('\n'); } catch { pendingRaw=ev.target.result; } try { const p=parseData(pendingRaw); if(window.mcOnFileReady) mcOnFileReady(pendingRaw,p); } catch(e){} };
     r.onerror = () => showFileError('File read failed.');
     r.readAsText(file);
   } else if (ext === 'mat') {
@@ -496,7 +496,11 @@ function stageFile(file) {
     r.readAsArrayBuffer(file);
   } else {
     const r = new FileReader();
-    r.onload = ev => { pendingRaw = ev.target.result; };
+    r.onload = ev => {
+      pendingRaw = ev.target.result;
+      // Multi-channel: detect signal columns after text file is ready
+      try { const p = parseData(pendingRaw); if (window.mcOnFileReady) mcOnFileReady(pendingRaw, p); } catch(e) {}
+    };
     r.onerror = () => showFileError('File read failed.');
     r.readAsText(file);
   }
@@ -649,7 +653,12 @@ function runFromReady() {
   if (!pendingRaw) { document.getElementById('ready-meta').textContent = 'Reading file...'; setTimeout(runFromReady, 300); return; }
   machineParams = readMachineParams();
   showProcessing(pendingFile.name);
-  runPipeline(pendingRaw, pendingFile.name);
+  // Route to multi-channel pipeline when MC mode is active
+  if (window.MC && window.MC.enabled) {
+    runMultiChannelPipeline(pendingRaw, pendingFile.name);
+  } else {
+    runPipeline(pendingRaw, pendingFile.name);
+  }
 }
 
 window.clearFile = function() {
@@ -1758,6 +1767,14 @@ function resetApp(){
   document.getElementById('ew-banner').classList.remove('show');
   if(radarInst){radarInst.destroy();radarInst=null;}
   if(fftInst){fftInst.destroy();fftInst=null;}
+  // Restore single-channel layout; clear multi-channel results
+  const scr = document.getElementById('single-channel-results');
+  if (scr) scr.style.display = '';
+  const mcr = document.getElementById('multiChannelResults');
+  if (mcr) mcr.innerHTML = '';
+  const mcs = document.getElementById('multiChannelSuggestion');
+  if (mcs) { mcs.style.display = 'none'; mcs.innerHTML = ''; }
+  if (window.MC) { window.MC.results = []; }
 }
 
 // == RENDER ==
