@@ -29,9 +29,8 @@ const MC_CROSS_AXIS_RULES = [
     id: 'ca_imbalance',
     label: 'Rotational Imbalance — Cross-Axis Confirmation',
     clause: 'ISO 13373-1:2002 §6.3.2',
-    category: 'imbalance',
-    // Imbalance dominates X and Y but is low in Z
-    // Confirmed when: 2+ orthogonal axes show the fault
+    category: 'mechanical',
+    faultName: 'Mechanical Unbalance',
     requiredAxes: 2,
     boostPct: 15,
     note: 'Imbalance confirmed on ≥2 orthogonal axes — confidence elevated',
@@ -40,8 +39,8 @@ const MC_CROSS_AXIS_RULES = [
     id: 'ca_misalignment',
     label: 'Misalignment — Axial Confirmation',
     clause: 'ISO 13373-1:2002 §6.3.3',
-    category: 'misalignment',
-    // Misalignment shows strongly in axial (Z) direction
+    category: 'mechanical',
+    faultName: 'Shaft Misalignment',
     requiredAxes: 2,
     boostPct: 20,
     note: 'Misalignment confirmed across radial + axial — confidence elevated',
@@ -51,7 +50,7 @@ const MC_CROSS_AXIS_RULES = [
     label: 'Bearing Fault — Multi-Axis Presence',
     clause: 'ISO 13373-1:2002 §6.3.5',
     category: 'bearing',
-    // Bearing faults appear on all 3 axes near the defective bearing
+    faultName: null,  // matches any bearing fault
     requiredAxes: 2,
     boostPct: 18,
     note: 'Bearing fault confirmed on multiple axes — confidence elevated',
@@ -60,7 +59,8 @@ const MC_CROSS_AXIS_RULES = [
     id: 'ca_looseness',
     label: 'Mechanical Looseness — Cross-Axis Signature',
     clause: 'ISO 13373-1:2002 §6.3.6',
-    category: 'looseness',
+    category: 'mechanical',
+    faultName: 'Loose Foundation',
     requiredAxes: 2,
     boostPct: 12,
     note: 'Looseness confirmed on ≥2 axes — confidence elevated',
@@ -112,17 +112,21 @@ function mcApplyCrossAxisRules(channelResults) {
       byLocation[loc].push(ch);
     }
     for (const [loc, channels] of Object.entries(byLocation)) {
-      // Find channels where this fault category has meaningful confidence
-      const faultThreshold = 25; // minimum pct to count
+      // Find channels where this fault has meaningful confidence
+      const faultThreshold = 10; // lower threshold — indicative signals count
       const axesWithFault = channels.filter(ch => {
-        const top = (ch.faults || []).find(f =>
-          !f.locked && f.category === rule.category && f.pct >= faultThreshold
-        );
+        const top = (ch.faults || []).find(f => {
+          if (f.locked || f.pct < faultThreshold) return false;
+          if (rule.faultName) return f.name === rule.faultName;
+          return f.category === rule.category;
+        });
         return !!top;
       });
       if (axesWithFault.length >= rule.requiredAxes) {
         const avgPct = axesWithFault.reduce((s, ch) => {
-          const f = (ch.faults || []).find(f => f.category === rule.category);
+          const f = (ch.faults || []).find(f =>
+            rule.faultName ? f.name === rule.faultName : f.category === rule.category
+          );
           return s + (f?.pct || 0);
         }, 0) / axesWithFault.length;
         findings.push({
@@ -174,7 +178,10 @@ function mcBuildCombinedVerdict(channelResults, crossAxisFindings) {
   const minRUL = Math.min(...channelResults.map(ch => ch.rulR?.days || 999));
 
   // Overall health index (average, weighted toward worst)
-  const hiVals = channelResults.map(ch => ch.healthIdx || 100).sort((a, b) => a - b);
+  const hiVals = channelResults.map(ch => {
+    const h = ch.healthIdx;
+    return typeof h === 'object' ? (h?.score ?? 50) : (h ?? 100);
+  }).sort((a, b) => a - b);
   const weightedHI = hiVals.length > 1
     ? (hiVals[0] * 2 + hiVals.slice(1).reduce((s, v) => s + v, 0)) / (hiVals.length + 1)
     : hiVals[0];
@@ -323,8 +330,9 @@ async function runMultiChannelPipeline(raw, filename) {
     const finalZoneRow = override.zoneRow;
 
     const topBearingFault = faults.find(f => !f.locked && f.category === 'bearing');
-    const healthIdx = window.calcHealthIndex(rms, kurt, cf, finalZoneRow.zone_label,
+    const healthIdxObj = window.calcHealthIndex(rms, kurt, cf, finalZoneRow.zone_label,
       topBearingFault ? topBearingFault.pct : 0, Math.abs(devSc), classRow);
+    const healthIdx = healthIdxObj?.score ?? healthIdxObj ?? 50;
 
     MC.results.push({
       col: ch.col,
@@ -508,27 +516,16 @@ async function mcStreamClaude(channelResults, combined, filename) {
     `  • ${f.rule.label} at ${f.location} (${f.axes.join('+')}): ${f.boostedPct.toFixed(0)}% confidence [${f.rule.clause}]`
   ).join('\n');
 
-  const prompt = `You are an ISO-certified vibration analyst reviewing a multi-channel machine health report.
+  const prompt = `You are an ISO-certified vibration analyst. Provide a concise multi-channel diagnostic summary (3 paragraphs max).
 
-File: ${filename}
-Channels analysed: ${channelResults.filter(r=>!r.error).length}
-Combined worst zone: ${combined?.worstZone}
-Combined health index: ${combined?.healthIdx}
-Min RUL across channels: ${combined?.minRUL} days
+File: ${filename} | Channels: ${channelResults.filter(r=>!r.error).length} | Worst Zone: ${combined?.worstZone} | Health Index: ${combined?.healthIdx} | Min RUL: ${combined?.minRUL}d
 
-Per-channel summary:
+Channels:
 ${chSummary}
 
-Cross-axis confirmed faults (ISO 13373-1):
-${crossSummary || '  None confirmed.'}
+Cross-axis confirmed: ${crossSummary || 'None'}
 
-Write a concise multi-channel diagnostic summary (3-4 paragraphs). Cover:
-1. Overall machine condition and worst-case channel
-2. Cross-axis fault interpretation and confidence
-3. Recommended inspection priority and timeline
-4. Any channel-specific concerns
-
-Use precise technical language appropriate for a maintenance engineer. Reference ISO standards where applicable. Do not use markdown headers.`;
+Cover: overall condition, cross-axis fault interpretation, inspection priority. Reference ISO standards. Plain text only, no markdown.`;
 
   try {
     bodyEl.textContent = '';
