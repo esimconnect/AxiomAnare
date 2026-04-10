@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AxiomAnare — Fleet Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Design tokens (matches index.html) ── */
+:root {
+  --bg:       #0d1117;
+  --surface:  #161b22;
+  --surface2: #1c2330;
+  --border:   #30363d;
+  --text:     #e8edf5;
+  --muted:    #7f93aa;
+  --accent:   #4d9de0;
+  --green:    #22c55e;
+  --yellow:   #f59e0b;
+  --orange:   #f97316;
+  --red:      #ef4444;
+  --purple:   #a855f7;
+  --radius:   10px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 300;
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+/* ── Utility ── */
+.mono { font-family: 'IBM Plex Mono', monospace; }
+.cond { font-family: 'Barlow Condensed', sans-serif; }
+.muted { color: var(--muted); }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text); font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; cursor: pointer; transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.btn-primary:hover { background: #3a8ac8; border-color: #3a8ac8; color: #fff; }
+.btn-danger { border-color: rgba(239,68,68,0.4); color: var(--red); }
+.btn-danger:hover { background: rgba(239,68,68,0.1); }
+
+/* ── Login screen ── */
+#login-screen {
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  background: radial-gradient(ellipse at 30% 20%, rgba(77,157,224,0.08) 0%, transparent 60%),
+              radial-gradient(ellipse at 70% 80%, rgba(168,85,247,0.05) 0%, transparent 50%),
+              var(--bg);
+}
+.login-card {
+  width: 100%; max-width: 400px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 36px 32px;
+}
+.login-logo {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 28px;
+}
+.login-logo-mark {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: linear-gradient(135deg, #1a2030 60%, #4d9de0 100%);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Barlow Condensed', sans-serif; font-size: 18px; font-weight: 800;
+  color: var(--accent); border: 1px solid rgba(77,157,224,0.3);
+}
+.login-app-name { font-family: 'Barlow Condensed', sans-serif; font-size: 20px; font-weight: 800; }
+.login-app-sub { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--muted); margin-top: 1px; }
+.login-title { font-family: 'Barlow Condensed', sans-serif; font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+.login-sub { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); margin-bottom: 24px; }
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); margin-bottom: 5px; }
+.form-input {
+  width: 100%; padding: 10px 12px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 7px; color: var(--text);
+  font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+  transition: border-color 0.2s;
+}
+.form-input:focus { outline: none; border-color: var(--accent); }
+.login-btn {
+  width: 100%; padding: 11px; border-radius: 8px;
+  background: var(--accent); border: none; color: #fff;
+  font-family: 'Barlow Condensed', sans-serif; font-size: 15px; font-weight: 700;
+  cursor: pointer; transition: background 0.2s; margin-top: 8px;
+  letter-spacing: 0.5px;
+}
+.login-btn:hover { background: #3a8ac8; }
+.login-error {
+  margin-top: 12px; padding: 8px 12px;
+  background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25);
+  border-radius: 6px; font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--red); display: none;
+}
+.login-divider { text-align: center; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); margin: 16px 0; }
+.register-link { color: var(--accent); cursor: pointer; text-decoration: underline; }
+
+/* ── Main layout ── */
+#app-screen { display: none; min-height: 100vh; flex-direction: column; }
+
+/* ── Top nav ── */
+.fleet-nav {
+  height: 54px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 24px; flex-shrink: 0;
+  background: var(--surface);
+}
+.fleet-nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.fleet-nav-mark {
+  width: 28px; height: 28px; border-radius: 7px;
+  background: linear-gradient(135deg, #1a2030 60%, #4d9de0 100%);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Barlow Condensed', sans-serif; font-size: 13px; font-weight: 800;
+  color: var(--accent); border: 1px solid rgba(77,157,224,0.3); flex-shrink: 0;
+}
+.fleet-nav-name { font-family: 'Barlow Condensed', sans-serif; font-size: 16px; font-weight: 800; }
+.fleet-nav-badge {
+  font-family: 'IBM Plex Mono', monospace; font-size: 9px;
+  background: rgba(77,157,224,0.1); color: var(--accent);
+  border: 1px solid rgba(77,157,224,0.25); border-radius: 4px; padding: 2px 7px;
+}
+.fleet-nav-tabs { display: flex; gap: 2px; margin-left: 16px; }
+.fleet-tab {
+  padding: 6px 14px; border-radius: 6px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted);
+  transition: all 0.15s; border: 1px solid transparent;
+}
+.fleet-tab:hover { color: var(--text); background: var(--surface2); }
+.fleet-tab.active { color: var(--accent); background: rgba(77,157,224,0.08); border-color: rgba(77,157,224,0.2); }
+.fleet-nav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.fleet-org-label { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted); }
+.fleet-org-name { font-family: 'Barlow Condensed', sans-serif; font-size: 14px; font-weight: 700; color: var(--text); }
+.fleet-nav-divider { width: 1px; height: 20px; background: var(--border); }
+.fleet-analyse-btn {
+  padding: 6px 14px; border-radius: 7px;
+  background: rgba(77,157,224,0.1); border: 1px solid rgba(77,157,224,0.3);
+  color: var(--accent); font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  cursor: pointer; text-decoration: none; transition: all 0.2s;
+}
+.fleet-analyse-btn:hover { background: rgba(77,157,224,0.2); }
+
+/* ── Page container ── */
+.fleet-page { display: none; flex: 1; padding: 20px 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
+.fleet-page.active { display: block; }
+
+/* ── Page header ── */
+.page-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 20px; gap: 16px; flex-wrap: wrap;
+}
+.page-title { font-family: 'Barlow Condensed', sans-serif; font-size: 22px; font-weight: 800; }
+.page-sub { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+/* ── Summary stat cards ── */
+.fleet-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 20px; }
+.stat-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+  transition: border-color 0.2s;
+}
+.stat-card:hover { border-color: rgba(77,157,224,0.3); }
+.stat-val { font-family: 'Barlow Condensed', sans-serif; font-size: 28px; font-weight: 800; line-height: 1; }
+.stat-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+/* ── Fleet table ── */
+.fleet-table-wrap {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+.fleet-table-toolbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.fleet-search {
+  flex: 1; min-width: 180px; padding: 7px 12px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text);
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+}
+.fleet-search:focus { outline: none; border-color: var(--accent); }
+.fleet-filter {
+  padding: 7px 12px; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  cursor: pointer;
+}
+table { width: 100%; border-collapse: collapse; }
+th {
+  padding: 10px 14px; text-align: left;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  color: var(--muted); font-weight: 600; letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2); cursor: pointer; white-space: nowrap;
+  user-select: none;
+}
+th:hover { color: var(--accent); }
+th.sorted { color: var(--accent); }
+td {
+  padding: 11px 14px; font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  border-bottom: 1px solid rgba(48,54,61,0.5);
+  vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(77,157,224,0.03); }
+.zone-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 20px; border-radius: 4px;
+  font-family: 'Barlow Condensed', sans-serif; font-size: 13px; font-weight: 800;
+  border: 1px solid;
+}
+.zone-A { background: rgba(34,197,94,0.1);  border-color: #22c55e; color: #22c55e; }
+.zone-B { background: rgba(245,158,11,0.1); border-color: #f59e0b; color: #f59e0b; }
+.zone-C { background: rgba(249,115,22,0.12);border-color: #f97316; color: #f97316; }
+.zone-D { background: rgba(239,68,68,0.12); border-color: #ef4444; color: #ef4444; }
+.hi-bar { display: flex; align-items: center; gap: 6px; }
+.hi-track { width: 50px; height: 4px; background: var(--surface2); border-radius: 2px; flex-shrink: 0; }
+.hi-fill  { height: 100%; border-radius: 2px; }
+.trend-badge {
+  display: inline-block; padding: 2px 6px; border-radius: 4px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600;
+  background: var(--surface2); color: var(--muted);
+}
+.trend-PRA { background: rgba(239,68,68,0.1); color: var(--red); }
+.trend-PRS { background: rgba(245,158,11,0.1); color: var(--yellow); }
+.trend-SWB { background: rgba(34,197,94,0.1); color: var(--green); }
+.trend-RGI { background: rgba(77,157,224,0.1); color: var(--accent); }
+.asset-name { font-family: 'Barlow Condensed', sans-serif; font-size: 14px; font-weight: 700; color: var(--text); }
+.asset-meta { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--muted); margin-top: 1px; }
+.empty-state {
+  text-align: center; padding: 60px 20px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--muted);
+}
+.empty-icon { font-size: 36px; margin-bottom: 12px; }
+
+/* ── Upload panel ── */
+.upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 800px) { .upload-grid { grid-template-columns: 1fr; } }
+.upload-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px;
+}
+.upload-card-title {
+  font-family: 'Barlow Condensed', sans-serif; font-size: 16px; font-weight: 700;
+  margin-bottom: 4px;
+}
+.upload-card-sub {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted);
+  margin-bottom: 16px; line-height: 1.5;
+}
+.dropzone-mini {
+  border: 1.5px dashed var(--border); border-radius: 8px;
+  padding: 20px; text-align: center; cursor: pointer;
+  transition: border-color 0.2s; margin-bottom: 12px;
+}
+.dropzone-mini:hover { border-color: var(--accent); }
+.dropzone-mini.drag-over { border-color: var(--accent); background: rgba(77,157,224,0.05); }
+.drop-icon { font-size: 24px; margin-bottom: 6px; }
+.drop-text { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted); }
+.batch-file-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; max-height: 280px; overflow-y: auto; }
+.batch-file-row {
+  display: grid; grid-template-columns: 1fr auto auto;
+  gap: 8px; align-items: center;
+  padding: 8px 10px; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 7px;
+}
+.batch-file-name { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.batch-asset-input {
+  padding: 4px 8px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 5px; color: var(--text); font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; width: 120px;
+}
+.batch-date-input {
+  padding: 4px 8px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 5px; color: var(--text); font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; width: 110px;
+}
+.batch-remove { cursor: pointer; color: var(--muted); font-size: 14px; padding: 2px 4px; }
+.batch-remove:hover { color: var(--red); }
+.batch-header {
+  display: grid; grid-template-columns: 1fr auto auto;
+  gap: 8px; padding: 4px 10px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--muted);
+}
+.upload-progress {
+  padding: 10px 14px; background: rgba(77,157,224,0.06);
+  border: 1px solid rgba(77,157,224,0.2); border-radius: 7px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--accent);
+  display: none; margin-top: 10px;
+}
+.upload-success {
+  padding: 10px 14px; background: rgba(34,197,94,0.06);
+  border: 1px solid rgba(34,197,94,0.2); border-radius: 7px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--green);
+  display: none; margin-top: 10px;
+}
+
+/* ── Asset detail panel ── */
+.asset-detail-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  display: none; align-items: center; justify-content: center;
+  z-index: 100; padding: 20px;
+}
+.asset-detail-overlay.open { display: flex; }
+.asset-detail-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; width: 100%; max-width: 680px;
+  max-height: 90vh; overflow-y: auto; padding: 24px;
+}
+.asset-detail-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
+.asset-detail-title { font-family: 'Barlow Condensed', sans-serif; font-size: 20px; font-weight: 800; flex: 1; }
+.asset-history-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.asset-history-table th { padding: 7px 10px; font-size: 9px; background: var(--surface2); }
+.asset-history-table td { padding: 8px 10px; font-size: 10px; border-bottom: 1px solid rgba(48,54,61,0.4); }
+
+/* ── Register modal ── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+  display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px;
+}
+.modal-overlay.open { display: flex; }
+.modal-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; width: 100%; max-width: 420px; padding: 28px;
+}
+.modal-title { font-family: 'Barlow Condensed', sans-serif; font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+
+/* ── Loading spinner ── */
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(77,157,224,0.3); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Misc ── */
+.iso-strip {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  padding: 8px 24px; border-top: 1px solid var(--border);
+  font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--muted);
+}
+.iso-badge { padding: 2px 7px; border: 1px solid var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN SCREEN ══════════════════════════════════════════ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-mark">Ax</div>
+      <div>
+        <div class="login-app-name">AxiomAnare</div>
+        <div class="login-app-sub">AGNOSTIC · AUGMENTED AI ANALYSIS</div>
+      </div>
+    </div>
+    <div class="login-title">Fleet Dashboard</div>
+    <div class="login-sub">Sign in to access your organisation's asset health data</div>
+
+    <div id="login-form">
+      <div class="form-group">
+        <label class="form-label">EMAIL ADDRESS</label>
+        <input class="form-input" id="login-email" type="email" placeholder="analyst@organisation.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label class="form-label">PASSWORD</label>
+        <input class="form-input" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button class="login-btn" onclick="doLogin()">Sign In →</button>
+      <div class="login-error" id="login-error"></div>
+      <div class="login-divider">New organisation? <span class="register-link" onclick="openRegister()">Create account</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ REGISTER MODAL ════════════════════════════════════════ -->
+<div class="modal-overlay" id="register-modal">
+  <div class="modal-card">
+    <div class="modal-title">&#10010; Create Organisation Account</div>
+    <div class="form-group">
+      <label class="form-label">ORGANISATION NAME</label>
+      <input class="form-input" id="reg-org" type="text" placeholder="e.g. Kairos Ventures Pte Ltd">
+    </div>
+    <div class="form-group">
+      <label class="form-label">EMAIL ADDRESS</label>
+      <input class="form-input" id="reg-email" type="email" placeholder="admin@organisation.com">
+    </div>
+    <div class="form-group">
+      <label class="form-label">PASSWORD (min 8 characters)</label>
+      <input class="form-input" id="reg-password" type="password" placeholder="••••••••">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button class="btn btn-primary" onclick="doRegister()" style="flex:1;">Create Account</button>
+      <button class="btn" onclick="closeRegister()">Cancel</button>
+    </div>
+    <div class="login-error" id="reg-error" style="margin-top:10px;"></div>
+  </div>
+</div>
+
+<!-- ══ ASSET DETAIL OVERLAY ══════════════════════════════════ -->
+<div class="asset-detail-overlay" id="asset-detail-overlay">
+  <div class="asset-detail-card">
+    <div class="asset-detail-header">
+      <div class="asset-detail-title" id="detail-asset-name">—</div>
+      <button class="btn" onclick="closeDetail()">&#10005; Close</button>
+    </div>
+    <div id="detail-body"></div>
+  </div>
+</div>
+
+<!-- ══ MAIN APP ═══════════════════════════════════════════════ -->
+<div id="app-screen">
+  <!-- Nav -->
+  <nav class="fleet-nav">
+    <a class="fleet-nav-logo" href="index.html">
+      <div class="fleet-nav-mark">Ax</div>
+      <div>
+        <div class="fleet-nav-name">AxiomAnare</div>
+      </div>
+    </a>
+    <span class="fleet-nav-badge">Fleet Dashboard</span>
+
+    <div class="fleet-nav-tabs">
+      <div class="fleet-tab active" data-page="overview" onclick="showPage('overview')">&#128202; Overview</div>
+      <div class="fleet-tab" data-page="upload" onclick="showPage('upload')">&#11014; Upload</div>
+    </div>
+
+    <div class="fleet-nav-right">
+      <div>
+        <div class="fleet-org-label">Organisation</div>
+        <div class="fleet-org-name" id="nav-org-name">—</div>
+      </div>
+      <div class="fleet-nav-divider"></div>
+      <a class="fleet-analyse-btn" href="index.html">&#9889; Analyse</a>
+      <button class="btn btn-danger" onclick="doLogout()" style="padding:6px 12px;">Sign Out</button>
+    </div>
+  </nav>
+
+  <!-- ── OVERVIEW PAGE ── -->
+  <div class="fleet-page active" id="page-overview">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Fleet Asset Health</div>
+        <div class="page-sub mono" id="fleet-last-updated">Loading…</div>
+      </div>
+      <button class="btn btn-primary" onclick="loadFleetData()">&#8635; Refresh</button>
+    </div>
+
+    <!-- Summary stats -->
+    <div class="fleet-stats" id="fleet-stats">
+      <div class="stat-card"><div class="stat-val" id="stat-total">—</div><div class="stat-label">Total Assets</div></div>
+      <div class="stat-card"><div class="stat-val" style="color:var(--red)" id="stat-d">—</div><div class="stat-label">Zone D — Critical</div></div>
+      <div class="stat-card"><div class="stat-val" style="color:var(--orange)" id="stat-c">—</div><div class="stat-label">Zone C — Unsatisfactory</div></div>
+      <div class="stat-card"><div class="stat-val" style="color:var(--yellow)" id="stat-b">—</div><div class="stat-label">Zone B — Acceptable</div></div>
+      <div class="stat-card"><div class="stat-val" style="color:var(--green)" id="stat-a">—</div><div class="stat-label">Zone A — Good</div></div>
+    </div>
+
+    <!-- Table -->
+    <div class="fleet-table-wrap">
+      <div class="fleet-table-toolbar">
+        <input class="fleet-search" id="fleet-search" type="text" placeholder="Search asset name, fault, class…" oninput="filterTable()">
+        <select class="fleet-filter" id="zone-filter" onchange="filterTable()">
+          <option value="">All Zones</option>
+          <option value="D">Zone D</option>
+          <option value="C">Zone C</option>
+          <option value="B">Zone B</option>
+          <option value="A">Zone A</option>
+        </select>
+        <select class="fleet-filter" id="sort-col" onchange="renderTable()">
+          <option value="zone">Sort: Zone (worst)</option>
+          <option value="rul">Sort: RUL (shortest)</option>
+          <option value="health">Sort: Health (lowest)</option>
+          <option value="name">Sort: Asset Name</option>
+          <option value="date">Sort: Last Reading</option>
+        </select>
+        <span class="mono muted" id="fleet-count" style="font-size:10px;margin-left:auto;"></span>
+      </div>
+      <div id="fleet-table-body">
+        <div class="empty-state"><div class="spinner"></div><br>Loading fleet data…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── UPLOAD PAGE ── -->
+  <div class="fleet-page" id="page-upload">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Upload Readings</div>
+        <div class="page-sub">Establish baselines and upload condition monitoring data for your fleet</div>
+      </div>
+    </div>
+
+    <div class="upload-grid">
+      <!-- Baseline upload -->
+      <div class="upload-card">
+        <div class="upload-card-title">&#9632; Establish Baseline</div>
+        <div class="upload-card-sub">Upload a healthy reference reading for a new or recently maintained asset. Required before trend analysis can begin per ISO 13373-2:2016 §8.1.</div>
+        <div class="form-group">
+          <label class="form-label">ASSET NAME / TAG</label>
+          <input class="form-input" id="bl-asset" type="text" placeholder="e.g. Pump-01-NDE, FanMotor-B2-DE">
+        </div>
+        <div class="form-group">
+          <label class="form-label">MACHINE CLASS</label>
+          <select class="form-input" id="bl-class">
+            <option value="cls_i">Class I — Small machines (&lt;15 kW)</option>
+            <option value="cls_ii" selected>Class II — Medium machines (15–75 kW)</option>
+            <option value="cls_ii_f">Class II Flexible — Medium on flexible mount</option>
+            <option value="cls_iii">Class III — Large machines (&gt;75 kW, rigid)</option>
+            <option value="cls_iv">Class IV — Large machines (&gt;75 kW, flexible)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">MEASUREMENT DATE</label>
+          <input class="form-input" id="bl-date" type="date">
+        </div>
+        <div class="form-group">
+          <label class="form-label">BASELINE FILE (CSV / MAT / XLSX)</label>
+          <div class="dropzone-mini" id="bl-dropzone"
+            ondragover="event.preventDefault();this.classList.add('drag-over')"
+            ondragleave="this.classList.remove('drag-over')"
+            ondrop="onBlDrop(event)"
+            onclick="document.getElementById('bl-file-input').click()">
+            <div class="drop-icon">&#128196;</div>
+            <div class="drop-text" id="bl-drop-text">Drop baseline file or click to browse</div>
+          </div>
+          <input type="file" id="bl-file-input" accept=".csv,.mat,.xlsx,.xls,.txt,.tsv" style="display:none" onchange="onBlFile(this.files[0])">
+        </div>
+        <div class="form-group">
+          <label class="form-label">NOTES (optional)</label>
+          <input class="form-input" id="bl-notes" type="text" placeholder="e.g. Post-overhaul baseline, new bearing installed">
+        </div>
+        <button class="btn btn-primary" onclick="submitBaseline()" style="width:100%;">&#10003; Establish Baseline</button>
+        <div class="upload-progress" id="bl-progress">&#9889; Analysing and saving baseline…</div>
+        <div class="upload-success" id="bl-success"></div>
+      </div>
+
+      <!-- Batch upload -->
+      <div class="upload-card">
+        <div class="upload-card-title">&#9650; Batch Upload Readings</div>
+        <div class="upload-card-sub">Upload multiple condition monitoring files at once. Each file is assigned to an asset and measurement date. Files are analysed sequentially and saved to the fleet database.</div>
+
+        <div class="dropzone-mini" id="batch-dropzone"
+          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="onBatchDrop(event)"
+          onclick="document.getElementById('batch-file-input').click()">
+          <div class="drop-icon">&#128194;</div>
+          <div class="drop-text">Drop multiple files or click to browse</div>
+        </div>
+        <input type="file" id="batch-file-input" accept=".csv,.mat,.xlsx,.xls,.txt,.tsv" multiple style="display:none" onchange="onBatchFiles(this.files)">
+
+        <div id="batch-file-list" style="display:none">
+          <div class="batch-header">
+            <span>File</span><span>Asset Name / Tag</span><span>Date</span>
+          </div>
+          <div class="batch-file-list" id="batch-rows"></div>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button class="btn btn-primary" onclick="submitBatch()" style="flex:1;">&#9889; Run Batch Analysis</button>
+            <button class="btn" onclick="clearBatch()">&#10005; Clear</button>
+          </div>
+        </div>
+
+        <div class="upload-progress" id="batch-progress"></div>
+        <div class="upload-success" id="batch-success"></div>
+
+        <!-- Batch results summary -->
+        <div id="batch-results" style="display:none;margin-top:12px;">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;margin-bottom:8px;">Batch Results</div>
+          <div id="batch-results-body"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="iso-strip">
+    <span class="iso-badge">ISO 10816 / 20816</span>
+    <span class="iso-badge">ISO 13373</span>
+    <span class="iso-badge">ISO 13379</span>
+    <span class="iso-badge">ISO 13381</span>
+    <span class="iso-badge">ISO 55001</span>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="agnosticParser2.js"></script>
+<script src="app.js"></script>
+<script>
+// ══ SUPABASE AUTH CLIENT ════════════════════════════════════
+const SB_URL  = 'https://zjfhxutcvjxootoekade.supabase.co';
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqZmh4dXRjdmp4b290b2VrYWRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMjgzODAsImV4cCI6MjA5MDcwNDM4MH0.5yGgSjALJhTQm5Ud3W-fU2Bgo-3PkziaS0oLrGMYQ9o';
+
+let _session = null;
+let _orgId   = null;
+let _orgName = null;
+
+// Auth headers
+function authHeaders(extra = {}) {
+  const h = {
+    'apikey': SB_ANON,
+    'Content-Type': 'application/json',
+    ...extra
+  };
+  if (_session?.access_token) h['Authorization'] = 'Bearer ' + _session.access_token;
+  return h;
+}
+
+async function sbAuth(path, body) {
+  const r = await fetch(SB_URL + '/auth/v1' + path, {
+    method: 'POST',
+    headers: { 'apikey': SB_ANON, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+async function sbGet(table, params = '') {
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, { headers: authHeaders({ 'Accept': 'application/json' }) });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function sbPost(table, data) {
+  const r = await fetch(`${SB_URL}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: authHeaders({ 'Prefer': 'return=representation' }),
+    body: JSON.stringify(data)
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function sbPatch(table, params, data) {
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Prefer': 'return=representation' }),
+    body: JSON.stringify(data)
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// ══ INIT ════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', async () => {
+  // Set today's date defaults
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('bl-date').value = today;
+
+  // Check for existing session in localStorage
+  const saved = localStorage.getItem('ax_session');
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      // Verify session is still valid
+      const r = await fetch(SB_URL + '/auth/v1/user', {
+        headers: { 'apikey': SB_ANON, 'Authorization': 'Bearer ' + parsed.access_token }
+      });
+      if (r.ok) {
+        _session = parsed;
+        await loadUserOrg();
+        showApp();
+        return;
+      }
+    } catch(e) {}
+    localStorage.removeItem('ax_session');
+  }
+});
+
+// ══ AUTH ════════════════════════════════════════════════════
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+
+  if (!email || !password) { showErr(errEl, 'Please enter email and password.'); return; }
+
+  const res = await sbAuth('/token?grant_type=password', { email, password });
+  if (res.error || !res.access_token) {
+    showErr(errEl, res.error_description || res.error || 'Login failed.');
+    return;
+  }
+  _session = res;
+  localStorage.setItem('ax_session', JSON.stringify(res));
+  await loadUserOrg();
+  showApp();
+}
+
+async function doRegister() {
+  const org  = document.getElementById('reg-org').value.trim();
+  const email= document.getElementById('reg-email').value.trim();
+  const pass = document.getElementById('reg-password').value;
+  const errEl= document.getElementById('reg-error');
+  errEl.style.display = 'none';
+
+  if (!org || !email || !pass) { showErr(errEl, 'All fields required.'); return; }
+  if (pass.length < 8) { showErr(errEl, 'Password must be at least 8 characters.'); return; }
+
+  // Sign up
+  const res = await sbAuth('/signup', { email, password: pass, data: { org_name: org } });
+  if (res.error) { showErr(errEl, res.error_description || res.error); return; }
+
+  // Create organisation record
+  if (res.user?.id) {
+    try {
+      await sbPost('organisations', { name: org, industry: '', country: '' });
+    } catch(e) { console.log('Org creation note:', e.message); }
+  }
+
+  closeRegister();
+  const errLogin = document.getElementById('login-error');
+  errLogin.style.display = 'block';
+  errLogin.style.color = 'var(--green)';
+  errLogin.style.borderColor = 'rgba(34,197,94,0.25)';
+  errLogin.style.background = 'rgba(34,197,94,0.06)';
+  errLogin.textContent = 'Account created! Check your email to confirm, then sign in.';
+}
+
+async function doLogout() {
+  localStorage.removeItem('ax_session');
+  _session = null; _orgId = null; _orgName = null;
+  document.getElementById('app-screen').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+}
+
+async function loadUserOrg() {
+  if (!_session) return;
+  try {
+    // Get user metadata for org name
+    const r = await fetch(SB_URL + '/auth/v1/user', {
+      headers: { 'apikey': SB_ANON, 'Authorization': 'Bearer ' + _session.access_token }
+    });
+    const user = await r.json();
+    _orgName = user?.user_metadata?.org_name || user?.email || 'My Organisation';
+
+    // Try to find org by user email domain or metadata
+    const orgs = await sbGet('organisations', `select=id,name&limit=10`);
+    if (orgs?.length) {
+      // Find org matching metadata name, or use first org
+      const match = orgs.find(o => o.name === user?.user_metadata?.org_name) || orgs[0];
+      _orgId = match.id;
+      _orgName = match.name;
+    } else {
+      // Create org on first login if metadata has org name
+      const created = await sbPost('organisations', { name: _orgName });
+      _orgId = created?.[0]?.id || null;
+    }
+  } catch(e) {
+    console.log('Org load error:', e.message);
+    _orgName = _session?.user?.email || 'My Organisation';
+  }
+  document.getElementById('nav-org-name').textContent = _orgName;
+}
+
+function showApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'flex';
+  loadFleetData();
+}
+
+function showErr(el, msg) {
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.style.color = 'var(--red)';
+}
+
+function openRegister() { document.getElementById('register-modal').classList.add('open'); }
+function closeRegister() { document.getElementById('register-modal').classList.remove('open'); }
+
+// ══ FLEET DATA ══════════════════════════════════════════════
+let _allAssets = [];
+
+async function loadFleetData() {
+  document.getElementById('fleet-table-body').innerHTML = '<div class="empty-state"><div class="spinner"></div><br>Loading fleet data…</div>';
+
+  try {
+    // Load assets + their latest NVR record
+    const assets = await sbGet('assets',
+      `org_id=eq.${_orgId}&select=id,asset_name,equipment_type,machine_class,created_at,last_reading_at&order=asset_name.asc`
+    );
+
+    if (!assets?.length) {
+      _allAssets = [];
+      renderTable();
+      updateStats();
+      document.getElementById('fleet-last-updated').textContent = 'No assets yet — upload your first reading above';
+      return;
+    }
+
+    // For each asset, get latest NVR record
+    const enriched = await Promise.all(assets.map(async asset => {
+      try {
+        const records = await sbGet('nvr_records',
+          `asset_id=eq.${asset.id}&select=rms_mms,iso_zone,trend_code,rul_days,top_fault,top_fault_pct,recorded_at,filename&order=recorded_at.desc&limit=1`
+        );
+        const latest = records?.[0] || null;
+        return { ...asset, latest };
+      } catch(e) { return { ...asset, latest: null }; }
+    }));
+
+    _allAssets = enriched;
+    updateStats();
+    renderTable();
+    document.getElementById('fleet-last-updated').textContent =
+      `${assets.length} assets · Last refreshed ${new Date().toLocaleTimeString()}`;
+
+  } catch(e) {
+    document.getElementById('fleet-table-body').innerHTML =
+      `<div class="empty-state">&#9888; Failed to load: ${e.message}</div>`;
+  }
+}
+
+function updateStats() {
+  const total = _allAssets.length;
+  const byZone = { A:0, B:0, C:0, D:0 };
+  _allAssets.forEach(a => {
+    const z = a.latest?.iso_zone || 'A';
+    if (byZone[z] !== undefined) byZone[z]++;
+  });
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-d').textContent = byZone.D;
+  document.getElementById('stat-c').textContent = byZone.C;
+  document.getElementById('stat-b').textContent = byZone.B;
+  document.getElementById('stat-a').textContent = byZone.A;
+}
+
+function filterTable() { renderTable(); }
+
+function renderTable() {
+  const search = document.getElementById('fleet-search').value.toLowerCase();
+  const zoneF  = document.getElementById('zone-filter').value;
+  const sortBy = document.getElementById('sort-col').value;
+  const zoneOrder = { D:4, C:3, B:2, A:1 };
+
+  let rows = _allAssets.filter(a => {
+    if (zoneF && (a.latest?.iso_zone || 'A') !== zoneF) return false;
+    if (search) {
+      const hay = [a.asset_name, a.equipment_type, a.machine_class, a.latest?.top_fault, a.latest?.iso_zone].join(' ').toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+
+  rows.sort((a, b) => {
+    if (sortBy === 'zone')   return (zoneOrder[b.latest?.iso_zone]||1) - (zoneOrder[a.latest?.iso_zone]||1);
+    if (sortBy === 'rul')    return (a.latest?.rul_days||999) - (b.latest?.rul_days||999);
+    if (sortBy === 'health') return (a.latest?.rms_mms||0) - (b.latest?.rms_mms||0);
+    if (sortBy === 'name')   return a.asset_name.localeCompare(b.asset_name);
+    if (sortBy === 'date')   return new Date(b.latest?.recorded_at||0) - new Date(a.latest?.recorded_at||0);
+    return 0;
+  });
+
+  document.getElementById('fleet-count').textContent = rows.length + ' of ' + _allAssets.length + ' assets';
+
+  if (!rows.length) {
+    document.getElementById('fleet-table-body').innerHTML =
+      `<div class="empty-state"><div class="empty-icon">&#128269;</div>No assets match your filters.</div>`;
+    return;
+  }
+
+  const hiColor = h => h >= 75 ? '#22c55e' : h >= 50 ? '#f59e0b' : h >= 25 ? '#f97316' : '#ef4444';
+
+  document.getElementById('fleet-table-body').innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Asset</th>
+          <th>Zone</th>
+          <th>Health / RMS</th>
+          <th>Top Fault</th>
+          <th>RUL</th>
+          <th>Trend</th>
+          <th>Last Reading</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(a => {
+          const l = a.latest;
+          const zone = l?.iso_zone || '—';
+          const rms  = l?.rms_mms ? parseFloat(l.rms_mms).toFixed(3) : '—';
+          const rul  = l?.rul_days || '—';
+          const trend= l?.trend_code || '—';
+          const fault= l?.top_fault || '—';
+          const faultPct = l?.top_fault_pct ? l.top_fault_pct.toFixed(0)+'%' : '';
+          const date = l?.recorded_at ? new Date(l.recorded_at).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'2-digit'}) : 'No readings';
+          // Health proxy from RMS + zone
+          const hiScore = zone === 'A' ? 85 : zone === 'B' ? 65 : zone === 'C' ? 40 : 15;
+          const hc = hiColor(hiScore);
+
+          return `<tr>
+            <td>
+              <div class="asset-name">${a.asset_name}</div>
+              <div class="asset-meta">${a.equipment_type || a.machine_class || '—'}</div>
+            </td>
+            <td><span class="zone-pill zone-${zone}">${zone}</span></td>
+            <td>
+              <div class="hi-bar">
+                <div class="hi-track"><div class="hi-fill" style="width:${hiScore}%;background:${hc}"></div></div>
+                <span style="color:${hc};font-size:10px;">${rms} mm/s</span>
+              </div>
+            </td>
+            <td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${fault} ${faultPct ? '<span style="color:var(--muted)">'+faultPct+'</span>' : ''}</td>
+            <td style="color:${rul < 30 ? 'var(--red)' : rul < 90 ? 'var(--yellow)' : 'var(--text)'}">${rul === '—' ? '—' : rul + 'd'}</td>
+            <td><span class="trend-badge trend-${trend}">${trend}</span></td>
+            <td class="muted">${date}</td>
+            <td><button class="btn" onclick="openDetail('${a.id}','${a.asset_name.replace(/'/g,"\\'")}')">&#128202; Detail</button></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+// ══ ASSET DETAIL ════════════════════════════════════════════
+async function openDetail(assetId, assetName) {
+  document.getElementById('detail-asset-name').textContent = assetName;
+  document.getElementById('detail-body').innerHTML = '<div style="text-align:center;padding:20px"><div class="spinner"></div></div>';
+  document.getElementById('asset-detail-overlay').classList.add('open');
+
+  try {
+    const [records, baselines] = await Promise.all([
+      sbGet('nvr_records', `asset_id=eq.${assetId}&select=recorded_at,filename,rms_mms,iso_zone,trend_code,rul_days,top_fault,top_fault_pct,kurtosis,crest_factor&order=recorded_at.desc&limit=20`),
+      sbGet('baselines', `asset_id=eq.${assetId}&select=rms_mean,rms_sd,established_at,source_file,sample_count`)
+    ]);
+
+    const bl = baselines?.[0];
+    const hiColor = h => h >= 75 ? '#22c55e' : h >= 50 ? '#f59e0b' : h >= 25 ? '#f97316' : '#ef4444';
+
+    document.getElementById('detail-body').innerHTML = `
+      ${bl ? `<div style="margin-bottom:16px;padding:12px 14px;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:10px;">
+        &#9989; Baseline established · Mean RMS: ${parseFloat(bl.rms_mean).toFixed(3)} mm/s &plusmn; ${parseFloat(bl.rms_sd||0).toFixed(3)} mm/s · ${bl.sample_count} sample${bl.sample_count!==1?'s':''} · ${new Date(bl.established_at).toLocaleDateString('en-GB')}
+      </div>` : `<div style="margin-bottom:16px;padding:12px 14px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:10px;">
+        &#9888; No baseline established — upload a healthy reference reading to enable deviation tracking (ISO 13373-2:2016 §8.1)
+      </div>`}
+
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;margin-bottom:8px;">Reading History (last 20)</div>
+      ${records?.length ? `
+      <table class="asset-history-table">
+        <thead><tr>
+          <th>Date</th><th>Zone</th><th>RMS mm/s</th><th>CF</th><th>Kurt</th><th>Top Fault</th><th>RUL</th><th>Trend</th>
+        </tr></thead>
+        <tbody>
+          ${records.map(r => `<tr>
+            <td class="muted">${new Date(r.recorded_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'})}</td>
+            <td><span class="zone-pill zone-${r.iso_zone||'A'}" style="font-size:10px;width:22px;height:16px;">${r.iso_zone||'?'}</span></td>
+            <td style="color:${r.iso_zone==='D'?'var(--red)':r.iso_zone==='C'?'var(--orange)':'var(--text)'}">${parseFloat(r.rms_mms).toFixed(3)}</td>
+            <td>${parseFloat(r.crest_factor||0).toFixed(2)}</td>
+            <td>${parseFloat(r.kurtosis||0).toFixed(2)}</td>
+            <td style="font-size:9px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.top_fault||'—'} ${r.top_fault_pct?'('+parseFloat(r.top_fault_pct).toFixed(0)+'%)':''}</td>
+            <td style="color:${r.rul_days<30?'var(--red)':r.rul_days<90?'var(--yellow)':'var(--text)'}">${r.rul_days||'—'}d</td>
+            <td><span class="trend-badge trend-${r.trend_code||''}">${r.trend_code||'—'}</span></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>` : '<div class="muted" style="font-size:11px;font-family:\'IBM Plex Mono\',monospace;padding:12px 0;">No readings yet for this asset.</div>'}
+    `;
+  } catch(e) {
+    document.getElementById('detail-body').innerHTML = `<div style="color:var(--red);font-family:'IBM Plex Mono',monospace;font-size:11px;">Error: ${e.message}</div>`;
+  }
+}
+function closeDetail() { document.getElementById('asset-detail-overlay').classList.remove('open'); }
+
+// ══ PAGE NAVIGATION ═════════════════════════════════════════
+function showPage(name) {
+  document.querySelectorAll('.fleet-page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.fleet-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelector(`[data-page="${name}"]`).classList.add('active');
+}
+
+// ══ BASELINE UPLOAD ══════════════════════════════════════════
+let _blFile = null;
+
+function onBlDrop(e) {
+  e.preventDefault();
+  document.getElementById('bl-dropzone').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) onBlFile(f);
+}
+
+function onBlFile(f) {
+  _blFile = f;
+  document.getElementById('bl-drop-text').textContent = '&#10003; ' + f.name + ' · ' + (f.size/1024).toFixed(1) + ' KB';
+  // Auto-suggest asset name from filename
+  const assetEl = document.getElementById('bl-asset');
+  if (!assetEl.value.trim()) {
+    const base = f.name.replace(/\.[^.]+$/, '');
+    const parts = base.split(/[_\-\s]+/);
+    const descWords = new Set(['vibration','data','vib','signal','accel','velocity','measurement','reading','log','export','baseline','healthy','normal','ref','reference']);
+    let suggested = '';
+    for (const p of parts) {
+      if (descWords.has(p.toLowerCase()) || /^\d{4,}$/.test(p)) break;
+      suggested = suggested ? suggested + '_' + p : p;
+      if (suggested.split('_').length >= 2) break;
+    }
+    if (suggested.length >= 2) assetEl.value = suggested;
+  }
+}
+
+async function submitBaseline() {
+  const asset = document.getElementById('bl-asset').value.trim();
+  const cls   = document.getElementById('bl-class').value;
+  const date  = document.getElementById('bl-date').value;
+  const notes = document.getElementById('bl-notes').value.trim();
+  const prog  = document.getElementById('bl-progress');
+  const succ  = document.getElementById('bl-success');
+  succ.style.display = 'none';
+
+  if (!asset) { alert('Please enter an Asset Name.'); return; }
+  if (!_blFile) { alert('Please select a baseline file.'); return; }
+  if (!_orgId) { alert('Organisation not loaded. Please sign out and back in.'); return; }
+
+  prog.style.display = 'block';
+  prog.textContent = '&#9889; Reading file…';
+
+  try {
+    // Read file
+    const raw = await readFileAsText(_blFile);
+
+    // Parse to get RMS
+    prog.textContent = '&#9889; Computing baseline statistics…';
+    const parsed = parseCSVSimple(raw);
+    if (!parsed || parsed.values.length < 10) throw new Error('Could not extract vibration data from file.');
+
+    const vals = parsed.values;
+    const n = vals.length;
+    const mean = vals.reduce((a,b)=>a+b,0)/n;
+    const rms  = Math.sqrt(vals.reduce((s,v)=>s+v*v,0)/n);
+    const std  = Math.sqrt(vals.reduce((s,v)=>s+(v-mean)**2,0)/n);
+
+    prog.textContent = '&#9889; Saving to database…';
+
+    // Resolve or create asset
+    let assetRec = null;
+    const existing = await sbGet('assets', `asset_name=eq.${encodeURIComponent(asset)}&org_id=eq.${_orgId}&select=id,asset_name`);
+    if (existing?.length) {
+      assetRec = existing[0];
+    } else {
+      const created = await sbPost('assets', {
+        org_id: _orgId, asset_name: asset,
+        machine_class: cls, created_at: new Date().toISOString()
+      });
+      assetRec = created?.[0];
+    }
+    if (!assetRec?.id) throw new Error('Could not create asset record.');
+
+    // Save baseline
+    await sbPost('baselines', {
+      asset_id: assetRec.id,
+      rms_mean: rms, rms_sd: std,
+      sample_count: n,
+      established_at: date ? new Date(date).toISOString() : new Date().toISOString(),
+      source_file: _blFile.name,
+      notes: notes || null,
+    });
+
+    prog.style.display = 'none';
+    succ.style.display = 'block';
+    succ.textContent = '&#10003; Baseline established for ' + asset + ' · RMS: ' + rms.toFixed(3) + ' mm/s · ' + n + ' samples';
+    _blFile = null;
+    document.getElementById('bl-drop-text').textContent = 'Drop baseline file or click to browse';
+    document.getElementById('bl-asset').value = '';
+    document.getElementById('bl-notes').value = '';
+
+    // Refresh fleet
+    await loadFleetData();
+
+  } catch(e) {
+    prog.style.display = 'none';
+    alert('Baseline upload failed: ' + e.message);
+  }
+}
+
+// ══ BATCH UPLOAD ═════════════════════════════════════════════
+let _batchFiles = [];
+
+function onBatchDrop(e) {
+  e.preventDefault();
+  document.getElementById('batch-dropzone').classList.remove('drag-over');
+  onBatchFiles(e.dataTransfer.files);
+}
+
+function onBatchFiles(fileList) {
+  const today = new Date().toISOString().split('T')[0];
+  for (const f of fileList) {
+    if (!_batchFiles.find(x => x.file.name === f.name)) {
+      // Auto-suggest asset name
+      const base = f.name.replace(/\.[^.]+$/, '');
+      const parts = base.split(/[_\-\s]+/);
+      const descWords = new Set(['vibration','data','vib','signal','accel','velocity','measurement','reading','log','export','csv','rpm']);
+      let suggested = '';
+      for (const p of parts) {
+        if (descWords.has(p.toLowerCase()) || /^\d{4,}$/.test(p)) break;
+        suggested = suggested ? suggested + '_' + p : p;
+        if (suggested.split('_').length >= 2) break;
+      }
+      _batchFiles.push({ file: f, asset: suggested || '', date: today });
+    }
+  }
+  renderBatchList();
+}
+
+function renderBatchList() {
+  if (!_batchFiles.length) {
+    document.getElementById('batch-file-list').style.display = 'none';
+    return;
+  }
+  document.getElementById('batch-file-list').style.display = 'block';
+  document.getElementById('batch-rows').innerHTML = _batchFiles.map((item, i) => `
+    <div class="batch-file-row">
+      <div>
+        <div class="batch-file-name" title="${item.file.name}">${item.file.name}</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted)">${(item.file.size/1024).toFixed(1)} KB</div>
+      </div>
+      <input class="batch-asset-input" type="text" value="${item.asset}" placeholder="Asset name"
+        onchange="_batchFiles[${i}].asset=this.value" oninput="_batchFiles[${i}].asset=this.value">
+      <input class="batch-date-input" type="date" value="${item.date}"
+        onchange="_batchFiles[${i}].date=this.value">
+      <span class="batch-remove" onclick="removeBatchFile(${i})">&#10005;</span>
+    </div>
+  `).join('');
+}
+
+function removeBatchFile(i) {
+  _batchFiles.splice(i, 1);
+  renderBatchList();
+}
+
+function clearBatch() {
+  _batchFiles = [];
+  renderBatchList();
+  document.getElementById('batch-results').style.display = 'none';
+  document.getElementById('batch-success').style.display = 'none';
+  document.getElementById('batch-file-input').value = '';
+}
+
+async function submitBatch() {
+  if (!_batchFiles.length) { alert('No files to upload.'); return; }
+  if (!_orgId) { alert('Organisation not loaded.'); return; }
+
+  const missing = _batchFiles.filter(f => !f.asset.trim());
+  if (missing.length) { alert('Please assign an Asset Name to all files.'); return; }
+
+  const prog = document.getElementById('batch-progress');
+  const succ = document.getElementById('batch-success');
+  const resultsDiv = document.getElementById('batch-results');
+  const resultsBody = document.getElementById('batch-results-body');
+  prog.style.display = 'block'; succ.style.display = 'none'; resultsDiv.style.display = 'none';
+
+  const results = [];
+  for (let i = 0; i < _batchFiles.length; i++) {
+    const item = _batchFiles[i];
+    prog.textContent = `&#9889; Processing ${i+1}/${_batchFiles.length}: ${item.file.name}`;
+    try {
+      const raw = await readFileAsText(item.file);
+      const parsed = parseCSVSimple(raw);
+      if (!parsed || parsed.values.length < 10) throw new Error('Insufficient data');
+
+      const vals = parsed.values;
+      const n    = vals.length;
+      const mean = vals.reduce((a,b)=>a+b,0)/n;
+      const rms  = Math.sqrt(vals.reduce((s,v)=>s+v*v,0)/n);
+      const std  = Math.sqrt(vals.reduce((s,v)=>s+(v-mean)**2,0)/n);
+      let peak   = 0; for (const v of vals) if (Math.abs(v)>peak) peak=Math.abs(v);
+      const cf   = peak/(rms||1);
+      const kurt = vals.reduce((s,v)=>s+((v-mean)/(std||1))**4,0)/n;
+
+      // Simple zone classification (Class II defaults)
+      const zone = rms < 2.3 ? 'A' : rms < 4.5 ? 'B' : rms < 11.2 ? 'C' : 'D';
+
+      // Resolve or create asset
+      let assetRec = null;
+      const existing = await sbGet('assets', `asset_name=eq.${encodeURIComponent(item.asset.trim())}&org_id=eq.${_orgId}&select=id`);
+      if (existing?.length) {
+        assetRec = existing[0];
+      } else {
+        const created = await sbPost('assets', { org_id: _orgId, asset_name: item.asset.trim(), created_at: new Date().toISOString() });
+        assetRec = created?.[0];
+      }
+
+      // Save NVR record
+      await sbPost('nvr_records', {
+        asset_id:     assetRec?.id || null,
+        recorded_at:  item.date ? new Date(item.date).toISOString() : new Date().toISOString(),
+        filename:     item.file.name,
+        sample_count: n,
+        rms_mms:      rms,
+        peak_mms:     peak,
+        crest_factor: cf,
+        kurtosis:     kurt,
+        iso_zone:     zone,
+        trend_code:   'DDU',
+        rul_days:     zone==='A'?180:zone==='B'?90:zone==='C'?30:7,
+        machine_class:'cls_ii',
+      });
+
+      results.push({ file: item.file.name, asset: item.asset, zone, rms: rms.toFixed(3), status: 'ok' });
+    } catch(e) {
+      results.push({ file: item.file.name, asset: item.asset, zone: '?', rms: '?', status: 'error', error: e.message });
+    }
+  }
+
+  prog.style.display = 'none';
+  succ.style.display = 'block';
+  succ.textContent = `&#10003; Batch complete · ${results.filter(r=>r.status==='ok').length}/${results.length} files processed`;
+
+  resultsDiv.style.display = 'block';
+  resultsBody.innerHTML = results.map(r => `
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:${r.status==='ok'?'rgba(34,197,94,0.05)':'rgba(239,68,68,0.05)'};border:1px solid ${r.status==='ok'?'rgba(34,197,94,0.2)':'rgba(239,68,68,0.2)'};border-radius:7px;margin-bottom:6px;font-family:'IBM Plex Mono',monospace;font-size:10px;">
+      <span>${r.status==='ok'?'&#10003;':'&#10007;'}</span>
+      <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.file}</span>
+      <span style="color:var(--muted)">${r.asset}</span>
+      ${r.status==='ok'?`<span class="zone-pill zone-${r.zone}" style="font-size:10px;width:22px;height:16px;">${r.zone}</span><span>${r.rms} mm/s</span>`:`<span style="color:var(--red)">${r.error}</span>`}
+    </div>
+  `).join('');
+
+  _batchFiles = [];
+  renderBatchList();
+  await loadFleetData();
+}
+
+// ══ FILE UTILITIES ═══════════════════════════════════════════
+function readFileAsText(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = () => rej(new Error('File read failed'));
+    r.readAsText(file);
+  });
+}
+
+function parseCSVSimple(raw) {
+  // Minimal CSV parser — extract first numeric signal column
+  try {
+    const result = Papa.parse(raw.trim(), { header: true, dynamicTyping: true, skipEmptyLines: true });
+    if (!result.data?.length) return null;
+    const headers = result.meta.fields || [];
+    const tsNames = ['time','timestamp','t','date','seconds','ms','index','sample','i','n','machine','sensor','day','zone','severity','temp','temperature'];
+    const numCols = headers.filter(h => {
+      if (tsNames.some(ts => h.toLowerCase().includes(ts))) return false;
+      return result.data.slice(0,20).filter(row => typeof row[h]==='number'&&isFinite(row[h])).length > 10;
+    });
+    if (!numCols.length) return null;
+    // Prefer velocity columns
+    const velNames = ['velocity','vel','mm_s'];
+    const col = numCols.find(c => velNames.some(v => c.toLowerCase().includes(v))) || numCols[0];
+    const values = result.data.map(r => r[col]).filter(v => typeof v==='number'&&isFinite(v));
+    return { values, colName: col };
+  } catch(e) { return null; }
+}
+</script>
+</body>
+</html>
