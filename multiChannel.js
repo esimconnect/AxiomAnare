@@ -506,6 +506,7 @@ function mcRenderResults(channelResults, combined, filename) {
       <div class="mc-ai-body" id="mc-ai-body">
         <span style="color:var(--muted)">Generating multi-channel diagnostic summary&hellip;</span>
       </div>
+      <div class="disclaimer-last" style="display:none;">AxiomAnare &middot; AI-assisted diagnostic report &middot; Not a certified engineering determination</div>
     </div>
   `;
 

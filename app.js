@@ -2604,9 +2604,18 @@ function mdToHtml(md) {
       </div>
     `;
 
+    // Mark body with MC mode class so print CSS can hide single-channel cards
+    if (isMulti) {
+      document.body.classList.add('mc-print-mode');
+    } else {
+      document.body.classList.remove('mc-print-mode');
+    }
+
     // Brief delay to let print header render, then print
     setTimeout(() => {
       window.print();
+      // Remove MC class after print dialog closes
+      setTimeout(() => document.body.classList.remove('mc-print-mode'), 2000);
     }, 150);
   };
 

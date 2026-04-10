@@ -383,6 +383,43 @@ main{padding-top:54px;position:relative;z-index:1;}
     border-top: 1px solid #ddd; padding-top: 6px; margin-top: 20px;
   }
 
+  /* ── MC: Hide single-channel cards when MC mode is active ── */
+  body.mc-print-mode #single-channel-results { display: none !important; }
+
+  /* ── MC: Dark background boxes → white in print ── */
+  .mc-metric-box, .mc-ch-met {
+    background: #f5f5f5 !important; border: 1px solid #ddd !important;
+  }
+  .mc-metric-val, .mc-ch-met-val { color: #1a1a2e !important; }
+  .mc-metric-label, .mc-ch-met-lbl { color: #555 !important; }
+  .mc-combined-card, .mc-chart-card, .mc-ch-card, .mc-cross-card, .mc-ai-section {
+    background: #ffffff !important; border: 1px solid #ccc !important;
+  }
+  .mc-ch-score-cell { background: #f5f5f5 !important; border: 1px solid #ddd !important; }
+  .mc-ch-score-hi   { color: #1a1a2e !important; }
+  .mc-ch-score-loc  { color: #1a1a2e !important; }
+  .mc-combined-title, .mc-chart-title { color: #1a1a2e !important; }
+  .mc-combined-sub, .mc-ch-col, .mc-ch-rul { color: #555 !important; }
+  .mc-section-header { color: #1a1a2e !important; border-bottom-color: #ccc !important; }
+  .mc-cross-loc, .mc-cross-name { color: #1a1a2e !important; }
+  .mc-cross-note { color: #555 !important; }
+  .mc-ai-title { color: #1a1a2e !important; }
+  .mc-ai-body  { color: #333 !important; }
+  .mc-top-fault { background: #fffbf0 !important; border-color: #f59e0b !important; }
+  .mc-fault-name { color: #1a1a2e !important; }
+  .mc-fault-meta { color: #555 !important; }
+
+  /* ── MC: Cross-axis grid full width ── */
+  .mc-cross-axis-grid { grid-template-columns: 1fr 1fr !important; }
+
+  /* ── MC: Print header compact — prevent wrapping ── */
+  .ph-sub { font-size: 6.5pt !important; white-space: nowrap; }
+  .ph-title { min-width: 0; }
+
+  /* ── MC: AI section page break ── */
+  .mc-ai-section { break-before: page; }
+  .mc-channels-grid { break-before: avoid; }
+
   /* ── FIX 5: AI section footer disclaimer ── */
   #results-screen::after {
     content: "AxiomAnare · AI-assisted diagnostic report · Not a certified engineering determination · " attr(data-filename);
