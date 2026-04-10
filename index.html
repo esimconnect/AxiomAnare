@@ -139,8 +139,19 @@ main{padding-top:54px;position:relative;z-index:1;}
 .rul-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--green),var(--yellow),var(--red));}
 .rul-arrow{position:absolute;top:-3px;width:10px;height:10px;border-radius:50%;background:white;transform:translateX(-50%);transition:left 0.8s ease;}
 .stream-thinking{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);padding:11px 15px;border-bottom:1px solid var(--border);display:none;align-items:center;gap:8px;}
-.reco-text{padding:16px 18px;font-size:13px;line-height:1.85;color:var(--text);white-space:pre-wrap;font-family:'IBM Plex Sans',sans-serif;font-weight:300;}
+.reco-text{padding:16px 18px;font-size:13px;line-height:1.85;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-weight:300;}
 .reco-text.typing::after{content:'\u258B';animation:blink 0.7s infinite;}
+.reco-h1{font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;color:var(--accent);margin:14px 0 4px;letter-spacing:0.3px;border-bottom:1px solid var(--border);padding-bottom:4px;}
+.reco-h2{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;color:var(--text);margin:12px 0 3px;letter-spacing:0.2px;}
+.reco-h3{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;color:var(--muted);margin:8px 0 2px;}
+.reco-p{margin:0 0 8px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;line-height:1.75;}
+.reco-list{margin:4px 0 10px 18px;padding:0;}
+.reco-list li{margin-bottom:4px;font-size:13px;line-height:1.7;}
+.reco-text strong{color:var(--text);font-weight:600;}
+.reco-text em{color:var(--muted);font-style:italic;}
+.reco-text code{font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--surface2);padding:1px 5px;border-radius:3px;color:var(--accent);}
+.mc-ai-body .reco-h1,.mc-ai-body .reco-h2,.mc-ai-body .reco-h3,.mc-ai-body .reco-p,.mc-ai-body .reco-list{font-family:inherit;}
+
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 .disclaimer-box{margin:12px;padding:11px 13px;background:rgba(255,59,59,0.04);border:1px solid rgba(255,59,59,0.17);border-radius:6px;font-size:10px;line-height:1.5;color:#ff9999;font-family:'IBM Plex Mono',monospace;}
 .fade-in{animation:fadeUp 0.4s ease both;}
@@ -267,7 +278,8 @@ main{padding-top:54px;position:relative;z-index:1;}
         <div class="param-group">
           <div class="param-label">Asset Name <span>Identifies this machine for baseline tracking</span></div>
           <input class="param-input" id="p-asset-name" type="text" placeholder="e.g. Pump-01-NDE, FanMotor-B2-DE" oninput="onParamChange()">
-          <div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:4px;">Auto-generated from machine class + type + RPM + point if left blank</div>
+          <div style="font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:4px;">Auto-suggested from filename when file is uploaded — edit if incorrect</div>
+          <div id="asset-name-hint" style="display:none;font-size:9px;color:var(--accent);font-family:'IBM Plex Mono',monospace;margin-top:2px;"></div>
         </div>
         <!-- Measurement date -->
         <div class="param-group" style="margin-top:4px;">

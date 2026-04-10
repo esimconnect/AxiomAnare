@@ -517,9 +517,17 @@
   border: 1px solid rgba(0,200,150,0.3); border-radius: 4px; padding: 2px 7px;
 }
 .mc-ai-body {
-  font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 1.65;
-  color: var(--text); white-space: pre-wrap;
+  font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; line-height: 1.75;
+  color: var(--text);
 }
+.mc-ai-body p { margin: 0 0 8px; }
+.mc-ai-body h2,.mc-ai-body h3,.mc-ai-body h4 { font-family:'Barlow Condensed',sans-serif; font-weight:700; margin:10px 0 4px; }
+.mc-ai-body h2 { font-size:15px; color:var(--accent); border-bottom:1px solid var(--border); padding-bottom:3px; }
+.mc-ai-body h3 { font-size:13px; color:var(--text); }
+.mc-ai-body ul,.mc-ai-body ol { margin:4px 0 10px 18px; padding:0; }
+.mc-ai-body li { margin-bottom:3px; font-size:13px; line-height:1.65; }
+.mc-ai-body strong { font-weight:600; color:var(--text); }
+.mc-ai-body code { font-family:'IBM Plex Mono',monospace; font-size:11px; background:var(--surface2); padding:1px 5px; border-radius:3px; color:var(--accent); }
 
 @media (max-width: 700px) {
   .mc-combined-metrics { grid-template-columns: repeat(2, 1fr); }

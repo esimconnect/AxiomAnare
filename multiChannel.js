@@ -34,12 +34,56 @@ function mcGetCrossAxisRules() {
 // Returns array of column names (excludes time/index/sample)
 function mcDetectSignalColumns(parsedResult) {
   if (!parsedResult) return [];
-  const tsNames = ['time','timestamp','t','date','seconds','ms','index','sample','i','n'];
   const allHeaders = parsedResult.allHeaders || [];
-  // Re-parse to get all columns, not just the one parseData picked
-  return allHeaders.filter(h =>
-    !tsNames.some(ts => h.toLowerCase() === ts || h.toLowerCase().startsWith(ts + '_'))
-  );
+
+  // Columns to always exclude — not raw vibration signals
+  const excludePatterns = [
+    // Time / index
+    'time','timestamp','t','date','seconds','ms','index','sample','i','n',
+    // Metadata / descriptive
+    'machine','sensor','location','unit','tag','id','name','label','type',
+    'equipment','asset','point','channel','description','comment','note',
+    // Derived / processed (not raw signals)
+    'severity','zone','iso_zone','status','grade','class','category',
+    'day','hour','minute','hour_of_day','shift','period',
+    'rms','peak','cf','crest','kurtosis','skew','deviation','sigma',
+    'health','score','index','indicator','flag','alert','alarm',
+    // Environmental / process
+    'temperature','temp','humidity','pressure','flow','speed','load',
+    'power','current','voltage','frequency','rpm','hz',
+    // Phase / trigger
+    'phase','spike_phase','trigger','tach','key',
+    // Displacement (derived from velocity/accel)
+    'displacement','disp',
+  ];
+
+  // Patterns that positively indicate a vibration signal column
+  const signalPatterns = [
+    'accel','acc','acceleration','vibration','vib','velocity','vel',
+    'amplitude','amp','signal','ch','chan','axis',
+    '_x','_y','_z','_h','_v','_a',
+    'g_rms','mm_s','mm/s','in_s',
+  ];
+
+  return allHeaders.filter(h => {
+    const hl = h.toLowerCase();
+
+    // Hard exclude if matches any exclusion pattern
+    if (excludePatterns.some(ex =>
+      hl === ex || hl.startsWith(ex + '_') || hl.endsWith('_' + ex) ||
+      hl.includes('_' + ex + '_')
+    )) return false;
+
+    // Accept if matches a signal pattern
+    if (signalPatterns.some(sig => hl.includes(sig))) return true;
+
+    // Otherwise: only accept if it's a short generic column name
+    // (e.g. 'ch1', 'x', 'y', 'z') and not a known non-signal type
+    if (/^(ch\d+|channel\d+|[xyz]\d*|axis\d*)$/i.test(hl)) return true;
+
+    // Default: reject ambiguous columns — better to miss one than false-positive
+    return false;
+  });
 }
 
 // ── Extract values for a specific column from raw CSV string ──
@@ -546,10 +590,11 @@ ${chSummary}
 
 Cross-axis confirmed: ${crossSummary || 'None'}
 
-Cover: overall condition, cross-axis fault interpretation, inspection priority. Reference ISO standards. Plain text only, no markdown.`;
+Cover: overall condition, cross-axis fault interpretation, inspection priority. Reference ISO standards where applicable.`;
 
   try {
-    bodyEl.textContent = '';
+    bodyEl.innerHTML = '';
+    let fullText = '';
     const response = await fetch('https://restless-tree-eac8.kairosventure-io.workers.dev', {
       method: 'POST',
       headers: {
@@ -579,13 +624,14 @@ Cover: overall condition, cross-axis fault interpretation, inspection priority. 
         if (data === '[DONE]') break;
         try {
           const ev = JSON.parse(data);
-          // Anthropic streaming format
           if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
-            bodyEl.textContent += ev.delta.text;
+            fullText += ev.delta.text;
+            bodyEl.innerHTML = window.mdToHtml ? window.mdToHtml(fullText) : fullText;
           }
         } catch {}
       }
     }
+    bodyEl.innerHTML = window.mdToHtml ? window.mdToHtml(fullText) : fullText;
   } catch (err) {
     bodyEl.textContent = 'AI summary unavailable: ' + err.message;
   }

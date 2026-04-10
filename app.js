@@ -494,6 +494,51 @@ function stageFile(file) {
   document.getElementById('ready-filename').textContent = file.name;
   document.getElementById('ready-meta').textContent = sz + ' . .' + ext.toUpperCase();
   updateStep3Meta();
+  // ── Auto-suggest asset name from filename ──────────────────────────────
+  // Only suggest if field is blank — never overwrite user's entry
+  const assetEl = document.getElementById('p-asset-name');
+  if (assetEl && !assetEl.value.trim()) {
+    // Strip extension and common suffixes, extract the meaningful ID prefix
+    // e.g. "TJF01_VibrationData_10days.csv" → "TJF01"
+    //      "MA342_1200rpm_A__D_01.csv"       → "MA342"
+    //      "pump_bearing_NDE_H.csv"           → "pump_bearing_NDE_H"
+    const base = file.name.replace(/\.[^.]+$/, ''); // remove extension
+    // Split on common delimiters, take leading segments that look like an asset ID
+    const parts = base.split(/[_\-\s]+/);
+    // Asset ID heuristic: first segment(s) that are alphanumeric + digits
+    // Stop when we hit a purely descriptive word
+    const descWords = new Set([
+      'vibration','data','vib','signal','accel','velocity','measurement',
+      'reading','recording','log','export','output','file','test','sample',
+      'bearing','motor','pump','fan','gearbox','compressor','turbine',
+      'nde','de','fe','drive','end','axial','radial','horizontal','vertical',
+      'rpm','hz','khz','mhz','ms','sec','min','hour','day','days','week',
+      'report','raw','csv','xlsx','mat','txt','simul','synthetic',
+    ]);
+    let suggested = '';
+    for (const part of parts) {
+      if (!part) continue;
+      const pl = part.toLowerCase();
+      // Stop if it's a purely descriptive word
+      if (descWords.has(pl)) break;
+      // Stop if it's a pure number (e.g. date or sequence)
+      if (/^\d{4,}$/.test(part)) break;
+      suggested = suggested ? suggested + '_' + part : part;
+      // Stop after capturing up to 2 segments — keep IDs concise
+      if (suggested.split('_').length >= 2) break;
+    }
+    if (suggested && suggested.length >= 2) {
+      assetEl.value = suggested;
+      // Trigger param change to update accuracy indicator
+      if (typeof onParamChange === 'function') onParamChange();
+      // Show subtle hint that this was auto-filled
+      const hint = document.getElementById('asset-name-hint');
+      if (hint) {
+        hint.textContent = 'Auto-suggested from filename — edit if incorrect';
+        hint.style.display = 'block';
+      }
+    }
+  }
   // Mark steps done
   setStepDone('step1-num', true); setStepDone('step2-num', true);
   // Show Step 3
@@ -1801,6 +1846,8 @@ function resetApp(){
   if (mcr) mcr.innerHTML = '';
   const mcs = document.getElementById('multiChannelSuggestion');
   if (mcs) { mcs.style.display = 'none'; mcs.innerHTML = ''; }
+  const hint = document.getElementById('asset-name-hint');
+  if (hint) { hint.style.display = 'none'; hint.textContent = ''; }
   if (window.MC) { window.MC.results = []; }
 }
 
@@ -2370,12 +2417,27 @@ async function streamClaude(){
     const resp=await fetch('https://restless-tree-eac8.kairosventure-io.workers.dev',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:CONFIG.chatbot_config.model_version,max_tokens:CONFIG.chatbot_config.max_output_tokens,stream:true,messages:[{role:'user',content:prompt}]})});
     document.getElementById('stream-thinking').style.display='none';
     if(!resp.ok)throw new Error(await resp.text());
-    const reader=resp.body.getReader(),dec=new TextDecoder();let buf='';
+    const reader=resp.body.getReader(),dec=new TextDecoder();let buf='',fullText='';
     const rt=document.getElementById('reco-text');
-    while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const ls=buf.split('\n');buf=ls.pop();for(const l of ls){if(!l.startsWith('data:'))continue;const dat=l.slice(5).trim();if(dat==='[DONE]')break;try{const e=JSON.parse(dat);if(e.type==='content_block_delta'&&e.delta?.type==='text_delta'){rt.textContent+=e.delta.text;rt.scrollIntoView({behavior:'smooth',block:'nearest'});}}catch{}}}
+    rt.innerHTML='';
+    while(true){
+      const{done,value}=await reader.read();if(done)break;
+      buf+=dec.decode(value,{stream:true});const ls=buf.split('\n');buf=ls.pop();
+      for(const l of ls){
+        if(!l.startsWith('data:'))continue;
+        const dat=l.slice(5).trim();if(dat==='[DONE]')break;
+        try{const e=JSON.parse(dat);if(e.type==='content_block_delta'&&e.delta?.type==='text_delta'){
+          fullText+=e.delta.text;
+          rt.innerHTML=mdToHtml(fullText);
+          rt.scrollIntoView({behavior:'smooth',block:'nearest'});
+        }}catch{}
+      }
+    }
+    // Final render
+    rt.innerHTML=mdToHtml(fullText);
   }catch(err){
     document.getElementById('stream-thinking').style.display='none';
-    await typeText(document.getElementById('reco-text'), buildFallback(nvr));
+    document.getElementById('reco-text').innerHTML = mdToHtml(buildFallback(nvr));
   }
   document.getElementById('reco-text').classList.remove('typing');
 }
@@ -2399,8 +2461,76 @@ function buildFallback(d){
   return '1. DIAGNOSTIC SUMMARY\nISO Zone '+d.zoneRow.zone_label+' ('+d.zoneRow.iso_clause_ref+'). RMS: '+d.rms+' '+d.cu+' on '+d.classRow.machine_type_desc+'.\n'+d.zoneRow.action_required+'\nDeviation: '+d.devSc+'sigma ('+d.devRow.classification+', '+d.devRow.iso_reference+').\nTrend: '+d.trendRow.code+'  -  '+d.trendRow.description+' ('+d.trendRow.iso_reference+').\n'+(d.singleFile?'\nNote: Single measurement file  -  trend direction cannot be established from one snapshot. Multiple readings required per '+d.trendRow.iso_reference+'.':'\nNote: Trend '+d.trendRow.code+' derived from '+d.historyCount+' readings ('+d.trendRow.iso_reference+').')+'\n\n2. PRIMARY FAULT ANALYSIS ('+top.iso_reference+')\n'+top.name+': Fault Indicator — '+faultIndicatorLabel(top.pct)+'.\n'+fA+(sec?'\nSecondary indicator: '+sec.name+' — '+faultIndicatorLabel(sec.pct)+' ('+sec.iso_reference+').':'')+'\n\n3. RECOMMENDED ACTIONS\nImmediate:\n'+(zI===allZ.length-1?'* Controlled shutdown required. Do not restart without engineering authorisation. ('+d.zoneRow.iso_clause_ref+')':zI===allZ.length-2?'* Schedule maintenance within 7 days. ('+d.zoneRow.iso_clause_ref+')':'* Continue current schedule. Document per ISO 55001:2014 S7.5.')+'\nShort-term:\n* '+((top.category==='bearing'&&top.pct>=20)?'Inspect bearing. Verify lubrication per ISO 13373-1:2002 S6.2.':top.category==='bearing'?'Monitor bearing condition. Re-measure at next scheduled interval ('+mi.interval_desc+'). Track CF and Kurtosis trend (ISO 13373-2:2016 §8.2).':top.name.includes('Imbalance')?'Dynamic balance per ISO 1940-1.':top.name.includes('Misalignment')?'Precision alignment. Check soft-foot per ISO 10816-3.':top.name.includes('Looseness')?'Inspect hold-down bolts, grout and baseplate integrity.':'Continue monitoring. Re-baseline post any maintenance (ISO 13373-2:2016 S8.1).')+'\nLong-term:\n* Re-baseline post-maintenance (ISO 13373-2:2016 S8.1).\n\n4. MONITORING GUIDANCE ('+mi.iso_reference+')\nInterval: '+mi.interval_desc+'.\nMeasure H/V/A at bearing housings (ISO 13373-1:2002 S5.2). Track RMS, CF, Kurtosis.\n\n5. RUL & PROGNOSTIC NOTE ('+d.rulR.iso_reference+')\nRUL: '+d.rulR.days+'d +/- '+d.rulR.ci+'d CI.\n'+(d.rulR.days<60?'Below 60 days  -  begin maintenance planning immediately.':'Continue trending to improve RUL accuracy.')+'\nPer '+d.rulR.iso_reference+': this estimate must not be the sole criterion for maintenance deferral. Qualified engineering review required.';
 }
 
-async function typeText(el,text){el.textContent='';for(let i=0;i<text.length;i+=4){el.textContent+=text.slice(i,i+4);if(i%80===0)await new Promise(r=>setTimeout(r,5));}}
+// == MARKDOWN RENDERER ==
+// Minimal markdown→HTML for Claude AI report output.
+// Handles: ## headers, **bold**, bullet lists, numbered lists, line breaks.
+// No external dependency — runs entirely in-browser.
+function mdToHtml(md) {
+  if (!md) return '';
+  const lines = md.split('\n');
+  const out = [];
+  let inList = false, inNumList = false;
 
+  const closeList = () => {
+    if (inList)    { out.push('</ul>'); inList = false; }
+    if (inNumList) { out.push('</ol>'); inNumList = false; }
+  };
+
+  const inline = t => t
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*\*(.+?)\*\*\*/g,'<strong><em>$1</em></strong>')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/`(.+?)`/g,'<code>$1</code>');
+
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+
+    // H1
+    if (/^#\s+/.test(line)) {
+      closeList();
+      out.push(`<h2 class="reco-h1">${inline(line.replace(/^#\s+/,''))}</h2>`);
+      continue;
+    }
+    // H2
+    if (/^##\s+/.test(line)) {
+      closeList();
+      out.push(`<h3 class="reco-h2">${inline(line.replace(/^##\s+/,''))}</h3>`);
+      continue;
+    }
+    // H3
+    if (/^###\s+/.test(line)) {
+      closeList();
+      out.push(`<h4 class="reco-h3">${inline(line.replace(/^###\s+/,''))}</h4>`);
+      continue;
+    }
+    // Numbered list
+    if (/^\d+\.\s+/.test(line)) {
+      if (inList) { out.push('</ul>'); inList = false; }
+      if (!inNumList) { out.push('<ol class="reco-list">'); inNumList = true; }
+      out.push(`<li>${inline(line.replace(/^\d+\.\s+/,''))}</li>`);
+      continue;
+    }
+    // Bullet list
+    if (/^[-*•]\s+/.test(line)) {
+      if (inNumList) { out.push('</ol>'); inNumList = false; }
+      if (!inList) { out.push('<ul class="reco-list">'); inList = true; }
+      out.push(`<li>${inline(line.replace(/^[-*•]\s+/,''))}</li>`);
+      continue;
+    }
+    // Blank line
+    if (!line.trim()) {
+      closeList();
+      out.push('<br>');
+      continue;
+    }
+    // Paragraph
+    closeList();
+    out.push(`<p class="reco-p">${inline(line)}</p>`);
+  }
+  closeList();
+  return out.join('');
+}
 
   // ── Expose internals for multiChannel.js ─────────────────────────────────
   // Functions are inside DOMContentLoaded scope — expose as window globals
@@ -2420,6 +2550,7 @@ async function typeText(el,text){el.textContent='';for(let i=0;i<text.length;i+=
   window.faultIndicatorLabel = faultIndicatorLabel;
   window.__getSelClassId     = function() { return selClassId; };
   window.renderResults       = renderResults;
+  window.mdToHtml            = mdToHtml;
   // nvr is a let — expose via getter/setter so multiChannel.js can inject worst-channel data
   Object.defineProperty(window, 'nvr', {
     get: function() { return nvr; },
