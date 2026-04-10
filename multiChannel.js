@@ -473,18 +473,23 @@ function mcRenderResults(channelResults, combined, filename) {
   if (scr) scr.style.display = 'none';
 
   const zoneColors = { A: '#22c55e', B: '#f59e0b', C: '#f97316', D: '#ef4444' };
+  const zoneBg     = { A: 'rgba(34,197,94,0.1)', B: 'rgba(245,158,11,0.12)', C: 'rgba(249,115,22,0.15)', D: 'rgba(239,68,68,0.15)' };
+  const cardBorder = combined?.worstZone === 'D' ? 'rgba(239,68,68,0.5)'
+                   : combined?.worstZone === 'C' ? 'rgba(249,115,22,0.4)'
+                   : combined?.worstZone === 'B' ? 'rgba(245,158,11,0.35)'
+                   : 'rgba(77,157,224,0.35)';
   const hiColor = h => h >= 75 ? '#22c55e' : h >= 50 ? '#f59e0b' : h >= 25 ? '#f97316' : '#ef4444';
   const ok = channelResults.filter(r => !r.error);
 
   container.innerHTML = `
-    <div class="mc-combined-card">
+    <div class="mc-combined-card" style="border-color:${cardBorder}">
       <div class="mc-combined-header">
         <span class="mc-combined-icon">&#128202;</span>
         <div>
           <div class="mc-combined-title">Multi-Channel Combined Assessment</div>
-          <div class="mc-combined-sub">${filename} &middot; ${channelResults.length} channel${channelResults.length!==1?'s':''} &middot; ISO 13373-1${combined?.zoneOverrideReason ? `<br><span style="color:#f59e0b;font-size:9px;">&#9888; Zone escalated from ${combined.worstZoneRMS} (RMS) &mdash; ${combined.zoneOverrideReason}</span>` : ''}</div>
+          <div class="mc-combined-sub">${filename} &middot; ${channelResults.length} channel${channelResults.length!==1?'s':''} &middot; ISO 13373-1${combined?.zoneOverrideReason ? `<br><span style="color:${zoneColors[combined?.worstZone]||'#f59e0b'};font-size:9px;">&#9888; Zone escalated from ${combined.worstZoneRMS} (RMS) &mdash; ${combined.zoneOverrideReason}</span>` : ''}</div>
         </div>
-        <div class="mc-combined-zone" style="background:${zoneColors[combined?.worstZone]||'#555'}20;border-color:${zoneColors[combined?.worstZone]||'#555'};color:${zoneColors[combined?.worstZone]||'#555'}">
+        <div class="mc-combined-zone" style="background:${zoneBg[combined?.worstZone]||'rgba(85,85,85,0.1)'};border-color:${zoneColors[combined?.worstZone]||'#555'};color:${zoneColors[combined?.worstZone]||'#555'}">
           Zone ${combined?.worstZone||'&mdash;'}
         </div>
       </div>
