@@ -788,7 +788,7 @@ async function loadFleetData() {
   try {
     // Load assets + their latest NVR record
     const assets = await sbGet('assets',
-      `org_id=eq.${_orgId}&select=id,asset_name,equipment_type,machine_class,created_at,last_reading_at&order=asset_name.asc`
+      `org_id=eq.${_orgId}&select=id,asset_name,equipment_type,machine_class,created_at&order=asset_name.asc`
     );
 
     if (!assets?.length) {
@@ -933,7 +933,7 @@ async function openDetail(assetId, assetName) {
   try {
     const [records, baselines] = await Promise.all([
       sbGet('nvr_records', `asset_id=eq.${assetId}&select=recorded_at,filename,rms_mms,iso_zone,trend_code,rul_days,top_fault,top_fault_pct,kurtosis,crest_factor&order=recorded_at.desc&limit=20`),
-      sbGet('baselines', `asset_id=eq.${assetId}&select=rms_mean,rms_sd,established_at,source_file,sample_count`)
+      sbGet('baselines', `asset_id=eq.${assetId}&select=mean_rms,std_rms,established_at,source_file,sample_count`)
     ]);
 
     const bl = baselines?.[0];
@@ -941,7 +941,7 @@ async function openDetail(assetId, assetName) {
 
     document.getElementById('detail-body').innerHTML = `
       ${bl ? `<div style="margin-bottom:16px;padding:12px 14px;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:10px;">
-        &#9989; Baseline established · Mean RMS: ${parseFloat(bl.rms_mean).toFixed(3)} mm/s &plusmn; ${parseFloat(bl.rms_sd||0).toFixed(3)} mm/s · ${bl.sample_count} sample${bl.sample_count!==1?'s':''} · ${new Date(bl.established_at).toLocaleDateString('en-GB')}
+        &#9989; Baseline established · Mean RMS: ${parseFloat(bl.mean_rms).toFixed(3)} mm/s &plusmn; ${parseFloat(bl.std_rms||0).toFixed(3)} mm/s · ${bl.sample_count} sample${bl.sample_count!==1?'s':''} · ${new Date(bl.established_at).toLocaleDateString('en-GB')}
       </div>` : `<div style="margin-bottom:16px;padding:12px 14px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:10px;">
         &#9888; No baseline established — upload a healthy reference reading to enable deviation tracking (ISO 13373-2:2016 §8.1)
       </div>`}
@@ -1059,7 +1059,7 @@ async function submitBaseline() {
     // Save baseline
     await sbPost('baselines', {
       asset_id: assetRec.id,
-      rms_mean: rms, rms_sd: std,
+      mean_rms: rms, std_rms: std,
       sample_count: n,
       established_at: date ? new Date(date).toISOString() : new Date().toISOString(),
       source_file: _blFile.name,
