@@ -555,11 +555,18 @@ function mcBuildFFT(channelResults) {
     const col = MC_CH_COLORS[i]||MC_CH_COLORS[0];
     const data = [];
     for (let j=0; j<ch.fftR.freqs.length && ch.fftR.freqs[j]<maxFreq; j+=step) data.push(parseFloat(ch.fftR.mags[j].toFixed(5)));
-    return { label:`${ch.location} (${ch.axis})`, data, borderColor:col.line, backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.1, fill:false };
+    return { label:`${ch.location} (${ch.axis})`, data, borderColor:col.line, backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, pointHoverRadius:4, tension:0.1, fill:false };
   });
   mcFftInst = new Chart(canvas.getContext('2d'), { type:'line', data:{labels:freqLabels,datasets},
     options:{ responsive:true, maintainAspectRatio:false, animation:{duration:300},
-      plugins:{ legend:{display:false}, tooltip:{backgroundColor:'#1a2030',borderColor:'#4d9de0',borderWidth:1,callbacks:{title:i=>i[0].label+' Hz',label:c=>` ${c.dataset.label}: ${c.raw}`}} },
+      interaction:{ mode:'index', intersect:false },
+      plugins:{ legend:{display:false}, tooltip:{
+        backgroundColor:'#1a2030', borderColor:'#4d9de0', borderWidth:1,
+        callbacks:{
+          title: items => items[0]?.label + ' Hz',
+          label: c => ` ${c.dataset.label}: ${parseFloat(c.raw).toFixed(4)}`,
+        }
+      }},
       scales:{ x:{grid:{display:false},ticks:{maxTicksLimit:12,color:'#7f93aa',font:{size:9},callback:(v,i)=>parseFloat(freqLabels[i])%50<3?freqLabels[i]+'Hz':''}}, y:{grid:{color:'rgba(77,157,224,0.1)'},ticks:{color:'#7f93aa',font:{size:9}},min:0} } } });
   const leg = document.getElementById('mc-fft-legend');
   if (leg) leg.innerHTML = channelResults.map((ch,i)=>{const col=MC_CH_COLORS[i]||MC_CH_COLORS[0];return`<div class="mc-legend-item"><div class="mc-legend-line" style="background:${col.line}"></div>${ch.location} (${ch.axis})</div>`;}).join('');
