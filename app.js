@@ -2619,4 +2619,89 @@ function mdToHtml(md) {
     }, 150);
   };
 
+  // == PRINT RADAR / FFT COLOUR OVERRIDE ==
+  // Chart.js canvases use dark theme colours — redraw with print-friendly colours before printing
+  window.addEventListener('beforeprint', function() {
+    // Single-channel radar
+    if (radarInst) {
+      const r = radarInst.options.scales.r;
+      r.grid.color        = 'rgba(0,0,0,0.15)';
+      r.angleLines.color  = 'rgba(0,0,0,0.2)';
+      r.ticks.backdropColor = 'rgba(255,255,255,0.9)';
+      r.ticks.color       = '#333';
+      r.pointLabels.color = '#1a1a2e';
+      radarInst.data.datasets[0].borderColor     = '#c0392b';
+      radarInst.data.datasets[0].backgroundColor = 'rgba(192,57,43,0.18)';
+      radarInst.data.datasets[0].pointBorderColor = '#fff';
+      radarInst.update('none');
+    }
+    // Single-channel FFT
+    if (fftInst) {
+      fftInst.options.scales.x.ticks.color = '#555';
+      fftInst.options.scales.y.ticks.color = '#555';
+      fftInst.options.scales.x.grid.color  = 'rgba(0,0,0,0.05)';
+      fftInst.options.scales.y.grid.color  = 'rgba(0,0,0,0.08)';
+      fftInst.update('none');
+    }
+    // MC radar
+    if (window.mcRadarInst) {
+      const r = window.mcRadarInst.options.scales.r;
+      r.grid.color        = 'rgba(0,0,0,0.15)';
+      r.angleLines.color  = 'rgba(0,0,0,0.2)';
+      r.ticks.backdropColor = 'rgba(255,255,255,0.9)';
+      r.ticks.color       = '#333';
+      r.pointLabels.color = '#1a1a2e';
+      window.mcRadarInst.data.datasets.forEach(ds => {
+        ds.borderWidth = 2.5;
+      });
+      window.mcRadarInst.update('none');
+    }
+    // MC FFT
+    if (window.mcFftInst) {
+      window.mcFftInst.options.scales.x.ticks.color = '#555';
+      window.mcFftInst.options.scales.y.ticks.color = '#555';
+      window.mcFftInst.options.scales.x.grid.color  = 'rgba(0,0,0,0.05)';
+      window.mcFftInst.options.scales.y.grid.color  = 'rgba(0,0,0,0.08)';
+      window.mcFftInst.data.datasets.forEach(ds => { ds.borderWidth = 2; });
+      window.mcFftInst.update('none');
+    }
+  });
+
+  window.addEventListener('afterprint', function() {
+    // Restore dark theme colours after print dialog closes
+    if (radarInst) {
+      const r = radarInst.options.scales.r;
+      r.grid.color        = 'rgba(77,157,224,0.2)';
+      r.angleLines.color  = 'rgba(77,157,224,0.25)';
+      r.ticks.backdropColor = 'rgba(26,36,53,0.85)';
+      r.ticks.color       = '#e8edf5';
+      r.pointLabels.color = '#e8edf5';
+      radarInst.update('none');
+    }
+    if (fftInst) {
+      fftInst.options.scales.x.ticks.color = '#7f93aa';
+      fftInst.options.scales.y.ticks.color = '#7f93aa';
+      fftInst.options.scales.x.grid.color  = 'transparent';
+      fftInst.options.scales.y.grid.color  = 'rgba(77,157,224,0.12)';
+      fftInst.update('none');
+    }
+    if (window.mcRadarInst) {
+      const r = window.mcRadarInst.options.scales.r;
+      r.grid.color        = 'rgba(77,157,224,0.2)';
+      r.angleLines.color  = 'rgba(77,157,224,0.25)';
+      r.ticks.backdropColor = 'rgba(26,36,53,0.8)';
+      r.ticks.color       = '#7f93aa';
+      r.pointLabels.color = '#e8edf5';
+      window.mcRadarInst.update('none');
+    }
+    if (window.mcFftInst) {
+      window.mcFftInst.options.scales.x.ticks.color = '#7f93aa';
+      window.mcFftInst.options.scales.y.ticks.color = '#7f93aa';
+      window.mcFftInst.options.scales.x.grid.color  = 'transparent';
+      window.mcFftInst.options.scales.y.grid.color  = 'rgba(77,157,224,0.1)';
+      window.mcFftInst.data.datasets.forEach(ds => { ds.borderWidth = 1.5; });
+      window.mcFftInst.update('none');
+    }
+  });
+
 }); // end DOMContentLoaded

@@ -439,6 +439,9 @@ const MC_CH_COLORS = [
 
 // ── MC chart instances ────────────────────────────────────────
 let mcRadarInst = null, mcFftInst = null;
+// Expose to window so app.js beforeprint handler can redraw them
+Object.defineProperty(window, 'mcRadarInst', { get: () => mcRadarInst, configurable: true });
+Object.defineProperty(window, 'mcFftInst',   { get: () => mcFftInst,   configurable: true });
 
 // ── Render multi-channel results ─────────────────────────────
 function mcRenderResults(channelResults, combined, filename) {
