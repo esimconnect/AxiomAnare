@@ -314,34 +314,39 @@ main{padding-top:54px;position:relative;z-index:1;}
   .clause, .mc-section-clause, .mc-iso-ref, .step-note { color: #666 !important; }
   var(--muted), .badge { color: #555 !important; }
 
-  /* ── FIX 3: Grid layouts — NVR + Zone side by side, radar full width, charts side by side ── */
-  .grid-top  { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
-  .grid-mid  { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
-  .grid-charts { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
-
-  /* FIX: Radar card (3rd in grid-top) spans full row on new page */
+  /* ── FIX 3: Grid layouts ── */
+  /* grid-top: NVR + Zone side by side (2 col), radar BELOW spanning full width */
+  .grid-top {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+  }
+  /* Radar spans full width as 3rd item */
   .grid-top > .card:nth-child(3) {
     grid-column: 1 / -1 !important;
-    break-before: page;
+    break-inside: avoid;
   }
-  /* FIX: grid-charts on same page as radar */
-  .grid-charts { break-before: avoid !important; }
+  .grid-mid    { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+  .grid-charts { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
 
   /* MC grids */
-  .mc-channels-grid   { grid-template-columns: 1fr 1fr !important; }
-  .mc-charts-row      { grid-template-columns: 1fr 1fr !important; }
-  .mc-combined-metrics{ grid-template-columns: repeat(4,1fr) !important; }
-  .mc-ch-score-row    { flex-wrap: wrap !important; }
+  .mc-channels-grid    { grid-template-columns: 1fr 1fr !important; }
+  .mc-charts-row       { grid-template-columns: 1fr 1fr !important; }
+  .mc-combined-metrics { grid-template-columns: repeat(4,1fr) !important; }
+  .mc-ch-score-row     { flex-wrap: wrap !important; }
+
+  /* ── FIX 5: Hide data banner (blue info strip) in print ── */
+  .data-banner { display: none !important; }
 
   /* ── Charts ── */
-  canvas { max-width: 100% !important; height: auto !important; }
+  canvas { max-width: 100% !important; }
 
-  /* ── FIX 4: Page breaks ── */
-  .grid-top { break-before: avoid; }
-  .grid-charts { break-before: page; }
-  .card.fade-in:last-of-type { break-before: page; }
+  /* ── FIX 4: Page breaks — charts + AI on new pages ── */
+  .grid-charts   { break-before: page; }
   #mc-ai-section { break-before: page; }
   .mc-charts-row { break-before: page; }
+  /* AI recommendations card — last .card in single-channel results */
+  #single-channel-results > .card:last-child { break-before: page; }
 
   /* ── Badges ── */
   .badge   { border: 1px solid #ccc !important; color: #333 !important; background: #f5f5f5 !important; }
@@ -363,6 +368,20 @@ main{padding-top:54px;position:relative;z-index:1;}
 
   /* ── Fault bars ── */
   .fault-bar-fill { print-color-adjust: exact !important; }
+
+  /* ── FIX: Bold subheadings in AI section print black not grey ── */
+  .reco-text strong, .reco-text b,
+  .mc-ai-body strong, .mc-ai-body b { color: #1a1a2e !important; font-weight: 700 !important; }
+  .reco-text em, .reco-text i,
+  .mc-ai-body em, .mc-ai-body i { color: #555 !important; }
+
+  /* ── FIX: Remove duplicate footer — hide ::after when last page shows it ── */
+  #results-screen::after { display: none !important; }
+  .disclaimer-last {
+    display: block !important;
+    font-family: 'IBM Plex Mono', monospace; font-size: 7pt; color: #999;
+    border-top: 1px solid #ddd; padding-top: 6px; margin-top: 20px;
+  }
 
   /* ── FIX 5: AI section footer disclaimer ── */
   #results-screen::after {
@@ -750,6 +769,7 @@ main{padding-top:54px;position:relative;z-index:1;}
     <div class="stream-thinking" id="stream-thinking"><div class="spinner"></div><span>Claude is analysing your data against ISO standards…</span></div>
     <div class="reco-text typing" id="reco-text"></div>
     <div class="disclaimer-box" id="disclaimer-box"></div>
+    <div class="disclaimer-last" id="print-disclaimer" style="display:none;">AxiomAnare &middot; AI-assisted diagnostic report &middot; Not a certified engineering determination</div>
   </div>
   </div><!-- /#single-channel-results -->
 </div>
