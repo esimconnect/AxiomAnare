@@ -178,20 +178,38 @@ function mcBuildCombinedVerdict(channelResults, crossAxisFindings) {
   // Highest fault confidence (boosted by cross-axis where applicable)
   let topFault = null;
   let topPct = 0;
-  // Check cross-axis boosted faults first
   for (const f of crossAxisFindings) {
     if (f.boostedPct > topPct) {
       topPct = f.boostedPct;
       topFault = { name: f.rule.label, pct: f.boostedPct, crossAxis: true, clause: f.rule.clause, location: f.location, axes: f.axes };
     }
   }
-  // Then per-channel top faults
   for (const ch of channelResults) {
     const cf = (ch.faults || []).find(f => !f.locked);
     if (cf && cf.pct > topPct) {
       topPct = cf.pct;
       topFault = { ...cf, location: ch.location, axis: ch.axis, crossAxis: false };
     }
+  }
+
+  // ── Fault-adjusted zone override (ISO 13379-1:2012 §5.4) ──────────────
+  // Frequency-domain fault findings override RMS-based zone when confidence
+  // is high enough — same policy as single-channel applyFaultOverride().
+  // This prevents a false "Zone A green" when significant faults are developing.
+  let adjustedZone = worstZone;
+  let zoneOverrideReason = null;
+  const cfg = window.CONFIG;
+  const bearingOverridePct  = cfg?.fault_zone_override?.bearing_threshold  ?? 60;
+  const elevatedOverridePct = cfg?.fault_zone_override?.elevated_threshold ?? 40;
+
+  if (topPct >= bearingOverridePct && (worstZone === 'A' || worstZone === 'B')) {
+    // Strong confirmed fault — escalate to C
+    adjustedZone = worstZone === 'A' ? 'C' : 'C';
+    zoneOverrideReason = `Fault confidence ${topPct.toFixed(0)}% overrides RMS zone — ISO 13379-1:2012 §5.4`;
+  } else if (topPct >= elevatedOverridePct && worstZone === 'A') {
+    // Elevated fault in Zone A — escalate to B (caution)
+    adjustedZone = 'B';
+    zoneOverrideReason = `Fault confidence ${topPct.toFixed(0)}% indicates developing fault in Zone A — monitor closely`;
   }
 
   // Worst RUL
@@ -207,7 +225,9 @@ function mcBuildCombinedVerdict(channelResults, crossAxisFindings) {
     : hiVals[0];
 
   return {
-    worstZone,
+    worstZone: adjustedZone,
+    worstZoneRMS: worstZone,
+    zoneOverrideReason,
     topFault,
     minRUL,
     healthIdx: Math.round(weightedHI),
@@ -462,7 +482,7 @@ function mcRenderResults(channelResults, combined, filename) {
         <span class="mc-combined-icon">&#128202;</span>
         <div>
           <div class="mc-combined-title">Multi-Channel Combined Assessment</div>
-          <div class="mc-combined-sub">${filename} &middot; ${channelResults.length} channel${channelResults.length!==1?'s':''} &middot; ISO 13373-1</div>
+          <div class="mc-combined-sub">${filename} &middot; ${channelResults.length} channel${channelResults.length!==1?'s':''} &middot; ISO 13373-1${combined?.zoneOverrideReason ? `<br><span style="color:#f59e0b;font-size:9px;">&#9888; Zone escalated from ${combined.worstZoneRMS} (RMS) &mdash; ${combined.zoneOverrideReason}</span>` : ''}</div>
         </div>
         <div class="mc-combined-zone" style="background:${zoneColors[combined?.worstZone]||'#555'}20;border-color:${zoneColors[combined?.worstZone]||'#555'};color:${zoneColors[combined?.worstZone]||'#555'}">
           Zone ${combined?.worstZone||'&mdash;'}

@@ -214,6 +214,14 @@ const CONFIG = {
     { min:25, label:'Caution', color:'var(--red)'    },
     { min:0,  label:'Critical',color:'var(--red)'    },
   ],
+
+  // Multi-channel fault-zone override thresholds — ISO 13379-1:2012 §5.4
+  // When fault confidence exceeds these levels, the displayed zone is escalated
+  // even if RMS-based zone is lower (same policy as single-channel applyFaultOverride)
+  fault_zone_override: {
+    bearing_threshold:  60,  // escalate Zone A/B → C when bearing/confirmed fault ≥60%
+    elevated_threshold: 40,  // escalate Zone A → B (caution) when any fault ≥40%
+  },
 };
 
 
