@@ -255,8 +255,15 @@ function toCanonicalUnit(v, unit, hz) {
   const r = CONFIG.unit_conversion_factors.find(x => x.from_unit === unit);
   if (!r) return v;
   if (r.multiplier !== null) return v * r.multiplier;
-  if (unit === 'g' && hz) return (v * CONFIG.gravity_mm_s2) / (2 * Math.PI * hz);
-  if (unit === 'm/s2' && hz) return v / (2 * Math.PI * hz) * 1000;
+  // g→mm/s and m/s²→mm/s require a valid shaft/integration frequency.
+  // Guard: hz must be within the configured search range — if detectShaft returned
+  // a spurious low value (< shaft_freq_search_min_hz) the conversion is unreliable.
+  // Fall back to treating the value as mm/s (pass-through) to avoid runaway results.
+  const hzValid = hz && hz >= CONFIG.shaft_freq_search_min_hz && hz <= CONFIG.shaft_freq_search_max_hz;
+  if (unit === 'g'   && hzValid) return (v * CONFIG.gravity_mm_s2) / (2 * Math.PI * hz);
+  if (unit === 'm/s2'&& hzValid) return v / (2 * Math.PI * hz) * 1000;
+  // No valid frequency — cannot integrate; return raw value unchanged
+  // (will be treated as mm/s for zone comparison, conservative approach)
   return v;
 }
 function calcRUL(zone, trend) {
@@ -1107,13 +1114,20 @@ function parseData(raw) {
   if (!numCols.length) return null;
   const tsN=['time','timestamp','t','date','seconds','ms','index','sample','i','n'];
   // Prioritise acceleration columns — best for fault detection
-  // Velocity is acceptable fallback, but accel gives stronger bearing signatures
-  const accelNames=['accel','acc','acceleration','g_rms','_g'];
-  const vbN=['accel','acc','vib','vibration','amplitude','amp','signal','ch','chan','sensor','x','y','z'];
-  const velN=['velocity','vel','mm_s','mm/s'];
-  let col = numCols.find(c=>accelNames.some(p=>c.toLowerCase().includes(p)))
+  // Column priority — ISO 10816-3 uses velocity as primary severity metric.
+  // Prefer columns whose name explicitly states the unit (mm_s, velocity) to avoid
+  // ambiguous g→mm/s conversion on pre-processed or summary datasets.
+  // Acceleration columns are preferred only for raw time-series (bearing fault detection).
+  const velNames  = ['velocity_mms','velocity','vel_mms','mm_s','mm/s','vel'];
+  const accelNames= ['accel','acc','acceleration','g_rms'];
+  const vbN       = ['vib','vibration','amplitude','amp','signal','ch','chan','sensor'];
+  const axisN     = ['_x','_y','_z','_h','_v','_a'];
+
+  // Pick velocity first if explicitly named — avoids bad g→mm/s conversion on summary data
+  let col = numCols.find(c=>velNames.some(p=>c.toLowerCase()===p||c.toLowerCase().includes(p)))
+         || numCols.find(c=>accelNames.some(p=>c.toLowerCase().includes(p)))
          || numCols.find(c=>vbN.some(p=>c.toLowerCase().includes(p)))
-         || numCols.find(c=>velN.some(p=>c.toLowerCase().includes(p)))
+         || numCols.find(c=>axisN.some(p=>c.toLowerCase().endsWith(p)))
          || numCols.find(c=>!tsN.some(p=>c.toLowerCase().includes(p)))
          || numCols[numCols.length>1?1:0];
   const values = rows.map(r=>r[col]).filter(v=>typeof v==='number'&&isFinite(v));
