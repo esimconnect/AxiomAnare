@@ -971,7 +971,9 @@ async function runPipeline(raw, filename) {
 
   await new Promise(r => setTimeout(r, 250));
   document.getElementById('processing-screen').style.display = 'none';
-  document.getElementById('results-screen').style.display = 'block';
+  const rs = document.getElementById('results-screen');
+  rs.style.display = 'block';
+  rs.dataset.filename = filename;
   renderResults();
 
   // Save to Supabase (non-blocking — runs in background)
@@ -2571,5 +2573,41 @@ function mdToHtml(md) {
     set: function(v) { nvr = v; },
     configurable: true,
   });
+
+  // == PDF / PRINT ==
+  // Prepares the page for printing then triggers window.print().
+  // Print CSS (in index.html <style id="print-style">) handles layout.
+  window.axiomPrint = function() {
+    // Inject report metadata into print header
+    const d = nvr;
+    const isMulti = window.MC?.enabled && window.MC?.results?.length > 0;
+    const reportType = isMulti ? 'Multi-Channel Diagnostic Report' : 'Diagnostic Report';
+    const assetLabel = d?.assetName || d?.filename || '—';
+    const dateLabel = new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+
+    let hdr = document.getElementById('print-header');
+    if (!hdr) {
+      hdr = document.createElement('div');
+      hdr.id = 'print-header';
+      document.body.prepend(hdr);
+    }
+    hdr.innerHTML = `
+      <div class="ph-logo">Ax</div>
+      <div class="ph-title">
+        <div class="ph-name">AxiomAnare</div>
+        <div class="ph-sub">Agnostic · Augmented AI Analysis</div>
+      </div>
+      <div class="ph-meta">
+        <div class="ph-report-type">${reportType}</div>
+        <div class="ph-details">Asset: ${assetLabel} &nbsp;·&nbsp; ${dateLabel}</div>
+        <div class="ph-iso">ISO 10816 · ISO 13373 · ISO 13379 · ISO 13381</div>
+      </div>
+    `;
+
+    // Brief delay to let print header render, then print
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  };
 
 }); // end DOMContentLoaded

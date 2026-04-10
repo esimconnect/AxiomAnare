@@ -237,6 +237,147 @@ main{padding-top:54px;position:relative;z-index:1;}
     .trend-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
     .trend-tab:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
     .baseline-toggle * { pointer-events: none; }  /* children don't steal clicks */
+
+/* ── PDF / Print button ─────────────────────────────── */
+.btn-pdf {
+  background: rgba(77,157,224,0.12);
+  border-color: rgba(77,157,224,0.4);
+  color: #4d9de0;
+}
+.btn-pdf:hover { background: rgba(77,157,224,0.2); border-color: #4d9de0; }
+
+/* ── Print header (hidden on screen, shown when printing) ── */
+#print-header {
+  display: none;
+}
+
+/* ══════════════════════════════════════════════════════
+   PRINT / PDF STYLESHEET
+   Target: A4 Portrait · Chrome / Edge Save as PDF
+   ══════════════════════════════════════════════════════ */
+@media print {
+  /* Page setup */
+  @page {
+    size: A4 portrait;
+    margin: 14mm 12mm 16mm 12mm;
+  }
+
+  /* Force light background for print */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  body {
+    background: #ffffff !important;
+    color: #1a1a2e !important;
+    font-size: 11pt;
+  }
+
+  /* ── Show print header ── */
+  #print-header {
+    display: flex !important;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+    border-bottom: 2px solid #1a2030;
+  }
+  .ph-logo {
+    width: 36px; height: 36px;
+    background: #1a2030; color: #4d9de0;
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-family: 'Barlow Condensed', sans-serif; font-size: 16px; font-weight: 800;
+    flex-shrink: 0;
+  }
+  .ph-name { font-family: 'Barlow Condensed', sans-serif; font-size: 16pt; font-weight: 800; color: #1a1a2e; }
+  .ph-sub  { font-family: 'IBM Plex Mono', monospace; font-size: 7pt; color: #666; }
+  .ph-meta { margin-left: auto; text-align: right; }
+  .ph-report-type { font-family: 'Barlow Condensed', sans-serif; font-size: 13pt; font-weight: 700; color: #1a1a2e; }
+  .ph-details { font-family: 'IBM Plex Mono', monospace; font-size: 7.5pt; color: #555; margin-top: 2px; }
+  .ph-iso { font-family: 'IBM Plex Mono', monospace; font-size: 7pt; color: #888; margin-top: 1px; }
+
+  /* ── Hide everything except results ── */
+  nav, header, #upload-screen, #processing-screen,
+  #new-upload-btn, #pdf-btn,
+  .iso-strip, #sample-link,
+  .stream-thinking, .trend-tabs,
+  #trend-chart-card,
+  .ew-banner:not(.show),
+  .tip-box, .disclaimer-box { display: none !important; }
+
+  /* ── Results screen — remove scroll/overflow ── */
+  #results-screen {
+    display: block !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* ── Cards: reset dark theme to print-friendly ── */
+  .card, .mgmt-card, .nvr-card, .mc-combined-card,
+  .mc-chart-card, .mc-ch-card, .mc-cross-card {
+    background: #ffffff !important;
+    border: 1px solid #ccc !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+
+  /* ── Management card colour preservation ── */
+  .mgmt-card.red    { background: #fff0f0 !important; border-color: #e74c3c !important; }
+  .mgmt-card.amber  { background: #fffbf0 !important; border-color: #f39c12 !important; }
+  .mgmt-card.green  { background: #f0fff4 !important; border-color: #27ae60 !important; }
+
+  /* ── Text colour resets for readability ── */
+  .card-title, .mgmt-status, .nvr-label,
+  .mc-combined-title, .mc-chart-title,
+  .mc-ch-loc, .mc-cross-name,
+  .reco-h1, .reco-h2, .reco-h3 {
+    color: #1a1a2e !important;
+  }
+  .card-body, .reco-p, .reco-text,
+  .mc-ai-body, .mc-ch-col, .mc-ch-rul,
+  .mc-cross-note { color: #333 !important; }
+  .muted, .mc-metric-label, .mc-ch-met-lbl,
+  .clause, .mc-section-clause, .mc-iso-ref { color: #666 !important; }
+
+  /* ── Grid layouts — stack to single column on narrow print ── */
+  .grid-top  { grid-template-columns: 1fr 1fr !important; }
+  .grid-mid  { grid-template-columns: 1fr 1fr !important; }
+  .grid-charts { grid-template-columns: 1fr 1fr !important; }
+  .mc-channels-grid { grid-template-columns: 1fr 1fr !important; }
+  .mc-charts-row { grid-template-columns: 1fr 1fr !important; }
+  .mc-combined-metrics { grid-template-columns: repeat(4, 1fr) !important; }
+
+  /* ── Charts — allow canvas to render ── */
+  canvas { max-width: 100% !important; }
+
+  /* ── Page breaks ── */
+  .grid-charts, .mc-charts-row { page-break-before: always; break-before: page; }
+  .card.fade-in:last-child      { page-break-before: always; break-before: page; }
+  #mc-ai-section                { page-break-before: always; break-before: page; }
+
+  /* ── Badges / pills — keep colours ── */
+  .badge    { border: 1px solid #ccc !important; }
+  .b-red    { background: #fce !important; color: #c0392b !important; }
+  .b-orange { background: #fef0e0 !important; color: #e67e22 !important; }
+  .b-green  { background: #e8f8e8 !important; color: #27ae60 !important; }
+  .b-blue   { background: #e8f0fe !important; color: #2980b9 !important; }
+
+  /* ── Zone colours — preserve severity ── */
+  .zone-seg[data-z="D"].current { background: #e74c3c !important; }
+  .zone-seg[data-z="C"].current { background: #e67e22 !important; }
+  .zone-seg[data-z="B"].current { background: #f39c12 !important; }
+  .zone-seg[data-z="A"].current { background: #27ae60 !important; }
+
+  /* ── Footer on every page ── */
+  #results-screen::after {
+    content: 'AxiomAnare · AI-assisted diagnostic report · Not a certified engineering determination · ' attr(data-filename);
+    display: block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 7pt;
+    color: #999;
+    border-top: 1px solid #ddd;
+    padding-top: 6px;
+    margin-top: 16px;
+  }
+}
 </style>
 </head>
 <body>
@@ -452,7 +593,7 @@ main{padding-top:54px;position:relative;z-index:1;}
 </div>
 <!-- RESULTS -->
 <div id="results-screen">
-  <div class="results-header"><div><div class="results-title">Diagnostic Report</div><div class="results-meta" id="results-meta">—</div></div><button class="btn" id="new-upload-btn">&#11014; New Upload</button></div>
+  <div class="results-header"><div><div class="results-title">Diagnostic Report</div><div class="results-meta" id="results-meta">—</div></div><div style="display:flex;gap:8px;align-items:center;flex-shrink:0;"><button class="btn btn-pdf" id="pdf-btn" onclick="axiomPrint()" title="Download PDF Report">&#128438; Download Report</button><button class="btn" id="new-upload-btn">&#11014; New Upload</button></div></div>
   <!-- Multi-channel results render here (shown instead of single-channel content) -->
   <div id="multiChannelResults"></div>
   <!-- Single-channel results — hidden when MC mode is active -->
