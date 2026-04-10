@@ -687,23 +687,26 @@ async function mcStreamClaude(channelResults, combined, filename) {
   const ok = channelResults.filter(r => !r.error);
   const topFaultPct = Math.max(...ok.map(ch => (ch.faults||[]).find(f=>!f.locked)?.pct || 0));
   const crossMaxPct = Math.max(...(combined?.crossAxisFindings||[]).map(f => f.boostedPct), 0);
+  const rmsZone = combined?.worstZoneRMS || combined?.worstZone;  // use pre-override RMS zone
+  const displayZone = combined?.worstZone;
   const flags = [];
-  if (combined?.worstZone === 'A' && (topFaultPct >= 40 || crossMaxPct >= 40)) {
-    flags.push('EARLY_WARNING: Zone A but fault confidence is significant. Do NOT write a "healthy machine" summary. Fault indicators require attention despite low RMS. Per ISO 13373-1:2002 §6.3.');
+
+  if (combined?.zoneOverrideReason) {
+    flags.push(`ZONE_OVERRIDE_ACTIVE: RMS zone is ${rmsZone} but displayed zone is ${displayZone} due to fault confidence. ${combined.zoneOverrideReason}. YOU MUST reflect this in your assessment — do NOT write a "healthy" or "Zone A" summary.`);
+  }
+  if ((rmsZone === 'A' || rmsZone === 'B') && (topFaultPct >= 40 || crossMaxPct >= 40)) {
+    flags.push('EARLY_WARNING: RMS is low but fault confidence is significant. FORBIDDEN: do not use words like "excellent", "optimal", "normal operation", or "no immediate action". Fault indicators require scheduled intervention per ISO 13373-1:2002 §6.3.');
   }
   if (topFaultPct < 40 && crossMaxPct < 40) {
     flags.push('LOW_CONFIDENCE: Top fault below 40% — use indicative language only.');
   }
   if (crossMaxPct >= 60) {
-    flags.push('CROSS_AXIS_CONFIRMED: Cross-axis fault confidence ≥60% — treat as a confirmed finding, not indicative.');
-  }
-  if (combined?.worstZone === 'A' || combined?.worstZone === 'B') {
-    flags.push('ZONE_CONTEXT: Machine is in Zone ' + combined.worstZone + '. RMS-based severity is low. However fault frequency analysis may show developing faults — address these in the report even if zone is acceptable.');
+    flags.push('CROSS_AXIS_CONFIRMED: Cross-axis fault confidence ≥60% — this is a CONFIRMED fault, not indicative. Report it as requiring corrective action.');
   }
 
   const prompt = `You are AxiomAssist — an ISO-certified vibration analyst. Provide a concise multi-channel diagnostic summary (3 paragraphs).
 
-File: ${filename} | Channels: ${ok.length} | Worst Zone: ${combined?.worstZone} | Combined Health: ${combined?.healthIdx} | Min RUL: ${combined?.minRUL}d
+File: ${filename} | Channels: ${ok.length} | Displayed Zone: ${displayZone} | RMS Zone: ${rmsZone} | Combined Health: ${combined?.healthIdx} | Min RUL: ${combined?.minRUL}d
 
 Per-channel data:
 ${chSummary}
@@ -711,15 +714,15 @@ ${chSummary}
 Cross-axis confirmed faults (ISO 13373-1):
 ${crossSummary || '  None confirmed.'}
 
-=== ANTI-HALLUCINATION FLAGS ===
+=== CRITICAL FLAGS — MUST OBEY ===
 ${flags.length ? flags.map(f => '(!) ' + f).join('\n') : '  No flags.'}
 
 === RULES ===
-1. Your assessment MUST be consistent with the fault confidence scores above — not just the zone.
-2. If cross-axis faults are confirmed at ≥40%, report them as a priority finding.
-3. If EARLY_WARNING flag is set, do NOT describe the machine as healthy or normal.
-4. Use indicative language for faults below 40% confidence.
-5. Always cite ISO standards. 3 paragraphs: condition assessment, cross-axis interpretation, inspection priority.`;
+1. Base your condition assessment on the DISPLAYED ZONE (${displayZone}), not the RMS zone.
+2. If cross-axis faults are confirmed at ≥40%, they are a priority finding — not optional.
+3. FORBIDDEN words when EARLY_WARNING or ZONE_OVERRIDE_ACTIVE flag is set: "excellent", "optimal", "no immediate action", "continued operation without intervention", "normal operation".
+4. Use indicative language only for faults below 40% confidence.
+5. Always cite ISO standards. Paragraph 1: condition + zone assessment. Paragraph 2: cross-axis interpretation. Paragraph 3: inspection priority.`;
 
   try {
     bodyEl.innerHTML = '<span style="color:var(--muted)">Connecting to AI…</span>';
