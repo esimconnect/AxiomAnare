@@ -658,16 +658,43 @@ async function mcStreamClaude(channelResults, combined, filename) {
     `  • ${f.rule.label} at ${f.location} (${f.axes.join('+')}): ${f.boostedPct.toFixed(0)}% confidence [${f.rule.clause}]`
   ).join('\n');
 
-  const prompt = `You are an ISO-certified vibration analyst. Provide a concise multi-channel diagnostic summary (3 paragraphs max).
+  // Build diagnostic flags — same policy as single-channel
+  const ok = channelResults.filter(r => !r.error);
+  const topFaultPct = Math.max(...ok.map(ch => (ch.faults||[]).find(f=>!f.locked)?.pct || 0));
+  const crossMaxPct = Math.max(...(combined?.crossAxisFindings||[]).map(f => f.boostedPct), 0);
+  const flags = [];
+  if (combined?.worstZone === 'A' && (topFaultPct >= 40 || crossMaxPct >= 40)) {
+    flags.push('EARLY_WARNING: Zone A but fault confidence is significant. Do NOT write a "healthy machine" summary. Fault indicators require attention despite low RMS. Per ISO 13373-1:2002 §6.3.');
+  }
+  if (topFaultPct < 40 && crossMaxPct < 40) {
+    flags.push('LOW_CONFIDENCE: Top fault below 40% — use indicative language only.');
+  }
+  if (crossMaxPct >= 60) {
+    flags.push('CROSS_AXIS_CONFIRMED: Cross-axis fault confidence ≥60% — treat as a confirmed finding, not indicative.');
+  }
+  if (combined?.worstZone === 'A' || combined?.worstZone === 'B') {
+    flags.push('ZONE_CONTEXT: Machine is in Zone ' + combined.worstZone + '. RMS-based severity is low. However fault frequency analysis may show developing faults — address these in the report even if zone is acceptable.');
+  }
 
-File: ${filename} | Channels: ${channelResults.filter(r=>!r.error).length} | Worst Zone: ${combined?.worstZone} | Health Index: ${combined?.healthIdx} | Min RUL: ${combined?.minRUL}d
+  const prompt = `You are AxiomAssist — an ISO-certified vibration analyst. Provide a concise multi-channel diagnostic summary (3 paragraphs).
 
-Channels:
+File: ${filename} | Channels: ${ok.length} | Worst Zone: ${combined?.worstZone} | Combined Health: ${combined?.healthIdx} | Min RUL: ${combined?.minRUL}d
+
+Per-channel data:
 ${chSummary}
 
-Cross-axis confirmed: ${crossSummary || 'None'}
+Cross-axis confirmed faults (ISO 13373-1):
+${crossSummary || '  None confirmed.'}
 
-Cover: overall condition, cross-axis fault interpretation, inspection priority. Reference ISO standards where applicable.`;
+=== ANTI-HALLUCINATION FLAGS ===
+${flags.length ? flags.map(f => '(!) ' + f).join('\n') : '  No flags.'}
+
+=== RULES ===
+1. Your assessment MUST be consistent with the fault confidence scores above — not just the zone.
+2. If cross-axis faults are confirmed at ≥40%, report them as a priority finding.
+3. If EARLY_WARNING flag is set, do NOT describe the machine as healthy or normal.
+4. Use indicative language for faults below 40% confidence.
+5. Always cite ISO standards. 3 paragraphs: condition assessment, cross-axis interpretation, inspection priority.`;
 
   try {
     bodyEl.innerHTML = '<span style="color:var(--muted)">Connecting to AI…</span>';
