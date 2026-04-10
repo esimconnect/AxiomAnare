@@ -19,53 +19,16 @@ const MC_LOCATIONS = [
   'Bearing 4', 'Bearing 5', 'Bearing 6',
 ];
 const MC_AXES = ['X', 'Y', 'Z'];
-const MC_MAX_CHANNELS = 6;
+// MC_MAX_CHANNELS now from window.CONFIG.mc_max_channels
 
 // ── ISO 13373-1 Cross-Axis Confidence Rules ───────────────────
 // Keys are fault categories; each rule boosts confidence when
 // the same fault appears on multiple axes.
-const MC_CROSS_AXIS_RULES = [
-  {
-    id: 'ca_imbalance',
-    label: 'Rotational Imbalance — Cross-Axis Confirmation',
-    clause: 'ISO 13373-1:2002 §6.3.2',
-    category: 'mechanical',
-    faultName: 'Mechanical Unbalance',
-    requiredAxes: 2,
-    boostPct: 15,
-    note: 'Imbalance confirmed on ≥2 orthogonal axes — confidence elevated',
-  },
-  {
-    id: 'ca_misalignment',
-    label: 'Misalignment — Axial Confirmation',
-    clause: 'ISO 13373-1:2002 §6.3.3',
-    category: 'mechanical',
-    faultName: 'Shaft Misalignment',
-    requiredAxes: 2,
-    boostPct: 20,
-    note: 'Misalignment confirmed across radial + axial — confidence elevated',
-  },
-  {
-    id: 'ca_bearing',
-    label: 'Bearing Fault — Multi-Axis Presence',
-    clause: 'ISO 13373-1:2002 §6.3.5',
-    category: 'bearing',
-    faultName: null,  // matches any bearing fault
-    requiredAxes: 2,
-    boostPct: 18,
-    note: 'Bearing fault confirmed on multiple axes — confidence elevated',
-  },
-  {
-    id: 'ca_looseness',
-    label: 'Mechanical Looseness — Cross-Axis Signature',
-    clause: 'ISO 13373-1:2002 §6.3.6',
-    category: 'mechanical',
-    faultName: 'Loose Foundation',
-    requiredAxes: 2,
-    boostPct: 12,
-    note: 'Looseness confirmed on ≥2 axes — confidence elevated',
-  },
-];
+// Cross-axis rules loaded from CONFIG at runtime (see app.js mc_cross_axis_rules)
+// Accessor — always reads live from window.CONFIG so rules stay in sync
+function mcGetCrossAxisRules() {
+  return window.CONFIG?.mc_cross_axis_rules || [];
+}
 
 // ── Detect numeric columns that look like signal channels ─────
 // Returns array of column names (excludes time/index/sample)
@@ -103,7 +66,7 @@ function mcExtractColumn(raw, colName) {
 // Returns: array of cross-axis findings with boosted confidence
 function mcApplyCrossAxisRules(channelResults) {
   const findings = [];
-  for (const rule of MC_CROSS_AXIS_RULES) {
+  for (const rule of mcGetCrossAxisRules()) {
     // Group 1: channels sharing the same location
     const byLocation = {};
     for (const ch of channelResults) {
@@ -119,7 +82,7 @@ function mcApplyCrossAxisRules(channelResults) {
     for (const [loc, channels] of Object.entries(groups)) {
       if (channels.length < rule.requiredAxes) continue;
       // Find channels where this fault has meaningful confidence
-      const faultThreshold = 10; // lower threshold — indicative signals count
+      const faultThreshold = window.CONFIG?.mc_cross_axis_fault_threshold_pct ?? 10;
       const axesWithFault = channels.filter(ch => {
         const top = (ch.faults || []).find(f => {
           if (f.locked || f.pct < faultThreshold) return false;
@@ -215,7 +178,7 @@ function mcRenderMappingUI(signalColumns) {
   if (!container) return;
 
   // Limit to MC_MAX_CHANNELS
-  const cols = signalColumns.slice(0, MC_MAX_CHANNELS);
+  const cols = signalColumns.slice(0, window.CONFIG?.mc_max_channels || 6);
 
   // Initialise MC.mapping if needed
   if (!MC.mapping.length || MC.mapping.length !== cols.length) {
@@ -395,8 +358,12 @@ async function runMultiChannelPipeline(raw, filename) {
       devSc: worstCh.devSc, devRow: worstCh.devRow,
       zoneRow: worstCh.zoneRow, trendRow: worstCh.trendRow,
       faults: worstCh.faults, fftR: worstCh.fftR, rulR: worstCh.rulR,
-      healthIdx: { score: worstCh.healthIdx, label: worstCh.healthIdx >= 65 ? 'Monitor' : 'Critical',
-        color: worstCh.healthIdx >= 65 ? 'var(--yellow)' : 'var(--red)', breakdown: [] },
+      healthIdx: (() => {
+        const score = worstCh.healthIdx;
+        const thr = (window.CONFIG?.health_thresholds || [{min:75,label:'Good',color:'var(--green)'},{min:50,label:'Monitor',color:'#f59e0b'},{min:0,label:'Critical',color:'var(--red)'}]);
+        const t = [...thr].sort((a,b)=>b.min-a.min).find(t=>score>=t.min) || thr[thr.length-1];
+        return { score, label: t.label, color: t.color, breakdown: [] };
+      })(),
       n: worstCh.n, sr: worstCh.sr, cu: worstCh.cu, classRow: worstCh.classRow,
       dataTypes: { vibration: true }, dataBanner: '',
       earlyWarn: false, override: { overrideActive: false },
@@ -590,8 +557,8 @@ Cover: overall condition, cross-axis fault interpretation, inspection priority. 
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: window.CONFIG?.chatbot_config?.model_version || 'claude-haiku-4-5-20251001',
-        max_tokens: 600,
+        model: window.CONFIG?.chatbot_config?.model_version || 'claude-sonnet-4-20250514',
+        max_tokens: window.CONFIG?.chatbot_config?.max_output_tokens || 1000,
         stream: true,
         messages: [{ role: 'user', content: prompt }],
       }),

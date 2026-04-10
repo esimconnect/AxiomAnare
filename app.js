@@ -188,7 +188,32 @@ const CONFIG = {
 
   // Bearing BER suppression threshold -- ISO 13379-1:2012 §5.2
   // When bearing envelope BER > threshold, mechanical scores capped at 10%
-  bearing_ber_threshold: 1.3
+  bearing_ber_threshold: 1.3,
+
+  // Single-reading baseline fallback std — ISO 13373-2:2016 §8.1
+  // When only one baseline reading exists, use this % of mean as effective std
+  baseline_single_reading_std_pct: 0.05,
+
+  // Multi-channel cross-axis confirmation rules -- ISO 13373-1:2002 §6.3
+  // requiredAxes: minimum number of axes that must show the fault to confirm
+  // boostPct: confidence boost applied when confirmed across axes
+  // faultThreshold: minimum per-channel fault pct to count toward confirmation
+  mc_max_channels: 6,
+  mc_cross_axis_fault_threshold_pct: 10,
+  mc_cross_axis_rules: [
+    { id:'ca_imbalance',   category:'mechanical', faultName:'Mechanical Unbalance',  requiredAxes:2, boostPct:15, label:'Rotational Imbalance — Cross-Axis Confirmation', clause:'ISO 13373-1:2002 §6.3.2', note:'Imbalance confirmed on ≥2 orthogonal axes — confidence elevated' },
+    { id:'ca_misalignment',category:'mechanical', faultName:'Shaft Misalignment',    requiredAxes:2, boostPct:20, label:'Misalignment — Axial Confirmation',               clause:'ISO 13373-1:2002 §6.3.3', note:'Misalignment confirmed across radial + axial — confidence elevated' },
+    { id:'ca_bearing',     category:'bearing',    faultName:null,                    requiredAxes:2, boostPct:18, label:'Bearing Fault — Multi-Axis Presence',             clause:'ISO 13373-1:2002 §6.3.5', note:'Bearing fault confirmed on multiple axes — confidence elevated' },
+    { id:'ca_looseness',   category:'mechanical', faultName:'Loose Foundation',      requiredAxes:2, boostPct:12, label:'Mechanical Looseness — Cross-Axis Signature',     clause:'ISO 13373-1:2002 §6.3.6', note:'Looseness confirmed on ≥2 axes — confidence elevated' },
+  ],
+
+  // Health index label/colour thresholds (used by MC worst-channel inject)
+  health_thresholds: [
+    { min:75, label:'Good',    color:'var(--green)'  },
+    { min:50, label:'Monitor', color:'#f59e0b'       },
+    { min:25, label:'Caution', color:'var(--red)'    },
+    { min:0,  label:'Critical',color:'var(--red)'    },
+  ],
 };
 
 
@@ -363,7 +388,7 @@ function computeTrendFromHistory(history) {
       if (normSlope >= rule.slope_lower && normSlope < rule.slope_upper) return rule.code;
     }
   }
-  return normSlope >= 0.15 ? 'PRA' : normSlope <= -0.04 ? 'RGI' : 'SWB';
+  return 'SWB'; // default: stable if no rule matched (normSlope exactly at boundary)
 }
 
 // Save NVR record to Supabase after analysis
@@ -792,15 +817,15 @@ async function runPipeline(raw, filename) {
         // Compute real std from Zone A historical readings
         const vals = healthyHistory.map(r => parseFloat(r.rms_mms));
         const hMean = vals.reduce((a,b)=>a+b,0) / vals.length;
-        effectiveStd = Math.sqrt(vals.reduce((s,v)=>s+(v-hMean)**2,0) / vals.length) || (blMean * 0.05);
+        effectiveStd = Math.sqrt(vals.reduce((s,v)=>s+(v-hMean)**2,0) / vals.length) || (blMean * CONFIG.baseline_single_reading_std_pct);
         stdSource = 'derived from '+vals.length+' Zone A readings';
         // Note: baseline auto-update removed — baseline only set via user checkbox
         // to prevent contamination from fault readings
       } else {
         // Fallback: ISO 13373-2 §8.1 recommends ±10% as minimum acceptance band
         // for single-reading baselines. Use 5% (tighter) for well-controlled measurements.
-        effectiveStd = blMean * 0.05;
-        stdSource = 'single reading · ±5% band';
+        effectiveStd = blMean * CONFIG.baseline_single_reading_std_pct;
+        stdSource = 'single reading · ±' + Math.round(CONFIG.baseline_single_reading_std_pct*100) + '% band';
       }
       devSc  = (rms - blMean) / effectiveStd;
       devRow = classifyDeviation(Math.abs(devSc));
@@ -2394,5 +2419,12 @@ async function typeText(el,text){el.textContent='';for(let i=0;i<text.length;i+=
   window.faultIndicatorColor = faultIndicatorColor;
   window.faultIndicatorLabel = faultIndicatorLabel;
   window.__getSelClassId     = function() { return selClassId; };
+  window.renderResults       = renderResults;
+  // nvr is a let — expose via getter/setter so multiChannel.js can inject worst-channel data
+  Object.defineProperty(window, 'nvr', {
+    get: function() { return nvr; },
+    set: function(v) { nvr = v; },
+    configurable: true,
+  });
 
 }); // end DOMContentLoaded
