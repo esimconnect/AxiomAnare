@@ -437,6 +437,7 @@ function initClassSelector() {
 }
 window.selectClass = function(id) {
   selClassId = id;
+  window.selClassId = id;  // keep multiChannel.js in sync
   document.querySelectorAll('.class-btn').forEach(b => b.classList.toggle('selected', b.dataset.id === id));
   if (pendingFile) updateStep3Meta();
 };
@@ -2374,5 +2375,24 @@ function buildFallback(d){
 }
 
 async function typeText(el,text){el.textContent='';for(let i=0;i<text.length;i+=4){el.textContent+=text.slice(i,i+4);if(i%80===0)await new Promise(r=>setTimeout(r,5));}}
+
+
+  // ── Expose internals for multiChannel.js ─────────────────────────────────
+  // Functions are inside DOMContentLoaded scope — expose as window globals
+  // so multiChannel.js (loaded as separate script) can call them.
+  window.CONFIG              = CONFIG;
+  window.computeFFT          = computeFFT;
+  window.detectShaft         = detectShaft;
+  window.toCanonicalUnit     = toCanonicalUnit;
+  window.classifyFaults      = classifyFaults;
+  window.lookupZone          = lookupZone;
+  window.classifyDeviation   = classifyDeviation;
+  window.applyFaultOverride  = applyFaultOverride;
+  window.calcRUL             = calcRUL;
+  window.calcHealthIndex     = calcHealthIndex;
+  window.detectDataTypes     = detectDataTypes;
+  window.faultIndicatorColor = faultIndicatorColor;
+  window.faultIndicatorLabel = faultIndicatorLabel;
+  window.__getSelClassId     = function() { return selClassId; };
 
 }); // end DOMContentLoaded

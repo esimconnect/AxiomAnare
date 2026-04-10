@@ -276,17 +276,18 @@ async function runMultiChannelPipeline(raw, filename) {
 
     // Build a mini-raw string with just this column for compatibility with runPipeline internals
     // But we run computations directly to avoid UI side-effects
-    const sr = window.machineParams?.declaredSampleRate || CONFIG.default_sample_rate_hz;
-    const cu = CONFIG.unit_conversion_factors.find(r => r.canonical_flag === 1).to_unit;
+    const sr = window.machineParams?.declaredSampleRate || window.CONFIG.default_sample_rate_hz;
+    const cu = window.CONFIG.unit_conversion_factors.find(r => r.canonical_flag === 1).to_unit;
+    const currentClassId = (window.__getSelClassId && window.__getSelClassId()) || window.selClassId;
 
     // Convert units
     let vals;
     if (['g', 'm/s2', 'mg'].includes(unit)) {
-      const rf = computeFFT(values, sr);
-      const hz = detectShaft(rf);
-      vals = values.map(v => toCanonicalUnit(v, unit, hz));
+      const rf = window.computeFFT(values, sr);
+      const hz = window.detectShaft(rf);
+      vals = values.map(v => window.toCanonicalUnit(v, unit, hz));
     } else {
-      vals = values.map(v => toCanonicalUnit(v, unit, null));
+      vals = values.map(v => window.toCanonicalUnit(v, unit, null));
     }
 
     // Core statistics
@@ -300,29 +301,29 @@ async function runMultiChannelPipeline(raw, filename) {
     const kurt = vals.reduce((s, v) => s + ((v - mean) / std) ** 4, 0) / n;
 
     // Zone / fault / RUL
-    const zoneRow  = lookupZone(rms, window.selClassId);
-    const classRow = CONFIG.iso_machine_classes.find(c => c.class_id === window.selClassId);
-    const fftR = computeFFT(vals, sr);
+    const zoneRow  = window.lookupZone(rms, currentClassId);
+    const classRow = window.CONFIG.iso_machine_classes.find(c => c.class_id === currentClassId);
+    const fftR = window.computeFFT(vals, sr);
     fftR._rawSignal = vals;
     if (window.machineParams?.shaftHz > 0) fftR._shaftHz = window.machineParams.shaftHz;
-    const dataTypes = detectDataTypes([ch.col]);
-    const allFaults = classifyFaults(fftR, cf, kurt, dataTypes, window.machineParams || {});
+    const dataTypes = window.detectDataTypes([ch.col]);
+    const allFaults = window.classifyFaults(fftR, cf, kurt, dataTypes, window.machineParams || {});
     const faults = [...allFaults.filter(f => !f.locked), ...allFaults.filter(f => f.locked)];
 
     // Deviation score (no baseline per-channel — uses signal self-stats)
     const devSc  = (rms - mean) / std;
-    const devRow = classifyDeviation(Math.abs(devSc));
+    const devRow = window.classifyDeviation(Math.abs(devSc));
 
     // Trend (DDU — single file, multi-channel rarely has history per-channel)
-    const trendRow = CONFIG.trend_state_rules.find(r => r.code === 'DDU');
+    const trendRow = window.CONFIG.trend_state_rules.find(r => r.code === 'DDU');
 
     // Override + RUL
-    const override = applyFaultOverride(zoneRow, calcRUL(zoneRow.zone_label, trendRow.code), faults, kurt, cf, classRow);
+    const override = window.applyFaultOverride(zoneRow, window.calcRUL(zoneRow.zone_label, trendRow.code), faults, kurt, cf, classRow);
     const rulR = override.rulR;
     const finalZoneRow = override.zoneRow;
 
     const topBearingFault = faults.find(f => !f.locked && f.category === 'bearing');
-    const healthIdx = calcHealthIndex(rms, kurt, cf, finalZoneRow.zone_label,
+    const healthIdx = window.calcHealthIndex(rms, kurt, cf, finalZoneRow.zone_label,
       topBearingFault ? topBearingFault.pct : 0, Math.abs(devSc), classRow);
 
     MC.results.push({
@@ -415,7 +416,7 @@ function mcRenderResults(channelResults, combined, filename) {
             ${combined.topFault.clause ? `<span class="mc-iso-ref">${combined.topFault.clause}</span>` : ''}
           </div>
         </div>
-        <div class="mc-fault-pct-bar"><div style="width:${combined.topFault.pct}%;background:${faultIndicatorColor ? faultIndicatorColor(combined.topFault.pct) : '#f59e0b'}"></div></div>
+        <div class="mc-fault-pct-bar"><div style="width:${combined.topFault.pct}%;background:${window.faultIndicatorColor ? window.faultIndicatorColor(combined.topFault.pct) : '#f59e0b'}"></div></div>
       </div>` : ''}
     </div>
 
@@ -464,10 +465,10 @@ function mcRenderResults(channelResults, combined, filename) {
                <div class="mc-ch-met"><div class="mc-ch-met-val" style="color:${hiColor(ch.healthIdx)}">${ch.healthIdx}</div><div class="mc-ch-met-lbl">Health</div></div>
              </div>
              <div class="mc-ch-faults">
-               ${(ch.faults || []).filter(f => !f.locked && f.pct >= (CONFIG.minimum_fault_confidence_pct || 15)).slice(0, 3).map(f => `
+               ${(ch.faults || []).filter(f => !f.locked && f.pct >= (window.CONFIG.minimum_fault_confidence_pct || 15)).slice(0, 3).map(f => `
                  <div class="mc-ch-fault-row">
                    <span class="mc-ch-fault-name">${f.name}</span>
-                   <div class="mc-ch-fault-bar"><div style="width:${f.pct}%;background:${faultIndicatorColor ? faultIndicatorColor(f.pct) : '#f59e0b'}"></div></div>
+                   <div class="mc-ch-fault-bar"><div style="width:${f.pct}%;background:${window.faultIndicatorColor ? window.faultIndicatorColor(f.pct) : '#f59e0b'}"></div></div>
                    <span class="mc-ch-fault-pct">${f.pct.toFixed(0)}%</span>
                  </div>
                `).join('') || '<div style="font-size:10px;color:var(--muted);margin-top:4px;">No significant faults detected</div>'}
