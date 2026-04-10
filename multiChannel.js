@@ -666,22 +666,44 @@ Cross-axis confirmed: ${crossSummary || 'None'}
 Cover: overall condition, cross-axis fault interpretation, inspection priority. Reference ISO standards where applicable.`;
 
   try {
-    bodyEl.innerHTML = '';
+    bodyEl.innerHTML = '<span style="color:var(--muted)">Connecting to AI…</span>';
     let fullText = '';
-    const response = await fetch('https://restless-tree-eac8.kairosventure-io.workers.dev', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: window.CONFIG?.chatbot_config?.model_version || 'claude-sonnet-4-20250514',
-        max_tokens: window.CONFIG?.chatbot_config?.max_output_tokens || 1000,
-        stream: true,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-    if (!response.ok) throw new Error('Worker returned ' + response.status + ': ' + await response.text());
+
+    // Retry up to 2 times — Worker may cold-start on first attempt
+    let response;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25000); // 25s timeout
+      try {
+        response = await fetch('https://restless-tree-eac8.kairosventure-io.workers.dev', {
+          method: 'POST',
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: window.CONFIG?.chatbot_config?.model_version || 'claude-sonnet-4-20250514',
+            max_tokens: window.CONFIG?.chatbot_config?.max_output_tokens || 1000,
+            stream: true,
+            messages: [{ role: 'user', content: prompt }],
+          }),
+        });
+        clearTimeout(timeout);
+        if (response.ok) break; // success — exit retry loop
+        const errText = await response.text();
+        if (attempt === 2) throw new Error('Worker returned ' + response.status + ': ' + errText);
+        // Wait 2s before retry
+        await new Promise(r => setTimeout(r, 2000));
+      } catch (fetchErr) {
+        clearTimeout(timeout);
+        if (attempt === 2) throw fetchErr;
+        bodyEl.innerHTML = '<span style="color:var(--muted)">Retrying AI connection…</span>';
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+
+    bodyEl.innerHTML = '';
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
