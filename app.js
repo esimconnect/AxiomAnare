@@ -1805,17 +1805,45 @@ function renderMgmtCard(d) {
   // ── Determine overall RAG status ─────────────────────────────────────────
   let rag, iconChar, statusText, findingText;
 
-  // RAG logic — FAULT INDICATOR OVERRIDES EVERYTHING
-  // Policy: if a confirmed fault is Indicative or above, fault wins regardless of zone/health.
-  // This prevents a false "Healthy" green when a fault is clearly developing.
+  // RAG logic — ZONE SETS THE FLOOR, FAULT CONFIDENCE SETS THE CEILING
+  //
+  // ISO 10816-3 zone is the primary safety gate — Zone D is ALWAYS red,
+  // Zone C is always red, regardless of fault confidence level.
+  // Fault confidence then determines the specific status text and urgency.
   //
   // Fault indicator tiers: Trace<8, Low<20, Indicative<40, Elevated<65, Strong<80, Critical>=80
-  // GREEN  — Trace/Low only (topPct < 20) AND Zone A AND health >= 65
-  // AMBER  — Indicative fault (20-39) OR Zone B moderate OR health 40-64
-  // RED    — Elevated+ fault (>=40) OR Zone C/D OR health < 40 OR PRA trend
+  // GREEN  — Zone A AND health >= 65 AND fault Low or below
+  // AMBER  — Zone B OR Indicative fault (20-39) in Zone A/B
+  // RED    — Zone C or D (always) OR Elevated+ fault (>=40) OR health < 40
 
-  if (topPct >= 65) {
-    // Strong or Critical fault — always red, urgent
+  if (zone === 'D') {
+    // Zone D — always red, always urgent, ISO 10816-3 mandates shutdown
+    rag = 'red';
+    iconChar = '&#128308;';
+    if (topPct >= 40) {
+      statusText = 'Immediate Action Required';
+      findingText = top
+        ? plainFaultText(top) + ' Zone D — risk of machine damage. Immediate shutdown warranted.'
+        : 'Zone D — dangerous vibration level. Immediate shutdown warranted per ISO 10816-3.';
+    } else if (topPct >= 20) {
+      statusText = 'Action Required';
+      findingText = top
+        ? plainFaultText(top) + ' Zone D confirmed. Condition is dangerous. Arrange inspection within 7 days.'
+        : 'Zone D — dangerous vibration level. Arrange inspection within 7 days.';
+    } else {
+      statusText = 'Action Required';
+      findingText = 'Zone D — dangerous vibration level. Risk of machine damage. Immediate shutdown warranted per ISO 10816-3:2009 S5.4.';
+    }
+  } else if (zone === 'C') {
+    // Zone C — always red, schedule imminent maintenance
+    rag = 'red';
+    iconChar = '&#128308;';
+    statusText = topPct >= 40 ? 'Immediate Action Required' : 'Action Required';
+    findingText = top
+      ? plainFaultText(top) + ' Condition is poor. Arrange inspection within ' + (rul < 30 ? '7' : '30') + ' days.'
+      : 'Zone C — unsatisfactory vibration level. Schedule maintenance within 30 days per ISO 10816-3.';
+  } else if (topPct >= 65) {
+    // Strong or Critical fault in Zone A/B — escalate to red
     rag = 'red';
     iconChar = '&#128308;';
     statusText = 'Immediate Action Required';
@@ -1823,7 +1851,7 @@ function renderMgmtCard(d) {
       ? plainFaultText(top) + ' Fault severity is high. Arrange inspection immediately — do not defer.'
       : 'Critical vibration fault detected. Immediate engineering review required.';
   } else if (topPct >= 40) {
-    // Elevated fault — red regardless of zone
+    // Elevated fault in Zone A/B — red
     rag = 'red';
     iconChar = '&#128308;';
     statusText = 'Action Required';
@@ -1831,7 +1859,7 @@ function renderMgmtCard(d) {
       ? plainFaultText(top) + ' Do not defer — arrange inspection within ' + (rul < 30 ? '7' : rul < 90 ? '30' : '90') + ' days.'
       : 'Elevated fault detected. Engineering review required.';
   } else if (topPct >= 20) {
-    // Indicative fault — amber minimum regardless of zone/health
+    // Indicative fault in Zone A/B — amber
     rag = 'amber';
     iconChar = '&#128993;';
     statusText = 'Monitor Closely';
@@ -1846,20 +1874,12 @@ function renderMgmtCard(d) {
     findingText = topPct >= 8
       ? 'No significant faults detected. A weak background signal was noted — no action required. Continue routine monitoring.'
       : 'No faults detected. Machine is operating normally. Continue routine monitoring schedule.';
-  } else if (zone === 'B' || hi >= 40) {
-    // Zone B or degraded health but no confirmed fault
+  } else {
+    // Zone B or degraded health, no significant fault
     rag = 'amber';
     iconChar = '&#128993;';
     statusText = 'Plan Maintenance';
     findingText = 'Vibration elevated above baseline. No confirmed fault — review at next maintenance window.';
-  } else {
-    // Zone C/D or health < 40
-    rag = 'red';
-    iconChar = '&#128308;';
-    statusText = 'Action Required';
-    findingText = top
-      ? plainFaultText(top) + ' Condition is poor. Arrange inspection within ' + (rul < 30 ? '7' : rul < 90 ? '30' : '90') + ' days.'
-      : 'Severe vibration detected. Immediate engineering review required.';
   }
 
   // Final override — PRA trend with any amber upgrades to red
