@@ -298,9 +298,13 @@ window.mcUpdateMapping = function(i) {
 // Called from app.js instead of single-channel runPipeline when MC.enabled
 async function runMultiChannelPipeline(raw, filename) {
   MC.results = [];
+  // Auto-enable all channels if none are explicitly enabled
+  if (!MC.mapping.some(m => m.enabled)) {
+    MC.mapping.forEach(m => m.enabled = true);
+  }
   const activeChannels = MC.mapping.filter(m => m.enabled);
   if (!activeChannels.length) {
-    alert('No channels enabled. Please enable at least one channel.');
+    alert('No signal columns found in this file.');
     return;
   }
 
@@ -829,9 +833,12 @@ window.mcActivate = function(columns) {
 window.mcOnFileReady = function(raw, parsedResult) {
   MC.rawData = raw;
   const sigCols = mcDetectSignalColumns(parsedResult);
-  const toggle = document.getElementById('mc-mode-toggle');
-  if (MC.enabled || (toggle && toggle.checked)) {
+  // Always populate MC.mapping regardless of toggle state
+  // so channels are ready when user clicks Run
+  if (sigCols.length > 0) {
     mcRenderMappingUI(sigCols);
   }
-  mcShowSuggestion(sigCols);
+  if (sigCols.length > 1) {
+    mcShowSuggestion(sigCols);
+  }
 };
