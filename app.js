@@ -513,23 +513,27 @@ function stageFile(file) {
   // Only suggest if field is blank — never overwrite user's entry
   const assetEl = document.getElementById('p-asset-name');
   if (assetEl && !assetEl.value.trim()) {
-    // Strip ALL extensions (handles multi-dot names like KA-001.001.csv → KA-001.001 → KA-001)
-    // e.g. "KA-001.001.csv"              → "KA-001"
-    //      "KA-001.csv"                  → "KA-001"
-    //      "TJF01_VibrationData.csv"     → "TJF01"
-    //      "MA342_1200rpm_A__D_01.csv"   → "MA342"
-    //      "pump_bearing_NDE_H.csv"      → "pump_bearing_NDE_H"
+    // Extract asset ID from filename:
+    // Strategy: if the filename contains a dot BEFORE the extension (multi-part name),
+    // treat everything before the FIRST dot as the asset ID.
+    // e.g. "KA-001.MA342_1200rpm_A_D_00.csv" → "KA-001"
+    //      "KA-001.001.csv"                   → "KA-001"
+    // Otherwise fall back to stripping extension and parsing by delimiter.
+    // e.g. "TJF01_VibrationData_10days.csv"   → "TJF01"
+    //      "pump_bearing_NDE_H.csv"            → "pump_bearing_NDE_H"
 
-    // Step 1: remove the file extension
-    let base = file.name.replace(/\.[^.]+$/, '');
+    const dotParts = file.name.split('.');
+    let base;
+    if (dotParts.length > 2) {
+      // Multi-dot filename — asset ID is everything before the first dot
+      base = dotParts[0];
+    } else {
+      // Single dot (just name.ext) — strip extension normally
+      base = file.name.replace(/\.[^.]+$/, '');
+    }
 
-    // Step 2: if name is like ASSET-ID.001 (letter-digits hyphen digits pattern),
-    // strip the trailing sequence number (.001, .002 etc.)
-    // Matches patterns like KA-001.001, EP-01.003, CRW-Test1.007
-    base = base.replace(/^(.+?)\.\d{1,4}$/, '$1');
-
-    // Split on common delimiters, take leading segments that look like an asset ID
-    const parts = base.split(/[_\s]+/); // split on _ and space only (not hyphen — hyphens are part of IDs)
+    // Split on _ and space only (not hyphen — hyphens are part of IDs like KA-001)
+    const parts = base.split(/[_\s]+/);
     // Asset ID heuristic: first segment(s) that are alphanumeric + digits
     // Stop when we hit a purely descriptive word
     const descWords = new Set([
