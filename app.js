@@ -32,7 +32,7 @@ const Freemium = {
       <div style="background:#161b22;border:1px solid #4d9de0;border-radius:16px;padding:36px 32px;max-width:460px;width:100%;position:relative;text-align:center;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:2px;color:#4d9de0;margin-bottom:12px;">AXIOMANARE</div>
         <div style="font-family:'Exo 2',sans-serif;font-weight:800;font-size:26px;color:#e8edf5;margin-bottom:10px;line-height:1.1;">
-          ${reason === 'limit' ? 'You've used your 2 free analyses' : 'Unlock Full Access'}
+          ${reason === 'limit' ? 'Free trial complete' : 'Unlock Full Access'}
         </div>
         <p style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7f93aa;line-height:1.8;margin-bottom:24px;">
           ${reason === 'limit'
