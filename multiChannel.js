@@ -805,6 +805,17 @@ window.mcSetEnabled = function(enabled) {
   if (runBtn) runBtn.innerHTML = enabled
     ? '&#9889; Run Multi-Channel Analysis'
     : '&#9889; Run Analysis';
+  // If enabling manually and we have raw data, re-run file ready to populate mapping
+  if (enabled && MC.rawData) {
+    const sigCols = mcDetectSignalColumns(window._lastParsedResult || {});
+    if (sigCols.length > 0) {
+      mcRenderMappingUI(sigCols);
+    } else if (MC.mapping.length === 0 && window._lastParsedResult) {
+      // Fallback: detect from last parsed result allHeaders
+      const headers = window._lastParsedResult.allHeaders || [window._lastParsedResult.colName].filter(Boolean);
+      if (headers.length > 0) mcRenderMappingUI(headers);
+    }
+  }
 };
 
 // ── Show multi-channel suggestion banner after file parse ─────
@@ -833,12 +844,29 @@ window.mcActivate = function(columns) {
 window.mcOnFileReady = function(raw, parsedResult) {
   MC.rawData = raw;
   const sigCols = mcDetectSignalColumns(parsedResult);
-  // Always populate MC.mapping regardless of toggle state
-  // so channels are ready when user clicks Run
+  // Always populate mapping for all detected columns
   if (sigCols.length > 0) {
     mcRenderMappingUI(sigCols);
   }
   if (sigCols.length > 1) {
-    mcShowSuggestion(sigCols);
+    // Auto-enable multi-channel — no user action needed
+    MC.enabled = true;
+    const toggle = document.getElementById('mc-mode-toggle');
+    if (toggle) toggle.checked = true;
+    const runBtn = document.getElementById('run-btn');
+    if (runBtn) runBtn.innerHTML = '&#9889; Run Multi-Channel Analysis';
+    // Show quiet info strip
+    const el = document.getElementById('multiChannelSuggestion');
+    if (el) {
+      el.style.display = 'flex';
+      el.innerHTML = '<span>&#128290; <strong>' + sigCols.length + ' signal columns detected</strong> — running multi-channel analysis automatically</span>';
+    }
+  } else {
+    // Single channel — normal mode
+    MC.enabled = false;
+    const toggle = document.getElementById('mc-mode-toggle');
+    if (toggle) toggle.checked = false;
+    const runBtn = document.getElementById('run-btn');
+    if (runBtn) runBtn.innerHTML = '&#9889; Run Analysis';
   }
 };

@@ -566,19 +566,8 @@ main{padding-top:54px;position:relative;z-index:1;}
           <span>&#10003;</span>
           <span id="param-accuracy-text">Parameters entered — fault detection accuracy improved</span>
         </div>
-        <!-- ── Multi-Channel Mode Toggle ── -->
-        <div class="mc-mode-row" id="mc-mode-row" onclick="document.getElementById('mc-mode-toggle').click()">
-          <label class="mc-mode-toggle-wrap" onclick="event.stopPropagation()">
-            <input type="checkbox" id="mc-mode-toggle" onchange="mcSetEnabled(this.checked)">
-            <span class="mc-slider"></span>
-          </label>
-          <div style="flex:1;">
-            <div class="mc-mode-label">&#128290; Multi-Channel Mode</div>
-            <div style="font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:2px;">Analyses all signal columns independently · X/Y/Z · Drive End / Fan End · ISO 13373-1</div>
-          </div>
-          <div class="mc-mode-sub">Tick if your file<br>has multiple columns</div>
-        </div>
-        <!-- Channel mapping container — hidden, channels auto-enabled -->
+        <!-- mc-mode-toggle (hidden, always auto-enabled by multiChannel.js) -->
+        <input type="checkbox" id="mc-mode-toggle" style="display:none;">
         <div id="mc-mapping-section" style="display:none;">
           <div id="mc-mapping-container"></div>
         </div>
