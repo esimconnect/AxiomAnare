@@ -256,15 +256,15 @@ function mcRenderMappingUI(signalColumns) {
 
   container.innerHTML = `
     <div class="mc-mapping-header">
-      <span class="mc-mapping-title">&#128290; Channel Mapping</span>
-      <span class="mc-mapping-sub">${cols.length} signal column${cols.length !== 1 ? 's' : ''} detected · assign location + axis</span>
+      <span class="mc-mapping-title">&#128290; Multi-Channel</span>
+      <span class="mc-mapping-sub">${cols.length} channel${cols.length !== 1 ? 's' : ''} detected — all enabled</span>
     </div>
     <div class="mc-channel-grid">
       ${cols.map((col, i) => `
         <div class="mc-channel-row" id="mc-ch-${i}">
           <div class="mc-ch-col-label" title="${col}">${col}</div>
-          <label class="mc-ch-enable">
-            <input type="checkbox" id="mc-en-${i}" ${MC.mapping[i]?.enabled !== false ? 'checked' : ''}
+          <label class="mc-ch-enable" style="display:none;">
+            <input type="checkbox" id="mc-en-${i}" checked
               onchange="mcToggleChannel(${i}, this.checked)">
             <span>Active</span>
           </label>
@@ -808,15 +808,11 @@ window.mcShowSuggestion = function(signalColumns) {
   const el = document.getElementById('multiChannelSuggestion');
   if (!el) return;
   if (signalColumns.length <= 1) { el.style.display = 'none'; return; }
-
+  // Auto-activate multi-channel — no manual step needed
+  mcActivate(signalColumns);
+  // Show quiet info banner
   el.style.display = 'flex';
-  el.innerHTML = `
-    <span>&#128290; <strong>${signalColumns.length} signal columns detected</strong> — enable multi-channel to analyse each axis independently</span>
-    <button onclick="mcActivate(${JSON.stringify(signalColumns).replace(/"/g, '&quot;')})"
-      style="flex-shrink:0;padding:5px 14px;background:var(--accent);color:var(--bg);border:none;border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;font-weight:700;">
-      Enable &#8594;
-    </button>
-  `;
+  el.innerHTML = `<span>&#128290; <strong>${signalColumns.length} signal columns detected</strong> — multi-channel mode activated automatically</span>`;
 };
 
 window.mcActivate = function(columns) {

@@ -574,11 +574,11 @@ main{padding-top:54px;position:relative;z-index:1;}
           </label>
           <div style="flex:1;">
             <div class="mc-mode-label">&#128290; Multi-Channel Mode</div>
-            <div style="font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:2px;">Up to 6 channels · X / Y / Z axes · Drive End / Fan End / Gearbox · ISO 13373-1</div>
+            <div style="font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:2px;">Analyses all signal columns independently · X/Y/Z · Drive End / Fan End · ISO 13373-1</div>
           </div>
-          <div class="mc-mode-sub">Off by default<br>Auto-suggested on multi-col files</div>
+          <div class="mc-mode-sub">Tick if your file<br>has multiple columns</div>
         </div>
-        <!-- Channel mapping UI — populated by multiChannel.js after file upload -->
+        <!-- Channel mapping container — hidden, channels auto-enabled -->
         <div id="mc-mapping-section" style="display:none;">
           <div id="mc-mapping-container"></div>
         </div>
