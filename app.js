@@ -2,6 +2,61 @@
 const SUPABASE_URL = 'https://zjfhxutcvjxootoekade.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqZmh4dXRjdmp4b290b2VrYWRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMjgzODAsImV4cCI6MjA5MDcwNDM4MH0.5yGgSjALJhTQm5Ud3W-fU2Bgo-3PkziaS0oLrGMYQ9o';
 
+// ══ FREEMIUM GATE ════════════════════════════════════════════════════════
+const FREE_ANALYSIS_LIMIT = 2;
+
+const Freemium = {
+  getCount() {
+    try { return parseInt(localStorage.getItem('ax_analysis_count') || '0', 10); } catch(e) { return 0; }
+  },
+  increment() {
+    try {
+      const n = this.getCount() + 1;
+      localStorage.setItem('ax_analysis_count', n);
+      return n;
+    } catch(e) { return 1; }
+  },
+  isPro() {
+    try { return localStorage.getItem('ax_pro') === 'true'; } catch(e) { return false; }
+  },
+  isFree() { return !this.isPro(); },
+  remaining() { return Math.max(0, FREE_ANALYSIS_LIMIT - this.getCount()); },
+  isLocked() { return this.isFree() && this.getCount() >= FREE_ANALYSIS_LIMIT; },
+  showUpgradeModal(reason) {
+    const existing = document.getElementById('ax-upgrade-modal');
+    if (existing) existing.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'ax-upgrade-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px);';
+    overlay.innerHTML = `
+      <div style="background:#161b22;border:1px solid #4d9de0;border-radius:16px;padding:36px 32px;max-width:460px;width:100%;position:relative;text-align:center;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:2px;color:#4d9de0;margin-bottom:12px;">AXIOMANARE</div>
+        <div style="font-family:'Exo 2',sans-serif;font-weight:800;font-size:26px;color:#e8edf5;margin-bottom:10px;line-height:1.1;">
+          ${reason === 'limit' ? 'You've used your 2 free analyses' : 'Unlock Full Access'}
+        </div>
+        <p style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7f93aa;line-height:1.8;margin-bottom:24px;">
+          ${reason === 'limit'
+            ? 'Your free trial included 2 full diagnostic analyses. Upgrade to Professional for unlimited analyses, PDF export, fleet dashboard, and baseline tracking.'
+            : 'PDF export, fleet management, and baseline tracking are available on Professional and Enterprise plans.'}
+        </p>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <a href="landing.html#pricing" style="display:block;padding:13px;background:#4d9de0;color:#fff;border-radius:9px;font-family:'Exo 2',sans-serif;font-weight:700;font-size:14px;text-decoration:none;transition:background 0.2s;" onmouseover="this.style.background='#2b7cc4'" onmouseout="this.style.background='#4d9de0'">
+            &#9889; View Plans &amp; Pricing
+          </a>
+          <button onclick="document.getElementById('ax-upgrade-modal').remove()" style="padding:11px;background:transparent;color:#7f93aa;border:1px solid #30363d;border-radius:9px;font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;">
+            ${reason === 'limit' ? 'View this result only' : 'Maybe later'}
+          </button>
+        </div>
+        <div style="margin-top:20px;font-family:'IBM Plex Mono',monospace;font-size:9px;color:#3a4f68;line-height:1.6;">
+          Already have an account? <a href="fleet.html" style="color:#4d9de0;text-decoration:none;">Sign in to Fleet Dashboard</a>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+};
+
+
+
 const SB = {
   headers() {
     return {
@@ -811,6 +866,13 @@ function loadSampleData() {
 
 // == PIPELINE ==
 async function runPipeline(raw, filename) {
+  // Freemium gate — block if free limit reached
+  if (Freemium.isLocked()) {
+    Freemium.showUpgradeModal('limit');
+    document.getElementById('processing-screen').style.display = 'none';
+    document.getElementById('upload-screen').style.display = 'flex';
+    return;
+  }
   document.getElementById('proc-filename').textContent = filename;
 
   // Stage 1  -  Ingest
@@ -1016,6 +1078,10 @@ async function runPipeline(raw, filename) {
       }
     } catch(e) { console.log('Supabase post-analysis save failed:', e.message); }
   })();
+  // Increment free analysis counter
+  const count = Freemium.increment();
+  // Apply AI reco gate — truncate for free users
+  applyFreemiumGates();
   streamClaude();
 }
 
@@ -2478,6 +2544,47 @@ async function streamClaude(){
     document.getElementById('reco-text').innerHTML = mdToHtml(buildFallback(nvr));
   }
   document.getElementById('reco-text').classList.remove('typing');
+}
+
+
+// ══ FREEMIUM GATE RENDERER ═══════════════════════════════════════════════
+function applyFreemiumGates() {
+  if (Freemium.isPro()) return;
+
+  const count = Freemium.getCount();
+
+  // Hide PDF button
+  const pdfBtn = document.getElementById('pdf-btn');
+  if (pdfBtn) {
+    pdfBtn.style.display = 'none';
+  }
+
+  // After limit reached — show upgrade modal
+  if (count >= FREE_ANALYSIS_LIMIT) {
+    setTimeout(() => Freemium.showUpgradeModal('limit'), 1800);
+  }
+
+  // Apply AI reco blur/truncate after streaming completes
+  setTimeout(() => {
+    const recoEl = document.getElementById('reco-text');
+    if (!recoEl) return;
+    // Already wrapped?
+    if (document.getElementById('ax-reco-gate')) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:relative;';
+    wrapper.id = 'ax-reco-gate';
+
+    const blur = document.createElement('div');
+    blur.style.cssText = 'position:absolute;bottom:0;left:0;right:0;height:65%;background:linear-gradient(to bottom,transparent,#161b22 60%);display:flex;align-items:flex-end;justify-content:center;padding-bottom:16px;';
+    blur.innerHTML = `<button onclick="Freemium.showUpgradeModal('feature')" style="padding:10px 22px;background:#4d9de0;color:#fff;border:none;border-radius:8px;font-family:'Exo 2',sans-serif;font-weight:700;font-size:13px;cursor:pointer;letter-spacing:0.3px;">&#128274; Unlock Full AI Report</button>`;
+
+    recoEl.parentNode.insertBefore(wrapper, recoEl);
+    wrapper.appendChild(recoEl);
+    wrapper.appendChild(blur);
+    recoEl.style.maxHeight = '120px';
+    recoEl.style.overflow = 'hidden';
+  }, 4000); // wait for streaming to finish
 }
 
 // == FALLBACK REPORT ==

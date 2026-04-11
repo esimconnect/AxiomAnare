@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AxiomAnare — Vibration Diagnostic Engine</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Barlow+Condensed:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@700;800&family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Barlow+Condensed:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -437,6 +437,7 @@ main{padding-top:54px;position:relative;z-index:1;}
     <div><div>AxiomAnare</div><div class="logo-sub">Agnostic · Augmented AI Analysis</div></div>
   </div>
   <div class="nav-right">
+    <div id="ax-free-badge" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--green);padding:4px 10px;border:1px solid rgba(34,197,94,0.3);border-radius:6px;background:rgba(34,197,94,0.07);display:none;cursor:pointer;" onclick="Freemium.showUpgradeModal('feature')"></div>
     <a href="fleet.html" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--accent);text-decoration:none;padding:4px 10px;border:1px solid rgba(77,157,224,0.3);border-radius:6px;background:rgba(77,157,224,0.07);">&#128202; Fleet Dashboard</a>
     <div class="nav-tag">ISO 10816 · ISO 13373 · ISO 13379 · ISO 13381 · ISO 55001</div>
   </div>
@@ -816,5 +817,36 @@ main{padding-top:54px;position:relative;z-index:1;}
 </main>
 <script src="app.js"></script>
 <script src="multiChannel.js"></script>
+
+<script>
+// Freemium UI init — runs after app.js loads
+window.addEventListener('load', function() {
+  // Update free badge
+  function updateFreeBadge() {
+    const badge = document.getElementById('ax-free-badge');
+    if (!badge) return;
+    if (Freemium.isPro()) { badge.style.display = 'none'; return; }
+    const count = Freemium.getCount();
+    const remaining = Freemium.remaining();
+    badge.style.display = 'block';
+    if (remaining > 0) {
+      badge.style.color = 'var(--green)';
+      badge.style.borderColor = 'rgba(34,197,94,0.3)';
+      badge.style.background = 'rgba(34,197,94,0.07)';
+      badge.textContent = remaining + ' free ' + (remaining === 1 ? 'analysis' : 'analyses') + ' left';
+    } else {
+      badge.style.color = 'var(--yellow)';
+      badge.style.borderColor = 'rgba(245,158,11,0.3)';
+      badge.style.background = 'rgba(245,158,11,0.07)';
+      badge.textContent = '&#9650; Upgrade to continue';
+      badge.innerHTML = '&#9650; Upgrade to continue';
+    }
+  }
+  updateFreeBadge();
+  // Re-update after each analysis
+  const origIncrement = Freemium.increment.bind(Freemium);
+  Freemium.increment = function() { const n = origIncrement(); updateFreeBadge(); return n; };
+});
+</script>
 </body>
 </html>
