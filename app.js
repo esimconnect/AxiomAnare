@@ -513,13 +513,23 @@ function stageFile(file) {
   // Only suggest if field is blank — never overwrite user's entry
   const assetEl = document.getElementById('p-asset-name');
   if (assetEl && !assetEl.value.trim()) {
-    // Strip extension and common suffixes, extract the meaningful ID prefix
-    // e.g. "TJF01_VibrationData_10days.csv" → "TJF01"
-    //      "MA342_1200rpm_A__D_01.csv"       → "MA342"
-    //      "pump_bearing_NDE_H.csv"           → "pump_bearing_NDE_H"
-    const base = file.name.replace(/\.[^.]+$/, ''); // remove extension
+    // Strip ALL extensions (handles multi-dot names like KA-001.001.csv → KA-001.001 → KA-001)
+    // e.g. "KA-001.001.csv"              → "KA-001"
+    //      "KA-001.csv"                  → "KA-001"
+    //      "TJF01_VibrationData.csv"     → "TJF01"
+    //      "MA342_1200rpm_A__D_01.csv"   → "MA342"
+    //      "pump_bearing_NDE_H.csv"      → "pump_bearing_NDE_H"
+
+    // Step 1: remove the file extension
+    let base = file.name.replace(/\.[^.]+$/, '');
+
+    // Step 2: if name is like ASSET-ID.001 (letter-digits hyphen digits pattern),
+    // strip the trailing sequence number (.001, .002 etc.)
+    // Matches patterns like KA-001.001, EP-01.003, CRW-Test1.007
+    base = base.replace(/^(.+?)\.\d{1,4}$/, '$1');
+
     // Split on common delimiters, take leading segments that look like an asset ID
-    const parts = base.split(/[_\-\s]+/);
+    const parts = base.split(/[_\s]+/); // split on _ and space only (not hyphen — hyphens are part of IDs)
     // Asset ID heuristic: first segment(s) that are alphanumeric + digits
     // Stop when we hit a purely descriptive word
     const descWords = new Set([
