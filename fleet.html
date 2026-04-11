@@ -502,7 +502,7 @@ tr:hover td { background: rgba(77,157,224,0.03); }
     <div class="page-header">
       <div>
         <div class="page-title">Upload Readings</div>
-        <div class="page-sub">Establish baselines and upload condition monitoring data for your fleet</div>
+        <div class="page-sub">Select your asset first — then drop any file. Filenames don't need to match anything.</div>
       </div>
     </div>
 
@@ -510,27 +510,35 @@ tr:hover td { background: rgba(77,157,224,0.03); }
       <!-- Baseline upload -->
       <div class="upload-card">
         <div class="upload-card-title">&#9632; Establish Baseline</div>
-        <div class="upload-card-sub">Upload a healthy reference reading for a new or recently maintained asset. Required before trend analysis can begin per ISO 13373-2:2016 §8.1.</div>
+        <div class="upload-card-sub">Upload a healthy reference reading. Required before trend analysis can begin per ISO 13373-2:2016 §8.1.</div>
+
         <div class="form-group">
-          <label class="form-label">ASSET NAME / TAG</label>
-          <input class="form-input" id="bl-asset" type="text" placeholder="e.g. Pump-01-NDE, FanMotor-B2-DE">
-        </div>
-        <div class="form-group">
-          <label class="form-label">MACHINE CLASS</label>
-          <select class="form-input" id="bl-class">
-            <option value="cls_i">Class I — Small machines (&lt;15 kW)</option>
-            <option value="cls_ii" selected>Class II — Medium machines (15–75 kW)</option>
-            <option value="cls_ii_f">Class II Flexible — Medium on flexible mount</option>
-            <option value="cls_iii">Class III — Large machines (&gt;75 kW, rigid)</option>
-            <option value="cls_iv">Class IV — Large machines (&gt;75 kW, flexible)</option>
+          <label class="form-label">STEP 1 — SELECT ASSET</label>
+          <select class="form-input" id="bl-asset-select" onchange="onBlAssetSelect(this.value)">
+            <option value="">— choose existing asset —</option>
+            <option value="__new__">&#xff0b; Create new asset&#x2026;</option>
           </select>
         </div>
-        <div class="form-group">
-          <label class="form-label">MEASUREMENT DATE</label>
-          <input class="form-input" id="bl-date" type="date">
+
+        <div id="bl-new-asset-fields" style="display:none;">
+          <div class="form-group">
+            <label class="form-label">NEW ASSET NAME / TAG</label>
+            <input class="form-input" id="bl-asset-name-new" type="text" placeholder="e.g. Pump-01-NDE, KA-001">
+          </div>
+          <div class="form-group">
+            <label class="form-label">MACHINE CLASS</label>
+            <select class="form-input" id="bl-class">
+              <option value="cls_i">Class I — Small machines (&lt;15 kW)</option>
+              <option value="cls_ii" selected>Class II — Medium machines (15–75 kW)</option>
+              <option value="cls_ii_f">Class II Flexible — Medium on flexible mount</option>
+              <option value="cls_iii">Class III — Large machines (&gt;75 kW, rigid)</option>
+              <option value="cls_iv">Class IV — Large machines (&gt;75 kW, flexible)</option>
+            </select>
+          </div>
         </div>
+
         <div class="form-group">
-          <label class="form-label">BASELINE FILE (CSV / MAT / XLSX)</label>
+          <label class="form-label">STEP 2 — DROP BASELINE FILE (any filename)</label>
           <div class="dropzone-mini" id="bl-dropzone"
             ondragover="event.preventDefault();this.classList.add('drag-over')"
             ondragleave="this.classList.remove('drag-over')"
@@ -541,33 +549,66 @@ tr:hover td { background: rgba(77,157,224,0.03); }
           </div>
           <input type="file" id="bl-file-input" accept=".csv,.mat,.xlsx,.xls,.txt,.tsv" style="display:none" onchange="onBlFile(this.files[0])">
         </div>
+
+        <div class="form-group">
+          <label class="form-label">MEASUREMENT DATE</label>
+          <input class="form-input" id="bl-date" type="date">
+        </div>
         <div class="form-group">
           <label class="form-label">NOTES (optional)</label>
           <input class="form-input" id="bl-notes" type="text" placeholder="e.g. Post-overhaul baseline, new bearing installed">
         </div>
         <button class="btn btn-primary" onclick="submitBaseline()" style="width:100%;">&#10003; Establish Baseline</button>
-        <div class="upload-progress" id="bl-progress">&#9889; Analysing and saving baseline…</div>
+        <div class="upload-progress" id="bl-progress">&#9889; Analysing and saving baseline&#x2026;</div>
         <div class="upload-success" id="bl-success"></div>
       </div>
 
       <!-- Batch upload -->
       <div class="upload-card">
         <div class="upload-card-title">&#9650; Batch Upload Readings</div>
-        <div class="upload-card-sub">Upload multiple condition monitoring files at once. Each file is assigned to an asset and measurement date. Files are analysed sequentially and saved to the fleet database.</div>
+        <div class="upload-card-sub">Upload multiple readings for an asset. Drop any files — filenames don't need to match anything.</div>
 
-        <div class="dropzone-mini" id="batch-dropzone"
-          ondragover="event.preventDefault();this.classList.add('drag-over')"
-          ondragleave="this.classList.remove('drag-over')"
-          ondrop="onBatchDrop(event)"
-          onclick="document.getElementById('batch-file-input').click()">
-          <div class="drop-icon">&#128194;</div>
-          <div class="drop-text">Drop multiple files or click to browse</div>
+        <div class="form-group">
+          <label class="form-label">STEP 1 — SELECT ASSET</label>
+          <select class="form-input" id="batch-asset-select" onchange="onBatchAssetSelect(this.value)">
+            <option value="">— choose existing asset —</option>
+            <option value="__new__">&#xff0b; Create new asset&#x2026;</option>
+          </select>
         </div>
-        <input type="file" id="batch-file-input" accept=".csv,.mat,.xlsx,.xls,.txt,.tsv" multiple style="display:none" onchange="onBatchFiles(this.files)">
+
+        <div id="batch-new-asset-fields" style="display:none;">
+          <div class="form-group">
+            <label class="form-label">NEW ASSET NAME / TAG</label>
+            <input class="form-input" id="batch-asset-name-new" type="text" placeholder="e.g. Pump-01-NDE, KA-001">
+          </div>
+          <div class="form-group">
+            <label class="form-label">MACHINE CLASS</label>
+            <select class="form-input" id="batch-class">
+              <option value="cls_i">Class I — Small machines (&lt;15 kW)</option>
+              <option value="cls_ii" selected>Class II — Medium machines (15–75 kW)</option>
+              <option value="cls_ii_f">Class II Flexible — Medium on flexible mount</option>
+              <option value="cls_iii">Class III — Large machines (&gt;75 kW, rigid)</option>
+              <option value="cls_iv">Class IV — Large machines (&gt;75 kW, flexible)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">STEP 2 — DROP FILES (any filenames)</label>
+          <div class="dropzone-mini" id="batch-dropzone"
+            ondragover="event.preventDefault();this.classList.add('drag-over')"
+            ondragleave="this.classList.remove('drag-over')"
+            ondrop="onBatchDrop(event)"
+            onclick="document.getElementById('batch-file-input').click()">
+            <div class="drop-icon">&#128194;</div>
+            <div class="drop-text">Drop multiple files or click to browse</div>
+          </div>
+          <input type="file" id="batch-file-input" accept=".csv,.mat,.xlsx,.xls,.txt,.tsv" multiple style="display:none" onchange="onBatchFiles(this.files)">
+        </div>
 
         <div id="batch-file-list" style="display:none">
           <div class="batch-header">
-            <span>File</span><span>Asset Name / Tag</span><span>Date</span>
+            <span>File</span><span>Date</span>
           </div>
           <div class="batch-file-list" id="batch-rows"></div>
           <div style="display:flex;gap:8px;margin-top:10px;">
@@ -579,7 +620,6 @@ tr:hover td { background: rgba(77,157,224,0.03); }
         <div class="upload-progress" id="batch-progress"></div>
         <div class="upload-success" id="batch-success"></div>
 
-        <!-- Batch results summary -->
         <div id="batch-results" style="display:none;margin-top:12px;">
           <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;margin-bottom:8px;">Batch Results</div>
           <div id="batch-results-body"></div>
@@ -817,6 +857,7 @@ async function loadFleetData() {
     _allAssets = enriched;
     updateStats();
     renderTable();
+    populateAssetDropdowns();
     document.getElementById('fleet-last-updated').textContent =
       `${assets.length} assets · Last refreshed ${new Date().toLocaleTimeString()}`;
 
@@ -1006,6 +1047,24 @@ function showPage(name) {
 
 // ══ BASELINE UPLOAD ══════════════════════════════════════════
 let _blFile = null;
+let _blAssetId = null;   // id of existing asset, or null if new
+
+function onBlAssetSelect(val) {
+  _blAssetId = null;
+  document.getElementById('bl-new-asset-fields').style.display = val === '__new__' ? 'block' : 'none';
+  if (val && val !== '__new__') _blAssetId = val;
+}
+
+function populateAssetDropdowns() {
+  const opts = _allAssets.map(a => `<option value="${a.id}">${a.asset_name}</option>`).join('');
+  ['bl-asset-select', 'batch-asset-select'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const current = el.value;
+    el.innerHTML = '<option value="">— choose existing asset —</option>' + opts + '<option value="__new__">＋ Create new asset…</option>';
+    if (current) el.value = current;
+  });
+}
 
 function onBlDrop(e) {
   e.preventDefault();
@@ -1016,45 +1075,32 @@ function onBlDrop(e) {
 
 function onBlFile(f) {
   _blFile = f;
-  document.getElementById('bl-drop-text').textContent = '&#10003; ' + f.name + ' · ' + (f.size/1024).toFixed(1) + ' KB';
-  // Auto-suggest asset name from filename
-  const assetEl = document.getElementById('bl-asset');
-  if (!assetEl.value.trim()) {
-    const base = f.name.replace(/\.[^.]+$/, '');
-    const parts = base.split(/[_\-\s]+/);
-    const descWords = new Set(['vibration','data','vib','signal','accel','velocity','measurement','reading','log','export','baseline','healthy','normal','ref','reference']);
-    let suggested = '';
-    for (const p of parts) {
-      if (descWords.has(p.toLowerCase()) || /^\d{4,}$/.test(p)) break;
-      suggested = suggested ? suggested + '_' + p : p;
-      if (suggested.split('_').length >= 2) break;
-    }
-    if (suggested.length >= 2) assetEl.value = suggested;
-  }
+  document.getElementById('bl-drop-text').textContent = '✓ ' + f.name + ' · ' + (f.size/1024).toFixed(1) + ' KB';
 }
 
 async function submitBaseline() {
-  const asset = document.getElementById('bl-asset').value.trim();
-  const cls   = document.getElementById('bl-class').value;
+  const selectEl = document.getElementById('bl-asset-select');
+  const selectVal = selectEl.value;
+  const isNew = selectVal === '__new__';
+  const newName = document.getElementById('bl-asset-name-new').value.trim();
+  const cls   = document.getElementById('bl-class')?.value || 'cls_ii';
   const date  = document.getElementById('bl-date').value;
   const notes = document.getElementById('bl-notes').value.trim();
   const prog  = document.getElementById('bl-progress');
   const succ  = document.getElementById('bl-success');
   succ.style.display = 'none';
 
-  if (!asset) { alert('Please enter an Asset Name.'); return; }
+  if (!selectVal) { alert('Please select an asset.'); return; }
+  if (isNew && !newName) { alert('Please enter a name for the new asset.'); return; }
   if (!_blFile) { alert('Please select a baseline file.'); return; }
   if (!_orgId) { alert('Organisation not loaded. Please sign out and back in.'); return; }
 
   prog.style.display = 'block';
-  prog.textContent = '&#9889; Reading file…';
+  prog.textContent = '⚡ Reading file…';
 
   try {
-    // Read file
     const raw = await readFileAsText(_blFile);
-
-    // Parse to get RMS
-    prog.textContent = '&#9889; Computing baseline statistics…';
+    prog.textContent = '⚡ Computing baseline statistics…';
     const parsed = parseCSVSimple(raw);
     if (!parsed || parsed.values.length < 10) throw new Error('Could not extract vibration data from file.');
 
@@ -1064,23 +1110,21 @@ async function submitBaseline() {
     const rms  = Math.sqrt(vals.reduce((s,v)=>s+v*v,0)/n);
     const std  = Math.sqrt(vals.reduce((s,v)=>s+(v-mean)**2,0)/n);
 
-    prog.textContent = '&#9889; Saving to database…';
+    prog.textContent = '⚡ Saving to database…';
 
-    // Resolve or create asset
+    // Resolve asset
     let assetRec = null;
-    const existing = await sbGet('assets', `asset_name=eq.${encodeURIComponent(asset)}&org_id=eq.${_orgId}&select=id,asset_name`);
-    if (existing?.length) {
-      assetRec = existing[0];
-    } else {
+    if (isNew) {
       const created = await sbPost('assets', {
-        org_id: _orgId, asset_name: asset,
+        org_id: _orgId, asset_name: newName,
         machine_class: cls, created_at: new Date().toISOString()
       });
       assetRec = created?.[0];
+    } else {
+      assetRec = _allAssets.find(a => a.id === selectVal) || { id: selectVal };
     }
-    if (!assetRec?.id) throw new Error('Could not create asset record.');
+    if (!assetRec?.id) throw new Error('Could not resolve asset record.');
 
-    // Save baseline
     await sbPost('baselines', {
       asset_id: assetRec.id,
       mean_rms: rms, std_rms: std,
@@ -1092,13 +1136,14 @@ async function submitBaseline() {
 
     prog.style.display = 'none';
     succ.style.display = 'block';
-    succ.textContent = '&#10003; Baseline established for ' + asset + ' · RMS: ' + rms.toFixed(3) + ' mm/s · ' + n + ' samples';
+    const displayName = isNew ? newName : (_allAssets.find(a=>a.id===selectVal)?.asset_name || selectVal);
+    succ.textContent = '✓ Baseline established for ' + displayName + ' · RMS: ' + rms.toFixed(3) + ' mm/s · ' + n + ' samples';
     _blFile = null;
     document.getElementById('bl-drop-text').textContent = 'Drop baseline file or click to browse';
-    document.getElementById('bl-asset').value = '';
+    document.getElementById('bl-asset-select').value = '';
+    document.getElementById('bl-asset-name-new').value = '';
+    document.getElementById('bl-new-asset-fields').style.display = 'none';
     document.getElementById('bl-notes').value = '';
-
-    // Refresh fleet
     await loadFleetData();
 
   } catch(e) {
@@ -1109,6 +1154,18 @@ async function submitBaseline() {
 
 // ══ BATCH UPLOAD ═════════════════════════════════════════════
 let _batchFiles = [];
+let _batchAssetId = null;
+let _batchAssetName = null;
+
+function onBatchAssetSelect(val) {
+  _batchAssetId = null;
+  _batchAssetName = null;
+  document.getElementById('batch-new-asset-fields').style.display = val === '__new__' ? 'block' : 'none';
+  if (val && val !== '__new__') {
+    _batchAssetId = val;
+    _batchAssetName = _allAssets.find(a => a.id === val)?.asset_name || val;
+  }
+}
 
 function onBatchDrop(e) {
   e.preventDefault();
@@ -1120,17 +1177,7 @@ function onBatchFiles(fileList) {
   const today = new Date().toISOString().split('T')[0];
   for (const f of fileList) {
     if (!_batchFiles.find(x => x.file.name === f.name)) {
-      // Auto-suggest asset name
-      const base = f.name.replace(/\.[^.]+$/, '');
-      const parts = base.split(/[_\-\s]+/);
-      const descWords = new Set(['vibration','data','vib','signal','accel','velocity','measurement','reading','log','export','csv','rpm']);
-      let suggested = '';
-      for (const p of parts) {
-        if (descWords.has(p.toLowerCase()) || /^\d{4,}$/.test(p)) break;
-        suggested = suggested ? suggested + '_' + p : p;
-        if (suggested.split('_').length >= 2) break;
-      }
-      _batchFiles.push({ file: f, asset: suggested || '', date: today });
+      _batchFiles.push({ file: f, date: today });
     }
   }
   renderBatchList();
@@ -1148,8 +1195,6 @@ function renderBatchList() {
         <div class="batch-file-name" title="${item.file.name}">${item.file.name}</div>
         <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted)">${(item.file.size/1024).toFixed(1)} KB</div>
       </div>
-      <input class="batch-asset-input" type="text" value="${item.asset}" placeholder="Asset name"
-        onchange="_batchFiles[${i}].asset=this.value" oninput="_batchFiles[${i}].asset=this.value">
       <input class="batch-date-input" type="date" value="${item.date}"
         onchange="_batchFiles[${i}].date=this.value">
       <span class="batch-remove" onclick="removeBatchFile(${i})">&#10005;</span>
@@ -1174,8 +1219,12 @@ async function submitBatch() {
   if (!_batchFiles.length) { alert('No files to upload.'); return; }
   if (!_orgId) { alert('Organisation not loaded.'); return; }
 
-  const missing = _batchFiles.filter(f => !f.asset.trim());
-  if (missing.length) { alert('Please assign an Asset Name to all files.'); return; }
+  const selectVal = document.getElementById('batch-asset-select').value;
+  const isNew = selectVal === '__new__';
+  const newName = document.getElementById('batch-asset-name-new').value.trim();
+
+  if (!selectVal) { alert('Please select an asset first.'); return; }
+  if (isNew && !newName) { alert('Please enter a name for the new asset.'); return; }
 
   const prog = document.getElementById('batch-progress');
   const succ = document.getElementById('batch-success');
@@ -1183,10 +1232,30 @@ async function submitBatch() {
   const resultsBody = document.getElementById('batch-results-body');
   prog.style.display = 'block'; succ.style.display = 'none'; resultsDiv.style.display = 'none';
 
+  // Resolve or create asset once for the whole batch
+  let assetRec = null;
+  let assetDisplayName = '';
+  try {
+    if (isNew) {
+      const cls = document.getElementById('batch-class')?.value || 'cls_ii';
+      const created = await sbPost('assets', { org_id: _orgId, asset_name: newName, machine_class: cls, created_at: new Date().toISOString() });
+      assetRec = created?.[0];
+      assetDisplayName = newName;
+    } else {
+      assetRec = { id: selectVal };
+      assetDisplayName = _allAssets.find(a => a.id === selectVal)?.asset_name || selectVal;
+    }
+    if (!assetRec?.id) throw new Error('Could not resolve asset.');
+  } catch(e) {
+    prog.style.display = 'none';
+    alert('Asset error: ' + e.message);
+    return;
+  }
+
   const results = [];
   for (let i = 0; i < _batchFiles.length; i++) {
     const item = _batchFiles[i];
-    prog.textContent = `&#9889; Processing ${i+1}/${_batchFiles.length}: ${item.file.name}`;
+    prog.textContent = `⚡ Processing ${i+1}/${_batchFiles.length}: ${item.file.name}`;
     try {
       const raw = await readFileAsText(item.file);
       const parsed = parseCSVSimple(raw);
@@ -1200,23 +1269,10 @@ async function submitBatch() {
       let peak   = 0; for (const v of vals) if (Math.abs(v)>peak) peak=Math.abs(v);
       const cf   = peak/(rms||1);
       const kurt = vals.reduce((s,v)=>s+((v-mean)/(std||1))**4,0)/n;
-
-      // Simple zone classification (Class II defaults)
       const zone = rms < 2.3 ? 'A' : rms < 4.5 ? 'B' : rms < 11.2 ? 'C' : 'D';
 
-      // Resolve or create asset
-      let assetRec = null;
-      const existing = await sbGet('assets', `asset_name=eq.${encodeURIComponent(item.asset.trim())}&org_id=eq.${_orgId}&select=id`);
-      if (existing?.length) {
-        assetRec = existing[0];
-      } else {
-        const created = await sbPost('assets', { org_id: _orgId, asset_name: item.asset.trim(), created_at: new Date().toISOString() });
-        assetRec = created?.[0];
-      }
-
-      // Save NVR record
       await sbPost('nvr_records', {
-        asset_id:     assetRec?.id || null,
+        asset_id:     assetRec.id,
         recorded_at:  item.date ? new Date(item.date).toISOString() : new Date().toISOString(),
         filename:     item.file.name,
         sample_count: n,
@@ -1227,25 +1283,24 @@ async function submitBatch() {
         iso_zone:     zone,
         trend_code:   'DDU',
         rul_days:     zone==='A'?180:zone==='B'?90:zone==='C'?30:7,
-        machine_class:'cls_ii',
+        machine_class: 'cls_ii',
       });
 
-      results.push({ file: item.file.name, asset: item.asset, zone, rms: rms.toFixed(3), status: 'ok' });
+      results.push({ file: item.file.name, zone, rms: rms.toFixed(3), status: 'ok' });
     } catch(e) {
-      results.push({ file: item.file.name, asset: item.asset, zone: '?', rms: '?', status: 'error', error: e.message });
+      results.push({ file: item.file.name, zone: '?', rms: '?', status: 'error', error: e.message });
     }
   }
 
   prog.style.display = 'none';
   succ.style.display = 'block';
-  succ.textContent = `&#10003; Batch complete · ${results.filter(r=>r.status==='ok').length}/${results.length} files processed`;
+  succ.textContent = `✓ Batch complete · ${results.filter(r=>r.status==='ok').length}/${results.length} files saved to ${assetDisplayName}`;
 
   resultsDiv.style.display = 'block';
   resultsBody.innerHTML = results.map(r => `
     <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:${r.status==='ok'?'rgba(34,197,94,0.05)':'rgba(239,68,68,0.05)'};border:1px solid ${r.status==='ok'?'rgba(34,197,94,0.2)':'rgba(239,68,68,0.2)'};border-radius:7px;margin-bottom:6px;font-family:'IBM Plex Mono',monospace;font-size:10px;">
       <span>${r.status==='ok'?'&#10003;':'&#10007;'}</span>
       <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.file}</span>
-      <span style="color:var(--muted)">${r.asset}</span>
       ${r.status==='ok'?`<span class="zone-pill zone-${r.zone}" style="font-size:10px;width:22px;height:16px;">${r.zone}</span><span>${r.rms} mm/s</span>`:`<span style="color:var(--red)">${r.error}</span>`}
     </div>
   `).join('');
