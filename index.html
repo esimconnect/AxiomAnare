@@ -37,15 +37,14 @@
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;min-height:100vh;}
 body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(ellipse 60% 40% at 15% 20%,rgba(77,157,224,0.07),transparent 60%),radial-gradient(ellipse 40% 60% at 85% 80%,rgba(43,124,196,0.05),transparent 60%),repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(77,157,224,0.04) 39px,rgba(77,157,224,0.04) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(77,157,224,0.04) 39px,rgba(77,157,224,0.04) 40px);}
-nav{position:fixed;top:0;left:0;right:0;height:62px;background:rgba(28,35,51,0.97);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 28px;gap:20px;z-index:200;}
-.logo{display:flex;align-items:center;gap:12px;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:20px;letter-spacing:0.3px;color:var(--text);}
-.logo-mark{width:42px;height:42px;border-radius:9px;background:linear-gradient(135deg,var(--accent2),var(--accent));display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#fff;box-shadow:0 0 12px rgba(0,102,204,0.25);}
-.logo-sub{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;line-height:1;}
-.nav-right{margin-left:auto;}.nav-tag{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);color:var(--muted);}
-main{padding-top:54px;position:relative;z-index:1;}
-#upload-screen{min-height:calc(100vh - 54px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;gap:20px;}
+nav{position:fixed;top:0;left:0;right:0;height:160px;background:rgba(28,35,51,0.97);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 36px;gap:20px;z-index:200;overflow:hidden;}
+.nav-right{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:10px;flex-shrink:0;min-width:0;}
+.logo{display:flex;align-items:center;gap:0;line-height:1;flex-shrink:1;min-width:0;overflow:hidden;}
+.nav-tag{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid var(--border);color:var(--muted);white-space:nowrap;}
+main{padding-top:160px;position:relative;z-index:1;}
+#upload-screen{min-height:calc(100vh - 160px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;gap:20px;}
 .hero-title{font-family:'Barlow Condensed',sans-serif;font-size:40px;font-weight:800;letter-spacing:-1px;text-align:center;background:linear-gradient(135deg,var(--text),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
-.hero-sub{font-size:13px;color:var(--muted);text-align:center;max-width:460px;line-height:1.7;}
+.hero-sub{font-size:13px;color:var(--muted);text-align:center;max-width:800px;line-height:1.7;white-space:nowrap;}
 .steps-wrap{width:100%;max-width:700px;display:flex;flex-direction:column;gap:10px;}
 .step-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;transition:border-color 0.2s;}
 .step-header{display:flex;align-items:center;gap:12px;}
@@ -433,12 +432,55 @@ main{padding-top:54px;position:relative;z-index:1;}
 <body>
 <nav>
   <div class="logo">
-    <div class="logo-mark">Ax</div>
-    <div><div>AxiomAnare</div><div class="logo-sub">Agnostic · Augmented AI Analysis</div></div>
+    <svg width="580" height="140" viewBox="60 30 560 250" role="img" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:1;max-width:100%;">
+      <title>AxiomAnare logo</title>
+      <defs><clipPath id="wc"><circle cx="0" cy="0" r="46"/></clipPath></defs>
+      <!-- LARGE GEAR -->
+      <g transform="translate(138,155)">
+        <g fill="#378ADD" stroke="#111" stroke-width="2.2" stroke-linejoin="miter">
+          <g transform="rotate(0)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(17.14)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(34.29)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(51.43)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(68.57)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(85.71)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(102.86)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(120)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(137.14)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(154.29)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(171.43)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(188.57)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(205.71)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(222.86)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(240)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(257.14)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(274.29)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(291.43)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(308.57)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(325.71)"><rect x="-4" y="-64" width="8" height="10"/></g><g transform="rotate(342.86)"><rect x="-4" y="-64" width="8" height="10"/></g>
+        </g>
+        <circle cx="0" cy="0" r="54" fill="#378ADD" stroke="#111" stroke-width="2.2"/>
+        <circle cx="0" cy="0" r="42" fill="#2970C0"/>
+        <circle cx="0" cy="0" r="42" fill="none" stroke="#185FA5" stroke-width="2"/>
+        <circle cx="0" cy="0" r="28" fill="none" stroke="#185FA5" stroke-width="1.2"/>
+        <g clip-path="url(#wc)"><path d="M-44,0 C-36,-17 -28,-17 -22,0 C-16,17 -8,17 0,0 C8,-17 16,-17 22,0 C28,17 36,17 44,0" fill="none" stroke="#1D9E75" stroke-width="3" stroke-linecap="round"/></g>
+        <circle cx="0" cy="0" r="6" fill="#fff" stroke="#185FA5" stroke-width="1.5"/>
+      </g>
+      <!-- SMALL GEAR -->
+      <g transform="translate(200,87) rotate(5)">
+        <g fill="#185FA5" stroke="#111" stroke-width="2" stroke-linejoin="miter">
+          <g transform="rotate(0)"><rect x="-4" y="-38" width="8" height="10"/></g><g transform="rotate(36)"><rect x="-4" y="-38" width="8" height="10"/></g><g transform="rotate(72)"><rect x="-4" y="-38" width="8" height="10"/></g><g transform="rotate(108)"><rect x="-4" y="-38" width="8" height="10"/></g><g transform="rotate(144)"><rect x="-4" y="-38" width="8" height="10"/></g><g transform="rotate(180)"><rect x="-4" y="-38" width="8" height="10"/></g><g transform="rotate(216)"><rect x="-4" y="-38" width="8" height="10"/></g><g transform="rotate(252)"><rect x="-4" y="-38" width="8" height="10"/></g><g transform="rotate(288)"><rect x="-4" y="-38" width="8" height="10"/></g><g transform="rotate(324)"><rect x="-4" y="-38" width="8" height="10"/></g>
+        </g>
+        <circle cx="0" cy="0" r="28" fill="#185FA5" stroke="#111" stroke-width="2"/>
+        <circle cx="0" cy="0" r="18" fill="none" stroke="#fff" stroke-width="2.2"/>
+        <circle cx="0" cy="0" r="5" fill="#fff"/>
+      </g>
+      <!-- MEDIUM GEAR -->
+      <g transform="translate(198,232) rotate(8)">
+        <g fill="#2970C0" stroke="#111" stroke-width="2" stroke-linejoin="miter">
+          <g transform="rotate(0)"><rect x="-4" y="-44" width="8" height="10"/></g><g transform="rotate(27.69)"><rect x="-4" y="-44" width="8" height="10"/></g><g transform="rotate(55.38)"><rect x="-4" y="-44" width="8" height="10"/></g><g transform="rotate(83.08)"><rect x="-4" y="-44" width="8" height="10"/></g><g transform="rotate(110.77)"><rect x="-4" y="-44" width="8" height="10"/></g><g transform="rotate(138.46)"><rect x="-4" y="-44" width="8" height="10"/></g><g transform="rotate(166.15)"><rect x="-4" y="-44" width="8" height="10"/></g><g transform="rotate(193.85)"><rect x="-4" y="-44" width="8" height="10"/></g><g transform="rotate(221.54)"><rect x="-4" y="-44" width="8" height="10"/></g><g transform="rotate(249.23)"><rect x="-4" y="-44" width="8" height="10"/></g><g transform="rotate(276.92)"><rect x="-4" y="-44" width="8" height="10"/></g><g transform="rotate(304.62)"><rect x="-4" y="-44" width="8" height="10"/></g><g transform="rotate(332.31)"><rect x="-4" y="-44" width="8" height="10"/></g>
+        </g>
+        <circle cx="0" cy="0" r="34" fill="#2970C0" stroke="#111" stroke-width="2"/>
+        <circle cx="0" cy="0" r="22" fill="none" stroke="#fff" stroke-width="2.2"/>
+        <circle cx="0" cy="0" r="5" fill="#fff"/>
+      </g>
+      <!-- Text -->
+      <text x="268" y="141" font-family="Arial, sans-serif" font-size="36" font-weight="500" fill="#185FA5">Axiom</text>
+      <text x="382" y="141" font-family="Arial, sans-serif" font-size="36" font-weight="500" fill="#378ADD">Anare</text>
+      <line x1="268" y1="154" x2="628" y2="154" stroke="#B5D4F4" stroke-width="1"/>
+      <text x="269" y="174" font-family="Arial, sans-serif" font-size="11" font-weight="400" fill="#185FA5" letter-spacing="1.6">AGNOSTIC · AUGMENTED DATA ANALYSING</text>
+      <text x="269" y="192" font-family="Arial, sans-serif" font-size="11" font-weight="400" fill="#85B7EB">Condition monitoring for rotary motors &amp; pumps</text>
+    </svg>
   </div>
   <div class="nav-right">
     <div id="ax-free-badge" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--green);padding:4px 10px;border:1px solid rgba(34,197,94,0.3);border-radius:6px;background:rgba(34,197,94,0.07);display:none;cursor:pointer;" onclick="Freemium.showUpgradeModal('feature')"></div>
-    <a href="fleet.html" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;color:var(--accent);text-decoration:none;padding:8px 16px;border:1px solid rgba(77,157,224,0.4);border-radius:7px;background:rgba(77,157,224,0.1);">&#128202; Fleet Dashboard</a>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <a href="#" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;color:var(--green);text-decoration:none;padding:8px 16px;border:1px solid rgba(46,204,113,0.4);border-radius:7px;background:rgba(46,204,113,0.08);white-space:nowrap;">✦ Free to Try</a>
+      <a href="#" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;color:var(--text);text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:7px;background:var(--surface);white-space:nowrap;">Register</a>
+      <a href="#" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;color:var(--text);text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:7px;background:var(--surface);white-space:nowrap;">Login</a>
+      <a href="fleet.html" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;color:var(--accent);text-decoration:none;padding:8px 16px;border:1px solid rgba(77,157,224,0.4);border-radius:7px;background:rgba(77,157,224,0.1);white-space:nowrap;">&#128202; Fleet Dashboard</a>
+    </div>
     <div class="nav-tag">ISO 10816 · ISO 13373 · ISO 13379 · ISO 13381 · ISO 55001</div>
   </div>
 </nav>
