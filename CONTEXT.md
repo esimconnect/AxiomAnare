@@ -1,6 +1,6 @@
 # AxiomAnare — Living Project Context
-Last updated: April 2026
-Latest commit: 20ca27f
+Last updated: 13 April 2026
+Latest commit: ed3b772
 
 ---
 
@@ -14,7 +14,7 @@ Latest commit: 20ca27f
 - URL: https://zjfhxutcvjxootoekade.supabase.co
 - Existing tables: organisations, assets, nvr_records
 - RLS: hardened and tested
-- pgvector: to be enabled (pre-launch)
+- pgvector: enabled and confirmed
 
 ---
 
@@ -41,8 +41,8 @@ Latest commit: 20ca27f
 - [x] Field data: Epson trimmed (96 files)
 
 ## In Progress
-- [ ] Supabase schema for new tables
-- [ ] auth.js shared module
+- [x] Supabase schema for new tables
+- [x] auth.js shared module
 - [ ] Auth + Subscribe modal (index.html)
 - [ ] Stripe + PayPal integration
 - [ ] Tier gating (index.html + fleet.html)
@@ -287,6 +287,7 @@ PHASE 4 — ML (12-24 months)
 | agnosticParser.css         | Parser styles                               |
 | ISO_10816_Chart_colour.pdf | ISO zone reference + CMVA interpretation    |
 | Balancing_Report_K394.pdf  | Confirmed imbalance case study (K394-11)    |
+| auth.js                    | Shared auth module — signIn/Up/Out, tier gating |
 
 ---
 
@@ -367,7 +368,7 @@ Files changed:
   - KB/Reports/Report_009.md
   - CONTEXT.md (this update)
 
-Latest commit: 20ca27f (commit Reports + CONTEXT.md next session)
+Latest commit: ed3b772 (commit Reports + CONTEXT.md next session)
 
 Next session should:
   - Commit Reports 007–009 and CONTEXT.md to repo
@@ -375,3 +376,54 @@ Next session should:
   - OR pivot to Phase 1 foundation work (Schema / Auth / Payments)
   - Phase 1 is the critical path — recommend pivoting now
 ```
+## Session Log — 13 Apr 2026 (Schema — profiles + twins + case_library)
+Completed this session:
+  - Full Supabase schema migration run successfully
+  - New tables created: profiles, asset_twins, case_library, knowledge_chunks,
+    usage_log, subscription_events
+  - Enum types created: tier_name, subscription_status, fault_class, iso_zone
+  - Triggers created: handle_new_user (auto-profile on signup), handle_updated_at
+  - Functions created: get_user_tier, get_asset_allowance, increment_analyses_used
+  - RLS enabled on all new tables
+  - nvr_records updated: feature_vector, user_confirmed, confirmed_fault, twin_deviation
+  - pgvector confirmed already enabled
+  - Note: organisations table flagged UNRESTRICTED — RLS to be addressed later
+
+Files changed:
+  - schema.sql (run in Supabase — not committed to repo, utility script)
+  - schema_notes.md (saved locally for reference)
+  - CONTEXT.md (this update)
+
+Latest commit: ed3b772 (commit CONTEXT.md next)
+
+Next session should:
+  - Open "Auth — shared auth.js module" session
+  - Build auth.js: signUp, signIn, signOut, getSession, getTier,
+    getProfile, incrementAnalysesUsed
+
+## Session Log — 13 Apr 2026 (Auth — shared auth.js module)
+Completed this session:
+  - auth.js shared module built and deployed
+  - Public API: signUp, signIn, signOut, getSession, onAuthChange,
+    getProfile, getTier, getTierLimits, getCurrentLimits, getOrgId,
+    canRunAnalysis, canAccessAIReport, canAccessFleet,
+    incrementAnalysesUsed, remainingAnalyses, applyTierGating, tierLabel
+  - TIER_LIMITS constants match tier table exactly
+  - Singleton Supabase client pattern (no duplicate clients)
+  - data-requires-tier DOM attribute convention established
+  - Supabase publishable key configured in index.html and fleet.html
+  - All three files committed and pushed to GitHub
+
+Files changed:
+  - auth.js (new file)
+  - index.html (Supabase + auth.js scripts added before </body>)
+  - fleet.html (Supabase + auth.js scripts added before </body>)
+  - CONTEXT.md (this update)
+
+Latest commit: ed3b772
+
+Next session should:
+  - Open "Auth — modal" session
+  - Build sign in / sign up / password reset modal on index.html
+  - Wire modal to AxiomAuth.signIn and AxiomAuth.signUp
+  - Show tier badge in nav after successful sign in
