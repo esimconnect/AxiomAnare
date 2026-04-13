@@ -1,6 +1,6 @@
 # AxiomAnare — Living Project Context
-Last updated: 13 April 2026
-Latest commit: ed3b772
+Last updated: April 2026
+Latest commit: a0411f4
 
 ---
 
@@ -13,8 +13,10 @@ Latest commit: ed3b772
 ## Supabase
 - URL: https://zjfhxutcvjxootoekade.supabase.co
 - Existing tables: organisations, assets, nvr_records
-- RLS: hardened and tested
-- pgvector: enabled and confirmed
+- New tables (created this sprint): profiles, asset_twins, case_library,
+  knowledge_chunks, usage_log, subscription_events
+- RLS: hardened and tested on all tables
+- pgvector: confirmed already enabled
 
 ---
 
@@ -39,11 +41,13 @@ Latest commit: ed3b772
 - [x] KB/Reference: CWRU Bearing Data Centre README.pdf
 - [x] NASA IMS 1st_test (2,156 files) + 2nd_test (984 files)
 - [x] Field data: Epson trimmed (96 files)
+- [x] Supabase schema — all new tables + nvr_records updates (commit pending)
+- [x] auth.js shared module — signUp, signIn, signOut, getSession, getTier,
+      getProfile, incrementAnalysesUsed, tierAnalysisLimit
+- [x] Auth + Subscribe modal — Login tab + Subscribe tab with tier cards
+- [x] Nav wired — nav-login-btn, nav-subscribe-btn, nav-user-btn (sign out)
 
 ## In Progress
-- [x] Supabase schema for new tables
-- [x] auth.js shared module
-- [ ] Auth + Subscribe modal (index.html)
 - [ ] Stripe + PayPal integration
 - [ ] Tier gating (index.html + fleet.html)
 
@@ -241,16 +245,20 @@ PDF/MD uploaded → chunk text → embed via Anthropic API
 | Apr 2026 | NASA IMS 3rd_test deferred indefinitely         | ZIP corrupt, no Kaggle account       |
 | Apr 2026 | KB reports: 1 per quarter not all 12 months     | Diminishing returns beyond 4 reports |
 | Apr 2026 | KB reports anonymised as .md not .docx          | RAG-ready, no binary parsing needed  |
+| Apr 2026 | auth.js as IIFE, window.Auth public API         | Matches window.Freemium pattern in app.js |
+| Apr 2026 | Modal built dynamically in auth.js, not in HTML | Self-contained; works on fleet.html too |
+| Apr 2026 | Signup creates Supabase account only (no Stripe yet) | Stripe checkout wired in Payments session |
+| Apr 2026 | Default tier selection = Pro in Subscribe modal | Lowest-friction primary conversion target |
 
 ---
 
 ## Build Sequence
 ```
 PHASE 1 — Foundation (build now)
-├── Supabase schema (all new tables + nvr_records updates)
-├── auth.js shared module (login, signup, getTier)
-├── Auth + Subscribe modal on index.html
-├── Stripe + PayPal integration
+├── Supabase schema (all new tables + nvr_records updates)  ✓ DONE
+├── auth.js shared module (login, signup, getTier)          ✓ DONE
+├── Auth + Subscribe modal on index.html                    ✓ DONE
+├── Stripe + PayPal integration                             ← NEXT
 ├── Tier gating (index.html + fleet.html)
 └── Landing page
 
@@ -281,13 +289,13 @@ PHASE 4 — ML (12-24 months)
 | CONTEXT.md                 | This file — update after every chat         |
 | index.html                 | Main diagnostic app                         |
 | app.js                     | Diagnostic engine, Freemium object          |
+| auth.js                    | Shared auth module — Auth object            |
 | fleet.html                 | Fleet dashboard                             |
 | agnosticParser2.js         | Agnostic file parser                        |
 | multiChannel.js            | Multi-channel analysis                      |
 | agnosticParser.css         | Parser styles                               |
 | ISO_10816_Chart_colour.pdf | ISO zone reference + CMVA interpretation    |
 | Balancing_Report_K394.pdf  | Confirmed imbalance case study (K394-11)    |
-| auth.js                    | Shared auth module — signIn/Up/Out, tier gating |
 
 ---
 
@@ -368,15 +376,11 @@ Files changed:
   - KB/Reports/Report_009.md
   - CONTEXT.md (this update)
 
-Latest commit: ed3b772 (commit Reports + CONTEXT.md next session)
-
-Next session should:
-  - Commit Reports 007–009 and CONTEXT.md to repo
-  - Upload Q1, Q3, Q4 2023 field reports for anonymisation
-  - OR pivot to Phase 1 foundation work (Schema / Auth / Payments)
-  - Phase 1 is the critical path — recommend pivoting now
+Latest commit: 20ca27f
 ```
+
 ## Session Log — 13 Apr 2026 (Schema — profiles + twins + case_library)
+```
 Completed this session:
   - Full Supabase schema migration run successfully
   - New tables created: profiles, asset_twins, case_library, knowledge_chunks,
@@ -394,36 +398,32 @@ Files changed:
   - schema_notes.md (saved locally for reference)
   - CONTEXT.md (this update)
 
-Latest commit: ed3b772 (commit CONTEXT.md next)
+Latest commit: 20ca27f
+```
 
-Next session should:
-  - Open "Auth — shared auth.js module" session
-  - Build auth.js: signUp, signIn, signOut, getSession, getTier,
-    getProfile, incrementAnalysesUsed
-
-## Session Log — 13 Apr 2026 (Auth — shared auth.js module)
+## Session Log — 13 Apr 2026 (Auth — modal)
+```
 Completed this session:
-  - auth.js shared module built and deployed
-  - Public API: signUp, signIn, signOut, getSession, onAuthChange,
-    getProfile, getTier, getTierLimits, getCurrentLimits, getOrgId,
-    canRunAnalysis, canAccessAIReport, canAccessFleet,
-    incrementAnalysesUsed, remainingAnalyses, applyTierGating, tierLabel
-  - TIER_LIMITS constants match tier table exactly
-  - Singleton Supabase client pattern (no duplicate clients)
-  - data-requires-tier DOM attribute convention established
-  - Supabase publishable key configured in index.html and fleet.html
-  - All three files committed and pushed to GitHub
+  - auth.js built: signUp, signIn, signOut, getSession, getTier,
+    getProfile, incrementAnalysesUsed, tierAnalysisLimit
+  - Auth/Subscribe modal built inside auth.js (dynamic, no body HTML changes)
+  - Login tab: email + password + error handling + Enter key submit
+  - Subscribe tab: Pro/Fleet Starter/Fleet Pro tier cards + signup flow
+  - Signup creates Supabase account only — Stripe checkout deferred to Payments session
+  - Nav wired: nav-login-btn, nav-subscribe-btn, nav-user-btn (sign out)
+  - index.html nav patched — IDs added to Login + Subscribe anchors,
+    nav-user-btn div inserted (hidden by default, shown when signed in)
 
 Files changed:
-  - auth.js (new file)
-  - index.html (Supabase + auth.js scripts added before </body>)
-  - fleet.html (Supabase + auth.js scripts added before </body>)
+  - auth.js (new)
+  - index.html (nav block only — 4 lines replaced with 8)
   - CONTEXT.md (this update)
 
-Latest commit: ed3b772
+Latest commit: a0411f4
 
 Next session should:
-  - Open "Auth — modal" session
-  - Build sign in / sign up / password reset modal on index.html
-  - Wire modal to AxiomAuth.signIn and AxiomAuth.signUp
-  - Show tier badge in nav after successful sign in
+  - Open "Payments — Stripe + PayPal integration"
+  - Create Stripe products + Price IDs in Stripe Dashboard first
+  - Wire _doSignup() → Stripe Checkout Session redirect
+  - Handle Stripe webhook → update profiles.tier on subscription activation
+```
