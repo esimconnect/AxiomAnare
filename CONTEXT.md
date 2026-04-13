@@ -1,6 +1,6 @@
 # AxiomAnare — Living Project Context
 Last updated: April 2026
-Latest commit: a82dad4
+Latest commit: 20ca27f
 
 ---
 
@@ -34,7 +34,9 @@ Latest commit: a82dad4
 - [x] CWRU .mat dataset download — 109 files, 0 failed (drive_end + fan_end + normal)
 - [x] KB/Standards: ISO_10816_Chart_colour.pdf
 - [x] KB/Reports: Cooling_Tower_Fan-K394-11.pdf + Reports 001–006 (anonymised)
+- [x] KB/Reports: Reports 007–009 (anonymised .md, Apr 2023 quarter)
 - [x] KB/Reference: Nagahama_2025_Phase_Fault_Diagnosis.pdf
+- [x] KB/Reference: CWRU Bearing Data Centre README.pdf
 - [x] NASA IMS 1st_test (2,156 files) + 2nd_test (984 files)
 - [x] Field data: Epson trimmed (96 files)
 
@@ -56,9 +58,9 @@ Latest commit: a82dad4
 - [ ] Annual pricing / discount logic
 - [ ] Supabase Storage buckets (ml-raw-signals, knowledge-base)
 - [ ] pgvector enable + knowledge_chunks embedding pipeline
-- [ ] NASA IMS 3rd_test (previous download corrupted — retry pending)
-- [ ] Additional field reports for anonymisation (pending upload)
-- [ ] CAT 1 manual (pending)
+- [ ] NASA IMS 3rd_test — ZIP corrupt on extraction, Kaggle needed, deferred indefinitely
+- [ ] KB/Reports: Q1, Q3, Q4 2023 quarterly reports (1 month per quarter, pending upload)
+- [ ] KB/Manuals: CAT 1 manual (pending)
 
 ---
 
@@ -124,14 +126,42 @@ twin_deviation    float     -- delta from digital twin expected
 | CWRU dataset         | MAT      | BPFO, BPFI, BSF        | ✓ Complete  |
 | NASA IMS 1st_test    | MAT      | RUL / run-to-failure   | ✓ Complete  |
 | NASA IMS 2nd_test    | MAT      | RUL / run-to-failure   | ✓ Complete  |
-| NASA IMS 3rd_test    | MAT      | RUL / run-to-failure   | ✗ Corrupted |
+| NASA IMS 3rd_test    | MAT      | RUL / run-to-failure   | ✗ Deferred  |
 | Epson field data     | CSV      | Mixed field faults     | ✓ Complete  |
 | K394-11 field report | PDF      | Imbalance (confirmed)  | ✓ Uploaded  |
 | Reports 001–006      | PDF      | Anonymised field cases | ✓ Uploaded  |
+| Reports 007–009      | MD       | Pharma plant, Apr 2023 | ✓ Complete  |
 | ISO 10816 CMVA guide | PDF      | Zone thresholds        | ✓ Uploaded  |
 | Nagahama 2025        | PDF      | Phase fault diagnosis  | ✓ Uploaded  |
+| CWRU README          | PDF      | Bearing dataset ref    | ✓ Uploaded  |
+| Reports Q1/Q3/Q4     | MD       | Pharma plant, 2023     | Pending     |
 | CAT 1 manual         | PDF      | All fault types        | Pending     |
-| More field reports   | PDF      | Mixed                  | Pending     |
+
+### KB Reports — Content Summary
+| Report | Assets | Key Faults |
+|--------|--------|------------|
+| 001–006 | Various | Mixed field cases |
+| 007 | 24 AHUs — pharma plant | Misalignment/beat (Danger), bearing fault freq (Alert), unbalance/misalignment (Warning) |
+| 008 | 15 Tank Farm units — pharma plant | Early bearing fault (demod elevated, velocity normal) — chilled water pump + scrubber blower |
+| 009 | 2 Booster pumps — pharma plant | Clean baseline — healthy motor-pump reference readings |
+
+### KB Report Anonymisation Rules
+| Original | Replace with |
+|----------|-------------|
+| Client name | [CLIENT] |
+| Plant/site name | [SITE-A/B/C] |
+| Site address | [SITE ADDRESS] |
+| Client contact name | [CLIENT CONTACT] |
+| Service provider name | [SERVICE PROVIDER] |
+| Report reference number | [REPORT-REF] |
+| Asset tag numbers | Keep (diagnostically relevant) |
+| Process area descriptions | Keep (diagnostically relevant) |
+
+### Report Upload Strategy
+- Q2 2023 complete (Reports 007–009)
+- Upload 1 month per quarter for Q1, Q3, Q4 2023
+- Total target: ~12 anonymised report files in KB/Reports
+- Reports saved as .md (RAG-ready) not .docx
 
 ### CWRU Dataset — Folder Structure (complete)
 ```
@@ -162,7 +192,7 @@ Data_Sets/cwru/
 4. Feature extraction script → ml_features table
 5. Label features by fault type
 6. Train classifier (target: 12 months post-launch)
-7. PDF chunking + embedding → knowledge_chunks table
+7. PDF/MD chunking + embedding → knowledge_chunks table
 8. RAG query injected into Claude prompt at analysis time
 
 ### Supabase Storage Structure (planned)
@@ -184,7 +214,7 @@ knowledge-base/          (private bucket)
 
 ### RAG Flow (planned)
 ```
-PDF uploaded → chunk text → embed via Anthropic API
+PDF/MD uploaded → chunk text → embed via Anthropic API
 → store in knowledge_chunks (pgvector)
 → at analysis time: query top-3 relevant chunks
 → inject into Claude system prompt
@@ -208,6 +238,9 @@ PDF uploaded → chunk text → embed via Anthropic API
 | Apr 2026 | Launch full product (not phased feature launch) | Architecture ready, all layers in    |
 | Apr 2026 | CWRU filenames = descriptive not numeric IDs    | Matches label map, no translation needed |
 | Apr 2026 | CWRU folder structure: drive_end / fan_end flat | Matches label map local_folder paths |
+| Apr 2026 | NASA IMS 3rd_test deferred indefinitely         | ZIP corrupt, no Kaggle account       |
+| Apr 2026 | KB reports: 1 per quarter not all 12 months     | Diminishing returns beyond 4 reports |
+| Apr 2026 | KB reports anonymised as .md not .docx          | RAG-ready, no binary parsing needed  |
 
 ---
 
@@ -267,13 +300,13 @@ D:\Kairos\AxiomAnare\axiomanare\AxiomAnare\
 │       └── epson_label_map.json      ✓
 ├── KB\
 │   ├── Standards\   ISO_10816_Chart_colour.pdf          ✓
-│   ├── Reports\     K394-11 + Reports 001–006           ✓
-│   ├── Reference\   Nagahama_2025_Phase_Fault_Diagnosis ✓
+│   ├── Reports\     K394-11 + Reports 001–009           ✓
+│   ├── Reference\   Nagahama_2025 + CWRU README         ✓
 │   └── Manuals\     (empty — CAT 1 pending)
 └── Data_Sets\
     ├── cwru\        109 .mat files across 3 subfolders  ✓
     ├── nasa_ims\    1st_test (2156) + 2nd_test (984)    ✓
-    │                3rd_test corrupted — retry pending
+    │                3rd_test deferred
     └── field\
         └── epson\trimmed\  96 files                     ✓
 ```
@@ -299,6 +332,7 @@ D:\Kairos\AxiomAnare\axiomanare\AxiomAnare\
 - "RAG — knowledge base pipeline"
 - "Twin — digital twin Phase 1"
 - "UI — [specific component name]"
+- "Data — KB field reports [quarter]"
 
 ### Session Handoff Template
 At the end of each chat, note:
@@ -318,18 +352,26 @@ Completed this session:
   - CWRU .mat dataset downloaded — 109 files, 0 failed
   - Confirmed cwru_label_map.json matches download filenames exactly
   - Confirmed folder structure: Data_Sets/cwru/normal + drive_end + fan_end
-  - Reviewed nasa_ims and epson label maps (already complete from prior session)
-  - Identified outstanding items: NASA 3rd_test retry, additional field reports,
-    CAT 1 manual
+  - NASA IMS 3rd_test deferred — ZIP corrupt, no Kaggle account
+  - CWRU README.pdf placed in KB/Reference
+  - Field reports anonymised and saved as .md:
+      Report_007: 24 AHUs, pharma plant, Apr 2023
+      Report_008: 15 Tank Farm assets, pharma plant, Apr 2023
+      Report_009: 2 Booster pumps, pharma plant, Apr 2023
+  - Decision: 1 report per quarter for Q1, Q3, Q4 2023 (pending)
 
 Files changed:
   - download_cwru.py (created, run, complete — not committed, utility script)
+  - KB/Reports/Report_007.md
+  - KB/Reports/Report_008.md
+  - KB/Reports/Report_009.md
   - CONTEXT.md (this update)
 
-Latest commit: a82dad4 (no new commit this session — data files not tracked in git)
+Latest commit: 20ca27f (commit Reports + CONTEXT.md next session)
 
 Next session should:
-  - Retry NASA IMS 3rd_test download (Kaggle or IEEE DataPort)
-  - Upload remaining field reports for anonymisation
+  - Commit Reports 007–009 and CONTEXT.md to repo
+  - Upload Q1, Q3, Q4 2023 field reports for anonymisation
   - OR pivot to Phase 1 foundation work (Schema / Auth / Payments)
+  - Phase 1 is the critical path — recommend pivoting now
 ```
