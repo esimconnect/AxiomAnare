@@ -44,7 +44,9 @@ Files changed:
 Latest commit: 6eae012
 
 Next session should:
-  - Open "Payments — Stripe + PayPal integration"
+  - Test RAG query — verify match_knowledge_chunks returns relevant chunks
+  - Test app.js integration — wire rag_query.js into Claude API call
+  - Then: "Payments — Stripe + PayPal integration" before deployment
   - Create Stripe products + Price IDs in Stripe Dashboard first
   - Wire _doSignup() in auth.js → Stripe Checkout Session redirect
   - Handle Stripe webhook → update profiles.tier on subscription activation
