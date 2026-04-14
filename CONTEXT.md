@@ -1,13 +1,13 @@
 # AxiomAnare — Living Project Context
 Last updated: April 2026
-Latest commit: a0411f4
+Latest commit: 6c7c847
 
 ---
 
 ## Repository
 - Repo: https://github.com/esimconnect/AxiomAnare
 - Live: https://esimconnect.github.io/AxiomAnare
-- Local: D:\Kairos\AxiomAnare\axiomanare\AxiomAnare
+- Local: E:\Kairos\AxiomAnare\axiomanare\AxiomAnare
 - Branch: main
 
 ## Supabase
@@ -39,6 +39,8 @@ Latest commit: a0411f4
 - [x] KB/Reports: Reports 007–009 (anonymised .md, Apr 2023 quarter)
 - [x] KB/Reference: Nagahama_2025_Phase_Fault_Diagnosis.pdf
 - [x] KB/Reference: CWRU Bearing Data Centre README.pdf
+- [x] KB/Reference: Vibration_Reference.md (derived from Vibration_Basic.pdf —
+      copyright-safe rewrite, RAG-ready, 718 lines)
 - [x] NASA IMS 1st_test (2,156 files) + 2nd_test (984 files)
 - [x] Field data: Epson trimmed (96 files)
 - [x] Supabase schema — all new tables + nvr_records updates (commit pending)
@@ -125,21 +127,22 @@ twin_deviation    float     -- delta from digital twin expected
 ## ML + Knowledge Base Strategy
 
 ### Data Sources
-| Source               | Type     | Fault Coverage         | Status      |
-|----------------------|----------|------------------------|-------------|
-| CWRU dataset         | MAT      | BPFO, BPFI, BSF        | ✓ Complete  |
-| NASA IMS 1st_test    | MAT      | RUL / run-to-failure   | ✓ Complete  |
-| NASA IMS 2nd_test    | MAT      | RUL / run-to-failure   | ✓ Complete  |
-| NASA IMS 3rd_test    | MAT      | RUL / run-to-failure   | ✗ Deferred  |
-| Epson field data     | CSV      | Mixed field faults     | ✓ Complete  |
-| K394-11 field report | PDF      | Imbalance (confirmed)  | ✓ Uploaded  |
-| Reports 001–006      | PDF      | Anonymised field cases | ✓ Uploaded  |
-| Reports 007–009      | MD       | Pharma plant, Apr 2023 | ✓ Complete  |
-| ISO 10816 CMVA guide | PDF      | Zone thresholds        | ✓ Uploaded  |
-| Nagahama 2025        | PDF      | Phase fault diagnosis  | ✓ Uploaded  |
-| CWRU README          | PDF      | Bearing dataset ref    | ✓ Uploaded  |
-| Reports Q1/Q3/Q4     | MD       | Pharma plant, 2023     | Pending     |
-| CAT 1 manual         | PDF      | All fault types        | Pending     |
+| Source               | Type     | Fault Coverage              | Status      |
+|----------------------|----------|-----------------------------|-------------|
+| CWRU dataset         | MAT      | BPFO, BPFI, BSF             | ✓ Complete  |
+| NASA IMS 1st_test    | MAT      | RUL / run-to-failure        | ✓ Complete  |
+| NASA IMS 2nd_test    | MAT      | RUL / run-to-failure        | ✓ Complete  |
+| NASA IMS 3rd_test    | MAT      | RUL / run-to-failure        | ✗ Deferred  |
+| Epson field data     | CSV      | Mixed field faults          | ✓ Complete  |
+| K394-11 field report | PDF      | Imbalance (confirmed)       | ✓ Uploaded  |
+| Reports 001–006      | PDF      | Anonymised field cases      | ✓ Uploaded  |
+| Reports 007–009      | MD       | Pharma plant, Apr 2023      | ✓ Complete  |
+| ISO 10816 CMVA guide | PDF      | Zone thresholds             | ✓ Uploaded  |
+| Nagahama 2025        | PDF      | Phase fault diagnosis       | ✓ Uploaded  |
+| CWRU README          | PDF      | Bearing dataset ref         | ✓ Uploaded  |
+| Vibration_Reference  | MD       | Terminology + fault patterns| ✓ Complete  |
+| Reports Q1/Q3/Q4     | MD       | Pharma plant, 2023          | Pending     |
+| CAT 1 manual         | PDF      | All fault types             | Pending     |
 
 ### KB Reports — Content Summary
 | Report | Assets | Key Faults |
@@ -148,6 +151,14 @@ twin_deviation    float     -- delta from digital twin expected
 | 007 | 24 AHUs — pharma plant | Misalignment/beat (Danger), bearing fault freq (Alert), unbalance/misalignment (Warning) |
 | 008 | 15 Tank Farm units — pharma plant | Early bearing fault (demod elevated, velocity normal) — chilled water pump + scrubber blower |
 | 009 | 2 Booster pumps — pharma plant | Clean baseline — healthy motor-pump reference readings |
+
+### Vibration_Reference.md — Content Summary
+| Section | Content |
+|---------|---------|
+| Part 1 | A–Z vibration terminology — all terms relevant to rotating machinery diagnostics |
+| Part 2 | 15 fault pattern entries: Ski Slope, Raised Noise Floor, Static/Couple/Dynamic/Overhung/Vertical Imbalance, Eccentric Rotor/Sheave, Angular/Parallel Misalignment, Bent Shaft, Cocked Bearing, Rotating/Structural/Pedestal Looseness, Rotor Rub, Journal Bearing Clearance, Oil Whirl, Resonance, Rolling Element Bearing (6-stage + BPI/BPO/BS/FT formulas), Blade/Vane Pass |
+| Part 3 | Units and conversion reference table |
+| Part 4 | 12 diagnostic reasoning rules for AI hallucination ringfencing |
 
 ### KB Report Anonymisation Rules
 | Original | Replace with |
@@ -249,6 +260,8 @@ PDF/MD uploaded → chunk text → embed via Anthropic API
 | Apr 2026 | Modal built dynamically in auth.js, not in HTML | Self-contained; works on fleet.html too |
 | Apr 2026 | Signup creates Supabase account only (no Stripe yet) | Stripe checkout wired in Payments session |
 | Apr 2026 | Default tier selection = Pro in Subscribe modal | Lowest-friction primary conversion target |
+| Apr 2026 | Vibration_Basic.pdf — local only, do not commit | Copyright (Mobius Software P/L 2005) |
+| Apr 2026 | Vibration_Reference.md — rewritten, repo-safe   | All content original language, RAG-ready |
 
 ---
 
@@ -301,7 +314,7 @@ PHASE 4 — ML (12-24 months)
 
 ## Data Folder Structure (local)
 ```
-D:\Kairos\AxiomAnare\axiomanare\AxiomAnare\
+E:\Kairos\AxiomAnare\axiomanare\AxiomAnare\
 ├── ML\
 │   └── Labels\
 │       ├── cwru_label_map.json       ✓
@@ -310,7 +323,10 @@ D:\Kairos\AxiomAnare\axiomanare\AxiomAnare\
 ├── KB\
 │   ├── Standards\   ISO_10816_Chart_colour.pdf          ✓
 │   ├── Reports\     K394-11 + Reports 001–009           ✓
-│   ├── Reference\   Nagahama_2025 + CWRU README         ✓
+│   ├── Reference\   Nagahama_2025 + CWRU README
+│   │                + Vibration_Reference.md             ✓
+│   │                (Vibration_Basic.pdf — local only,
+│   │                 do not commit)
 │   └── Manuals\     (empty — CAT 1 pending)
 └── Data_Sets\
     ├── cwru\        109 .mat files across 3 subfolders  ✓
@@ -420,6 +436,27 @@ Files changed:
   - CONTEXT.md (this update)
 
 Latest commit: a0411f4
+```
+
+## Session Log — 14 Apr 2026 (Data — KB Vibration Reference)
+```
+Completed this session:
+  - Reviewed Vibration_Basic.pdf (87 pages, Mobius Software P/L, 2005)
+  - Confirmed copyright — original PDF must not be committed to public repo
+  - Extracted and fully rewrote all content into Vibration_Reference.md
+  - Part 1: A–Z vibration terminology (all terms relevant to rotating machinery)
+  - Part 2: 15 fault pattern entries with frequency signatures, phase behaviour,
+    and diagnostic notes — covers all major fault types in AxiomAnare scope
+  - Part 3: Units and conversion reference table
+  - Part 4: 12 diagnostic reasoning rules for AI hallucination ringfencing
+  - File: KB/Reference/Vibration_Reference.md (718 lines, ~8,900 words)
+  - Original PDF: local only — do not commit to repo
+
+Files changed:
+  - KB/Reference/Vibration_Reference.md (new)
+  - CONTEXT.md (this update)
+
+Latest commit: 6c7c847
 
 Next session should:
   - Open "Payments — Stripe + PayPal integration"
