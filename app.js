@@ -3,7 +3,7 @@ const SUPABASE_URL = 'https://zjfhxutcvjxootoekade.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqZmh4dXRjdmp4b290b2VrYWRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMjgzODAsImV4cCI6MjA5MDcwNDM4MH0.5yGgSjALJhTQm5Ud3W-fU2Bgo-3PkziaS0oLrGMYQ9o';
 
 // ══ FREEMIUM GATE ════════════════════════════════════════════════════════
-const FREE_ANALYSIS_LIMIT = 2;
+const FREE_ANALYSIS_LIMIT = 5;
 
 const Freemium = {
   getCount() {
