@@ -1342,8 +1342,9 @@ function parseCSVSimple(raw) {
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-  const SUPABASE_URL = 'https://zjfhxutcvjxootoekade.supabase.co';
-  const SUPABASE_ANON_KEY = 'sb_publishable_lM8rmd2rwRo3-XXW_iOy2A_28Zinsh8';
+  const SUPABASE_URL_AUTH = 'https://zjfhxutcvjxootoekade.supabase.co';
+  const SUPABASE_ANON_KEY_AUTH = 'sb_publishable_lM8rmd2rwRo3-XXW_iOy2A_28Zinsh8';
+  const supabaseClient = supabase.createClient(SUPABASE_URL_AUTH, SUPABASE_ANON_KEY_AUTH);
 </script>
 <script src="auth.js"></script>
 </body>
