@@ -2472,6 +2472,63 @@ function buildFFT(fft,fs){
   document.getElementById('fft-legend').innerHTML=['Dominant freq','2nd harmonic','3rd harmonic','High-freq'].map((l,i)=>{const cs=['#c0392b','#c0520a','#b36a00','#6b3fa0'][i];return'<div style="display:flex;align-items:center;gap:4px;font-size:9px;color:'+cs+';font-family:\'IBM Plex Mono\',monospace;"><div style="width:7px;height:7px;border-radius:50%;background:'+cs+'"></div>'+l+'</div>';}).join('');
 }
 
+// ══ RAG — KNOWLEDGE BASE RETRIEVAL ═══════════════════════════════════════
+// Calls worker /embed → Voyage AI (server-side key) then
+// worker /rag   → Supabase match_knowledge_chunks (server-side service key).
+// Falls back silently — RAG failure must never block the AI report.
+const PROXY_BASE = 'https://restless-tree-eac8.kairosventure-io.workers.dev';
+const RAG_MATCH_COUNT = 5;
+const RAG_MIN_SIMILARITY = 0.30;
+
+async function ragQuery(queryText) {
+  try {
+    // Step 1 — embed the query via worker (Voyage key stays server-side)
+    const embedRes = await fetch(PROXY_BASE + '/embed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: queryText })
+    });
+    if (!embedRes.ok) throw new Error('embed HTTP ' + embedRes.status);
+    const { embedding } = await embedRes.json();
+    if (!embedding || !embedding.length) throw new Error('no embedding returned');
+
+    // Step 2 — vector search via worker (Supabase service key stays server-side)
+    const ragRes = await fetch(PROXY_BASE + '/rag', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query_embedding: embedding, match_count: RAG_MATCH_COUNT })
+    });
+    if (!ragRes.ok) throw new Error('rag HTTP ' + ragRes.status);
+    const chunks = await ragRes.json();
+    if (!Array.isArray(chunks)) throw new Error('unexpected rag response');
+
+    return chunks.filter(c => (c.similarity || 0) >= RAG_MIN_SIMILARITY);
+  } catch (e) {
+    console.warn('[RAG] retrieval failed (non-blocking):', e.message);
+    return [];
+  }
+}
+
+function buildRagContext(chunks) {
+  if (!chunks || chunks.length === 0) return '';
+  const lines = [
+    '=== KNOWLEDGE BASE CONTEXT ===',
+    'The following excerpts were retrieved from the AxiomAnare knowledge base via semantic search.',
+    'Use them to enrich your analysis where directly relevant. Do NOT fabricate beyond what is shown.',
+    ''
+  ];
+  chunks.forEach((c, i) => {
+    const src  = c.source_label || c.source_file || 'KB';
+    const cat  = c.category || '';
+    const sim  = c.similarity ? (c.similarity * 100).toFixed(0) + '%' : '';
+    const text = (c.content || c.chunk_text || '').trim().slice(0, 600);
+    lines.push(`[${i+1}] SOURCE: ${src}${cat ? ' | ' + cat : ''} | SIM: ${sim}`);
+    lines.push(text);
+    lines.push('');
+  });
+  return lines.join('\n');
+}
+
 // == CLAUDE AI ==
 async function streamClaude(){
   const d=nvr;
@@ -2486,6 +2543,25 @@ async function streamClaude(){
   const zA=getZonesForClass(selClassId)[0];
   if(parseFloat(d.rms)<zA.rms_upper_mm_s)flags.push('ZONE_A: Machine in Zone A. Routine monitoring only  -  do not over-diagnose.');
   const fd=d.faults.slice(0,CONFIG.fault_display_limit).map(f=>'- '+f.name+': '+faultIndicatorLabel(f.pct)+' (score '+f.pct+') | freq: '+(f.freq_hz?f.freq_hz.toFixed(1)+' Hz':'N/A')+' | harmonics: '+(f.harmonics_used||0)+' | '+f.iso_reference).join('\n');
+
+  // ── RAG — build semantic query from NVR context, retrieve KB chunks ────────
+  // Query is constructed from the most diagnostically relevant fields so that
+  // the vector search returns KB content matching this machine's fault profile.
+  const topFault = d.faults.find(f=>!f.locked) || d.faults[0];
+  const ragQueryText = [
+    d.classRow.machine_type_desc,
+    'ISO Zone ' + d.zoneRow.zone_label,
+    topFault ? topFault.name : '',
+    'kurtosis ' + d.kurt,
+    'crest factor ' + d.cf,
+    d.trendRow.label,
+    d.zoneRow.action_required
+  ].filter(Boolean).join(' ');
+
+  const ragChunks = await ragQuery(ragQueryText);
+  const ragSection = buildRagContext(ragChunks);
+  // ─────────────────────────────────────────────────────────────────────────
+
   const prompt=[
     'You are AxiomAssist  -  domain-ringfenced to vibration analysis, condition monitoring, rotating machinery, and maintenance engineering ONLY.',
     '','=== MACHINE ===',
@@ -2503,12 +2579,15 @@ async function streamClaude(){
     '','=== FAULT CLASSIFICATION ===',fd,
     '','=== DATA QUALITY FLAGS ===',
     flags.length?flags.map(f=>'(!) '+f).join('\n'):' -  No flags.',
-    '','=== ANTI-HALLUCINATION RULES ===',
-    '1. Use ONLY values above. Do not invent bearing models, temperatures, or values not in this data.',
+    '',
+    ragSection,  // injected KB context — empty string if RAG unavailable
+    '=== ANTI-HALLUCINATION RULES ===',
+    '1. Use ONLY values from the NVR RECORD above. Do not invent bearing models, temperatures, or values not in this data.',
     '2. Obey every DATA QUALITY FLAG.',
     '3. Fault <40% confidence = indicative language only, never confirmed.',
     '4. Cite ONLY ISO clauses from the NVR record above.',
     '5. Always quote RUL CI. State it cannot replace engineering judgement.',
+    ragChunks.length ? '6. Where KNOWLEDGE BASE CONTEXT excerpts are directly relevant, you may reference them to support your analysis. Do not quote them verbatim — synthesise into your report.' : '',
     '','=== REPORT  -  6 SECTIONS ===',
     '1. DIAGNOSTIC SUMMARY  -  Zone, RMS, trend, limitations.',
     '2. PRIMARY FAULT ANALYSIS  -  Interpret top fault(s), qualify confidence, cite ISO 13379-1 clause.',
@@ -2516,7 +2595,7 @@ async function streamClaude(){
     '4. RECOMMENDED ACTIONS  -  Immediate/Short-term/Long-term. Each must cite an ISO clause.',
     '5. MONITORING GUIDANCE  -  Interval and parameters. Cite ISO 13373-1 clause.',
     '6. RUL & PROGNOSTIC NOTE  -  Quote days and CI. Cite ISO 13381-1 clause. State limitations.',
-  ].join('\n');
+  ].filter(s=>s!==undefined).join('\n');
   try{
     const resp=await fetch('https://restless-tree-eac8.kairosventure-io.workers.dev',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:CONFIG.chatbot_config.model_version,max_tokens:CONFIG.chatbot_config.max_output_tokens,stream:true,messages:[{role:'user',content:prompt}]})});
     document.getElementById('stream-thinking').style.display='none';
