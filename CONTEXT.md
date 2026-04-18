@@ -1,6 +1,6 @@
 # AxiomAnare — Living Project Context
 Last updated: April 2026
-Latest commit: 6c7c847
+Latest commit: 1547bc4
 
 ---
 
@@ -39,11 +39,9 @@ Latest commit: 6c7c847
 - [x] KB/Reports: Reports 007–009 (anonymised .md, Apr 2023 quarter)
 - [x] KB/Reference: Nagahama_2025_Phase_Fault_Diagnosis.pdf
 - [x] KB/Reference: CWRU Bearing Data Centre README.pdf
-- [x] KB/Reference: Vibration_Reference.md (derived from Vibration_Basic.pdf —
-      copyright-safe rewrite, RAG-ready, 718 lines)
+- [x] KB/Reference: CWRU_Dataset_Overview.md (dataset structure + AxiomAnare validation)
 - [x] NASA IMS 1st_test (2,156 files) + 2nd_test (984 files)
 - [x] Field data: Epson trimmed (96 files)
-- [x] Supabase schema — all new tables + nvr_records updates (commit pending)
 - [x] auth.js shared module — signUp, signIn, signOut, getSession, getTier,
       getProfile, incrementAnalysesUsed, tierAnalysisLimit
 - [x] Auth + Subscribe modal — Login tab + Subscribe tab with tier cards
@@ -65,6 +63,7 @@ Latest commit: 6c7c847
 - [ ] NASA IMS 3rd_test — ZIP corrupt on extraction, Kaggle needed, deferred indefinitely
 - [ ] KB/Reports: Q1, Q3, Q4 2023 quarterly reports (1 month per quarter, pending upload)
 - [ ] KB/Manuals: CAT 1 manual (pending)
+- [ ] CWRU 48 kHz drive end files (early-stage fault detection, deferred)
 
 ---
 
@@ -125,22 +124,22 @@ twin_deviation    float     -- delta from digital twin expected
 ## ML + Knowledge Base Strategy
 
 ### Data Sources
-| Source               | Type     | Fault Coverage              | Status      |
-|----------------------|----------|-----------------------------|-------------|
-| CWRU dataset         | MAT      | BPFO, BPFI, BSF             | ✓ Complete  |
-| NASA IMS 1st_test    | MAT      | RUL / run-to-failure        | ✓ Complete  |
-| NASA IMS 2nd_test    | MAT      | RUL / run-to-failure        | ✓ Complete  |
-| NASA IMS 3rd_test    | MAT      | RUL / run-to-failure        | ✗ Deferred  |
-| Epson field data     | CSV      | Mixed field faults          | ✓ Complete  |
-| K394-11 field report | PDF      | Imbalance (confirmed)       | ✓ Uploaded  |
-| Reports 001–006      | PDF      | Anonymised field cases      | ✓ Uploaded  |
-| Reports 007–009      | MD       | Pharma plant, Apr 2023      | ✓ Complete  |
-| ISO 10816 CMVA guide | PDF      | Zone thresholds             | ✓ Uploaded  |
-| Nagahama 2025        | PDF      | Phase fault diagnosis       | ✓ Uploaded  |
-| CWRU README          | PDF      | Bearing dataset ref         | ✓ Uploaded  |
-| Vibration_Reference  | MD       | Terminology + fault patterns| ✓ Complete  |
-| Reports Q1/Q3/Q4     | MD       | Pharma plant, 2023          | Pending     |
-| CAT 1 manual         | PDF      | All fault types             | Pending     |
+| Source                  | Type | Fault Coverage              | Status      |
+|-------------------------|------|-----------------------------|-------------|
+| CWRU dataset            | MAT  | BPFO, BPFI, BSF             | ✓ Complete  |
+| NASA IMS 1st_test       | MAT  | RUL / run-to-failure        | ✓ Complete  |
+| NASA IMS 2nd_test       | MAT  | RUL / run-to-failure        | ✓ Complete  |
+| NASA IMS 3rd_test       | MAT  | RUL / run-to-failure        | ✗ Deferred  |
+| Epson field data        | CSV  | Mixed field faults          | ✓ Complete  |
+| K394-11 field report    | PDF  | Imbalance (confirmed)       | ✓ Uploaded  |
+| Reports 001–006         | PDF  | Anonymised field cases      | ✓ Uploaded  |
+| Reports 007–009         | MD   | Pharma plant, Apr 2023      | ✓ Complete  |
+| ISO 10816 CMVA guide    | PDF  | Zone thresholds             | ✓ Uploaded  |
+| Nagahama 2025           | PDF  | Phase fault diagnosis       | ✓ Uploaded  |
+| CWRU README             | PDF  | Bearing dataset ref         | ✓ Uploaded  |
+| CWRU_Dataset_Overview   | MD   | Dataset structure + validation | ✓ Complete |
+| Reports Q1/Q3/Q4        | MD   | Pharma plant, 2023          | Pending     |
+| CAT 1 manual            | PDF  | All fault types             | Pending     |
 
 ### KB Reports — Content Summary
 | Report | Assets | Key Faults |
@@ -149,14 +148,6 @@ twin_deviation    float     -- delta from digital twin expected
 | 007 | 24 AHUs — pharma plant | Misalignment/beat (Danger), bearing fault freq (Alert), unbalance/misalignment (Warning) |
 | 008 | 15 Tank Farm units — pharma plant | Early bearing fault (demod elevated, velocity normal) — chilled water pump + scrubber blower |
 | 009 | 2 Booster pumps — pharma plant | Clean baseline — healthy motor-pump reference readings |
-
-### Vibration_Reference.md — Content Summary
-| Section | Content |
-|---------|---------|
-| Part 1 | A–Z vibration terminology — all terms relevant to rotating machinery diagnostics |
-| Part 2 | 15 fault pattern entries: Ski Slope, Raised Noise Floor, Static/Couple/Dynamic/Overhung/Vertical Imbalance, Eccentric Rotor/Sheave, Angular/Parallel Misalignment, Bent Shaft, Cocked Bearing, Rotating/Structural/Pedestal Looseness, Rotor Rub, Journal Bearing Clearance, Oil Whirl, Resonance, Rolling Element Bearing (6-stage + BPI/BPO/BS/FT formulas), Blade/Vane Pass |
-| Part 3 | Units and conversion reference table |
-| Part 4 | 12 diagnostic reasoning rules for AI hallucination ringfencing |
 
 ### KB Report Anonymisation Rules
 | Original | Replace with |
@@ -197,6 +188,15 @@ Data_Sets/cwru/
 - Fault taxonomy: inner_race→BPFI, ball→BSF, outer_race→BPFO
 - Bearing specs + fault frequencies at all 4 RPM points included
 - OR position note: @6:00 is primary training set, @3:00 and @12:00 are augmentation
+
+### CWRU Implementation Validation
+- Independently validated against academic review (YouTube: Amir Resza, CWRU dataset analysis)
+- Fault taxonomy, file structure, load conditions, OR positions all confirmed correct
+- AxiomAnare label map adds computed fault frequencies not present in raw dataset
+- Descriptive filenames solve the naming ambiguity identified as a known dataset weakness
+- Multi-source data strategy (CWRU + NASA IMS + Epson) mitigates overfitting risk
+- Engineer sign-off requirement mitigates autonomous classification risk
+- Full validation documented in KB/Reference/CWRU_Dataset_Overview.md
 
 ### ML Pipeline (planned)
 1. Enable pgvector in Supabase
@@ -254,12 +254,12 @@ PDF/MD uploaded → chunk text → embed via Anthropic API
 | Apr 2026 | NASA IMS 3rd_test deferred indefinitely         | ZIP corrupt, no Kaggle account       |
 | Apr 2026 | KB reports: 1 per quarter not all 12 months     | Diminishing returns beyond 4 reports |
 | Apr 2026 | KB reports anonymised as .md not .docx          | RAG-ready, no binary parsing needed  |
+| Apr 2026 | Kaggle CWRU mirror — skipped                    | Repackaged version of data we already have |
+| Apr 2026 | CWRU 48 kHz files deferred                      | 12 kHz sufficient for current pipeline |
 | Apr 2026 | auth.js as IIFE, window.Auth public API         | Matches window.Freemium pattern in app.js |
 | Apr 2026 | Modal built dynamically in auth.js, not in HTML | Self-contained; works on fleet.html too |
 | Apr 2026 | Signup creates Supabase account only (no Stripe yet) | Stripe checkout wired in Payments session |
 | Apr 2026 | Default tier selection = Pro in Subscribe modal | Lowest-friction primary conversion target |
-| Apr 2026 | Vibration_Basic.pdf — local only, do not commit | Copyright (Mobius Software P/L 2005) |
-| Apr 2026 | Vibration_Reference.md — rewritten, repo-safe   | All content original language, RAG-ready |
 
 ---
 
@@ -319,19 +319,17 @@ E:\Kairos\AxiomAnare\axiomanare\AxiomAnare\
 │       ├── nasa_ims_label_map.json   ✓
 │       └── epson_label_map.json      ✓
 ├── KB\
-│   ├── Standards\   ISO_10816_Chart_colour.pdf          ✓
-│   ├── Reports\     K394-11 + Reports 001–009           ✓
+│   ├── Standards\   ISO_10816_Chart_colour.pdf             ✓
+│   ├── Reports\     K394-11 + Reports 001–009              ✓
 │   ├── Reference\   Nagahama_2025 + CWRU README
-│   │                + Vibration_Reference.md             ✓
-│   │                (Vibration_Basic.pdf — local only,
-│   │                 do not commit)
+│   │                + CWRU_Dataset_Overview.md              ✓
 │   └── Manuals\     (empty — CAT 1 pending)
 └── Data_Sets\
-    ├── cwru\        109 .mat files across 3 subfolders  ✓
-    ├── nasa_ims\    1st_test (2156) + 2nd_test (984)    ✓
+    ├── cwru\        109 .mat files across 3 subfolders     ✓
+    ├── nasa_ims\    1st_test (2156) + 2nd_test (984)       ✓
     │                3rd_test deferred
     └── field\
-        └── epson\trimmed\  96 files                     ✓
+        └── epson\trimmed\  96 files                        ✓
 ```
 
 ---
@@ -369,7 +367,7 @@ Then update this file and re-upload to Project Knowledge.
 
 ---
 
-## Session Log — 13 Apr 2026 (Data — KB + ML population)
+## Session Log — 18 Apr 2026 (Data — KB + ML population continued)
 ```
 Completed this session:
   - CWRU .mat dataset downloaded — 109 files, 0 failed
@@ -382,118 +380,19 @@ Completed this session:
       Report_008: 15 Tank Farm assets, pharma plant, Apr 2023
       Report_009: 2 Booster pumps, pharma plant, Apr 2023
   - Decision: 1 report per quarter for Q1, Q3, Q4 2023 (pending)
+  - CWRU YouTube transcript analysed (Amir Resza)
+  - AxiomAnare implementation validated against independent academic review
+  - CWRU_Dataset_Overview.md written and committed to KB/Reference
 
 Files changed:
   - download_cwru.py (created, run, complete — not committed, utility script)
   - KB/Reports/Report_007.md
   - KB/Reports/Report_008.md
   - KB/Reports/Report_009.md
+  - KB/Reference/CWRU_Dataset_Overview.md
   - CONTEXT.md (this update)
 
-Latest commit: 20ca27f
-```
-
-## Session Log — 13 Apr 2026 (Schema — profiles + twins + case_library)
-```
-Completed this session:
-  - Full Supabase schema migration run successfully
-  - New tables created: profiles, asset_twins, case_library, knowledge_chunks,
-    usage_log, subscription_events
-  - Enum types created: tier_name, subscription_status, fault_class, iso_zone
-  - Triggers created: handle_new_user (auto-profile on signup), handle_updated_at
-  - Functions created: get_user_tier, get_asset_allowance, increment_analyses_used
-  - RLS enabled on all new tables
-  - nvr_records updated: feature_vector, user_confirmed, confirmed_fault, twin_deviation
-  - pgvector confirmed already enabled
-  - Note: organisations table flagged UNRESTRICTED — RLS to be addressed later
-
-Files changed:
-  - schema.sql (run in Supabase — not committed to repo, utility script)
-  - schema_notes.md (saved locally for reference)
-  - CONTEXT.md (this update)
-
-Latest commit: 20ca27f
-```
-
-## Session Log — 13 Apr 2026 (Auth — modal)
-```
-Completed this session:
-  - auth.js built: signUp, signIn, signOut, getSession, getTier,
-    getProfile, incrementAnalysesUsed, tierAnalysisLimit
-  - Auth/Subscribe modal built inside auth.js (dynamic, no body HTML changes)
-  - Login tab: email + password + error handling + Enter key submit
-  - Subscribe tab: Pro/Fleet Starter/Fleet Pro tier cards + signup flow
-  - Signup creates Supabase account only — Stripe checkout deferred to Payments session
-  - Nav wired: nav-login-btn, nav-subscribe-btn, nav-user-btn (sign out)
-  - index.html nav patched — IDs added to Login + Subscribe anchors,
-    nav-user-btn div inserted (hidden by default, shown when signed in)
-
-Files changed:
-  - auth.js (new)
-  - index.html (nav block only — 4 lines replaced with 8)
-  - CONTEXT.md (this update)
-
-Latest commit: a0411f4
-```
-
-## Session Log — 14 Apr 2026 (RAG — wiring + production test)
-```
-Completed this session:
-  - Test harnesses built (standalone HTML, not production code):
-      axiomanare_test.html — RAG, Supabase, pipeline unit, proxy, stress tests (32 tests)
-      axiomanare_dataset_tests.html — 10 synthetic signal datasets through pipeline
-      Both files confirmed working; zone colours fixed to reflect ISO severity not pass/fail
-
-  - Cloudflare Worker (axiomanare-proxy.js) extended with two new routes:
-      POST /embed — proxies Voyage AI embeddings (VOYAGE_API_KEY secret, server-side)
-      POST /rag   — proxies Supabase match_knowledge_chunks RPC (SUPABASE_SERVICE_KEY)
-      All secrets remain server-side in Cloudflare env vars — never exposed to client
-      Deployed via Wrangler: version 1ffa12d1-6960-4c3b-8a78-8c49e17c7437
-
-  - Cloudflare env vars added:
-      VOYAGE_API_KEY (Secret)
-      SUPABASE_SERVICE_KEY (Secret)
-      SUPABASE_URL (Plaintext)
-
-  - app.js — RAG wired into streamClaude():
-      ragQuery() function — calls /embed then /rag, 0.30 similarity floor, silent fallback
-      buildRagContext() — formats chunks into === KNOWLEDGE BASE CONTEXT === prompt section
-      streamClaude() builds semantic query from NVR context (machine type + zone + top fault
-        + kurtosis + CF + trend), retrieves top-5 KB chunks, injects before anti-hallucination rules
-      Anti-hallucination rule 6 added when KB context present
-      Claude fetch URL fixed: PROXY_BASE + '/v1/messages' (was hitting worker root → 404)
-
-  - Supabase match_knowledge_chunks function:
-      Recreated as SECURITY DEFINER (was INVOKER — caused RLS block, returned 0 rows)
-      id column type fixed: uuid not text (was causing 42804 type mismatch error)
-      GRANT EXECUTE added for service_role and anon
-      Function tested directly in SQL editor — returns similarity 1.0, 0.84, 0.61 ✓
-
-  - index.html + fleet.html — variable conflict fixed:
-      SUPABASE_URL and SUPABASE_ANON_KEY renamed to SUPABASE_URL_AUTH / SUPABASE_ANON_KEY_AUTH
-      supabaseClient = supabase.createClient(...) added to both files (was missing)
-      Fixes: 'SUPABASE_URL already declared' + 'supabaseClient not initialised' console errors
-
-  - Production test results (esimconnect.github.io/AxiomAnare):
-      /embed → 200 ✓ (Voyage AI, 1024-dim, 797ms)
-      /rag   → 200 ✓ (Supabase pgvector, chunks returned, 467ms)
-      /v1/messages → 200 ✓ (Claude streaming, 11.84s)
-      KB context visible in AI report: Section 2 now references KB guidance on
-        crest factor >3.5 and kurtosis as bearing deterioration indicators
-      Console clean — No Issues
-
-Chunks retrieved in production test:
-  - Vibration Reference (AxiomAnare) | sim=46.7% | gearbox spectrum sidebands
-  - Vibration Reference (AxiomAnare) | sim=43.6% | Band-stop filter / FMAX
-
-Files changed:
-  - axiomanare-proxy.js (new /embed and /rag routes)
-  - app.js (ragQuery, buildRagContext, streamClaude updated)
-  - index.html (SUPABASE_URL_AUTH, SUPABASE_ANON_KEY_AUTH, supabaseClient init)
-  - fleet.html (same fixes as index.html)
-  - CONTEXT.md (this update)
-
-Latest commit: a10b773
+Latest commit: 1547bc4
 
 Next session should:
   - Open "Payments — Stripe + PayPal integration"
@@ -504,41 +403,5 @@ Next session should:
       4. Asset Add-on — $25/month recurring
   - Wire _doSignup() in auth.js → Stripe Checkout Session redirect
   - Handle Stripe webhook → update profiles.tier on subscription activation
-  - Wire Stripe publishable key into index.html (env-safe — publishable key is public)
-  - Test full subscribe flow: click Subscribe → Stripe Checkout → webhook → tier update
+  - Phase 1 is the critical path — data collection is sufficient to proceed
 ```
-## Session Log — 15 Apr 2026 (Data — KB CM Summaries)
-
-Completed this session:
-  - 8 XLSX condition monitoring tables received (Amgen SG001/SG002/SG003)
-  - All anonymised and converted to MD (client→[CLIENT], site→[SITE-A/B/C])
-  - Asset IDs stripped of site prefix, functional tags retained
-  - Zone ratings (G/A/W/R) retained with ISO zone mapping added
-  - Notable Observations section added to each file
-  - Files: CM_SiteA_AHU, CM_SiteA_UTY, CM_SiteA_WWTP,
-           CM_SiteB_AHU, CM_SiteB_UTY, CM_SiteB_MFG,
-           CM_SiteB_TankFarm, CM_SiteC_AHU
-  - 40 new chunks ingested and embedded (voyage-3)
-  - Total KB now 109 chunks
-  - CMAPSSData.zip (NASA turbofan) — assessed, not relevant to scope, skipped
-  - AI_Fault_Content.md committed (commit 1067951)
-
-Files changed:
-  - KB/Reports/CM_SiteA_AHU.md (new)
-  - KB/Reports/CM_SiteA_UTY.md (new)
-  - KB/Reports/CM_SiteA_WWTP.md (new)
-  - KB/Reports/CM_SiteB_AHU.md (new)
-  - KB/Reports/CM_SiteB_UTY.md (new)
-  - KB/Reports/CM_SiteB_MFG.md (new)
-  - KB/Reports/CM_SiteB_TankFarm.md (new)
-  - KB/Reports/CM_SiteC_AHU.md (new)
-  - rag_ingest.py (local only — in .gitignore)
-  - CONTEXT.md (this update)
-
-Latest commit: [fill in after git commit]
-
-Next session should:
-  - Open "Payments — Stripe + PayPal integration"
-  - Create Stripe products + Price IDs in Stripe Dashboard first
-  - Wire _doSignup() in auth.js → Stripe Checkout Session redirect
-  - Handle Stripe webhook → update profiles.tier on subscription activation
