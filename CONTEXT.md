@@ -507,4 +507,38 @@ Next session should:
   - Wire Stripe publishable key into index.html (env-safe — publishable key is public)
   - Test full subscribe flow: click Subscribe → Stripe Checkout → webhook → tier update
 ```
+## Session Log — 15 Apr 2026 (Data — KB CM Summaries)
 
+Completed this session:
+  - 8 XLSX condition monitoring tables received (Amgen SG001/SG002/SG003)
+  - All anonymised and converted to MD (client→[CLIENT], site→[SITE-A/B/C])
+  - Asset IDs stripped of site prefix, functional tags retained
+  - Zone ratings (G/A/W/R) retained with ISO zone mapping added
+  - Notable Observations section added to each file
+  - Files: CM_SiteA_AHU, CM_SiteA_UTY, CM_SiteA_WWTP,
+           CM_SiteB_AHU, CM_SiteB_UTY, CM_SiteB_MFG,
+           CM_SiteB_TankFarm, CM_SiteC_AHU
+  - 40 new chunks ingested and embedded (voyage-3)
+  - Total KB now 109 chunks
+  - CMAPSSData.zip (NASA turbofan) — assessed, not relevant to scope, skipped
+  - AI_Fault_Content.md committed (commit 1067951)
+
+Files changed:
+  - KB/Reports/CM_SiteA_AHU.md (new)
+  - KB/Reports/CM_SiteA_UTY.md (new)
+  - KB/Reports/CM_SiteA_WWTP.md (new)
+  - KB/Reports/CM_SiteB_AHU.md (new)
+  - KB/Reports/CM_SiteB_UTY.md (new)
+  - KB/Reports/CM_SiteB_MFG.md (new)
+  - KB/Reports/CM_SiteB_TankFarm.md (new)
+  - KB/Reports/CM_SiteC_AHU.md (new)
+  - rag_ingest.py (local only — in .gitignore)
+  - CONTEXT.md (this update)
+
+Latest commit: [fill in after git commit]
+
+Next session should:
+  - Open "Payments — Stripe + PayPal integration"
+  - Create Stripe products + Price IDs in Stripe Dashboard first
+  - Wire _doSignup() in auth.js → Stripe Checkout Session redirect
+  - Handle Stripe webhook → update profiles.tier on subscription activation
