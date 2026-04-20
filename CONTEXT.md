@@ -1,6 +1,6 @@
 # AxiomAnare — Living Project Context
 Last updated: April 2026
-Latest commit: 1547bc4
+Latest commit: c95c2e3
 
 ---
 
@@ -40,6 +40,9 @@ Latest commit: 1547bc4
 - [x] KB/Reference: Nagahama_2025_Phase_Fault_Diagnosis.pdf
 - [x] KB/Reference: CWRU Bearing Data Centre README.pdf
 - [x] KB/Reference: CWRU_Dataset_Overview.md (dataset structure + AxiomAnare validation)
+- [x] KB/Reference: VCAT_Reference_Material.md (Mobius Institute CRMVA reference — fault spectra, ISO zones, FFT formulas, transducer guide)
+- [x] KB/Manuals: SKF_Bearing_Installation_Guide.md (symptom/cause matrix, damage modes, lubrication, fits)
+- [x] KB/Manuals: SKF_Bearing_Maintenance_Handbook.md (failure statistics, vibration monitoring, inspection procedure, root cause matrix)
 - [x] NASA IMS 1st_test (2,156 files) + 2nd_test (984 files)
 - [x] Field data: Epson trimmed (96 files)
 - [x] auth.js shared module — signUp, signIn, signOut, getSession, getTier,
@@ -124,22 +127,25 @@ twin_deviation    float     -- delta from digital twin expected
 ## ML + Knowledge Base Strategy
 
 ### Data Sources
-| Source                  | Type | Fault Coverage              | Status      |
-|-------------------------|------|-----------------------------|-------------|
-| CWRU dataset            | MAT  | BPFO, BPFI, BSF             | ✓ Complete  |
-| NASA IMS 1st_test       | MAT  | RUL / run-to-failure        | ✓ Complete  |
-| NASA IMS 2nd_test       | MAT  | RUL / run-to-failure        | ✓ Complete  |
-| NASA IMS 3rd_test       | MAT  | RUL / run-to-failure        | ✗ Deferred  |
-| Epson field data        | CSV  | Mixed field faults          | ✓ Complete  |
-| K394-11 field report    | PDF  | Imbalance (confirmed)       | ✓ Uploaded  |
-| Reports 001–006         | PDF  | Anonymised field cases      | ✓ Uploaded  |
-| Reports 007–009         | MD   | Pharma plant, Apr 2023      | ✓ Complete  |
-| ISO 10816 CMVA guide    | PDF  | Zone thresholds             | ✓ Uploaded  |
-| Nagahama 2025           | PDF  | Phase fault diagnosis       | ✓ Uploaded  |
-| CWRU README             | PDF  | Bearing dataset ref         | ✓ Uploaded  |
-| CWRU_Dataset_Overview   | MD   | Dataset structure + validation | ✓ Complete |
-| Reports Q1/Q3/Q4        | MD   | Pharma plant, 2023          | Pending     |
-| CAT 1 manual            | PDF  | All fault types             | Pending     |
+| Source                  | Type | Fault Coverage                 | Status      |
+|-------------------------|------|--------------------------------|-------------|
+| CWRU dataset            | MAT  | BPFO, BPFI, BSF                | ✓ Complete  |
+| NASA IMS 1st_test       | MAT  | RUL / run-to-failure           | ✓ Complete  |
+| NASA IMS 2nd_test       | MAT  | RUL / run-to-failure           | ✓ Complete  |
+| NASA IMS 3rd_test       | MAT  | RUL / run-to-failure           | ✗ Deferred  |
+| Epson field data        | CSV  | Mixed field faults             | ✓ Complete  |
+| K394-11 field report    | PDF  | Imbalance (confirmed)          | ✓ Uploaded  |
+| Reports 001–006         | PDF  | Anonymised field cases         | ✓ Uploaded  |
+| Reports 007–009         | MD   | Pharma plant, Apr 2023         | ✓ Complete  |
+| ISO 10816 CMVA guide    | PDF  | Zone thresholds                | ✓ Uploaded  |
+| Nagahama 2025           | PDF  | Phase fault diagnosis          | ✓ Uploaded  |
+| CWRU README             | PDF  | Bearing dataset ref            | ✓ Uploaded  |
+| CWRU_Dataset_Overview   | MD   | Dataset structure + validation | ✓ Complete  |
+| VCAT_Reference_Material | MD   | Fault spectra, ISO zones, FFT  | ✓ Complete  |
+| SKF_Bearing_Install     | MD   | Symptom/cause, damage modes    | ✓ Complete  |
+| SKF_Bearing_Handbook    | MD   | Failure stats, inspection, RCA | ✓ Complete  |
+| Reports Q1/Q3/Q4        | MD   | Pharma plant, 2023             | Pending     |
+| CAT 1 manual            | PDF  | All fault types                | Pending     |
 
 ### KB Reports — Content Summary
 | Report | Assets | Key Faults |
@@ -148,6 +154,14 @@ twin_deviation    float     -- delta from digital twin expected
 | 007 | 24 AHUs — pharma plant | Misalignment/beat (Danger), bearing fault freq (Alert), unbalance/misalignment (Warning) |
 | 008 | 15 Tank Farm units — pharma plant | Early bearing fault (demod elevated, velocity normal) — chilled water pump + scrubber blower |
 | 009 | 2 Booster pumps — pharma plant | Clean baseline — healthy motor-pump reference readings |
+
+### KB Reference Documents — Content Summary
+| Document | Key Content |
+|----------|------------|
+| VCAT_Reference_Material.md | FFT formulas, unit conversions, ISO 20816-3 zone values, transducer guide, fault pattern spectra library (imbalance/misalignment/looseness/gears/electrical/bearing stages), trial weight formula |
+| SKF_Bearing_Installation_Guide.md | Symptom-to-cause matrix (heat/noise/vibration/torque), pre-operational and operational damage modes mapped to vibration signatures, lubrication guidelines, fit impact on vibration |
+| SKF_Bearing_Maintenance_Handbook.md | Failure statistics (1/3 fatigue, 1/3 lubrication, 1/6 contamination), vibration monitoring principles, frequency ranges, detection sensitivity (velocity vs envelope), inspection procedure, root cause matrix, diagnostic decision tree |
+| CWRU_Dataset_Overview.md | Dataset structure, file contents, naming convention, fault taxonomy, FAIR assessment, AxiomAnare validation table |
 
 ### KB Report Anonymisation Rules
 | Original | Replace with |
@@ -193,7 +207,7 @@ Data_Sets/cwru/
 - Independently validated against academic review (YouTube: Amir Resza, CWRU dataset analysis)
 - Fault taxonomy, file structure, load conditions, OR positions all confirmed correct
 - AxiomAnare label map adds computed fault frequencies not present in raw dataset
-- Descriptive filenames solve the naming ambiguity identified as a known dataset weakness
+- Descriptive filenames solve naming ambiguity identified as a known dataset weakness
 - Multi-source data strategy (CWRU + NASA IMS + Epson) mitigates overfitting risk
 - Engineer sign-off requirement mitigates autonomous classification risk
 - Full validation documented in KB/Reference/CWRU_Dataset_Overview.md
@@ -207,32 +221,6 @@ Data_Sets/cwru/
 6. Train classifier (target: 12 months post-launch)
 7. PDF/MD chunking + embedding → knowledge_chunks table
 8. RAG query injected into Claude prompt at analysis time
-
-### Supabase Storage Structure (planned)
-```
-ml-raw-signals/          (private bucket)
-├── cwru/
-│   ├── normal/
-│   ├── drive_end/
-│   └── fan_end/
-└── nasa/
-    ├── 1st_test/
-    └── 2nd_test/
-
-knowledge-base/          (private bucket)
-├── manuals/
-├── reports/
-└── standards/
-```
-
-### RAG Flow (planned)
-```
-PDF/MD uploaded → chunk text → embed via Anthropic API
-→ store in knowledge_chunks (pgvector)
-→ at analysis time: query top-3 relevant chunks
-→ inject into Claude system prompt
-→ Claude narrative grounded in domain knowledge
-```
 
 ---
 
@@ -254,8 +242,11 @@ PDF/MD uploaded → chunk text → embed via Anthropic API
 | Apr 2026 | NASA IMS 3rd_test deferred indefinitely         | ZIP corrupt, no Kaggle account       |
 | Apr 2026 | KB reports: 1 per quarter not all 12 months     | Diminishing returns beyond 4 reports |
 | Apr 2026 | KB reports anonymised as .md not .docx          | RAG-ready, no binary parsing needed  |
-| Apr 2026 | Kaggle CWRU mirror — skipped                    | Repackaged version of data we already have |
+| Apr 2026 | Kaggle CWRU mirror — skipped                    | Repackaged data we already have      |
 | Apr 2026 | CWRU 48 kHz files deferred                      | 12 kHz sufficient for current pipeline |
+| Apr 2026 | Scale-Fractal DFA paper excluded                | Too academic, wrong asset scope      |
+| Apr 2026 | SKF guides included in KB/Manuals               | Symptom/cause/damage directly relevant to CM |
+| Apr 2026 | VCAT included in KB/Reference                   | Fault spectra library + ISO zones + FFT formulas |
 | Apr 2026 | auth.js as IIFE, window.Auth public API         | Matches window.Freemium pattern in app.js |
 | Apr 2026 | Modal built dynamically in auth.js, not in HTML | Self-contained; works on fleet.html too |
 | Apr 2026 | Signup creates Supabase account only (no Stripe yet) | Stripe checkout wired in Payments session |
@@ -319,17 +310,20 @@ E:\Kairos\AxiomAnare\axiomanare\AxiomAnare\
 │       ├── nasa_ims_label_map.json   ✓
 │       └── epson_label_map.json      ✓
 ├── KB\
-│   ├── Standards\   ISO_10816_Chart_colour.pdf             ✓
-│   ├── Reports\     K394-11 + Reports 001–009              ✓
+│   ├── Standards\   ISO_10816_Chart_colour.pdf                    ✓
+│   ├── Reports\     K394-11 + Reports 001–009                     ✓
 │   ├── Reference\   Nagahama_2025 + CWRU README
-│   │                + CWRU_Dataset_Overview.md              ✓
-│   └── Manuals\     (empty — CAT 1 pending)
+│   │                + CWRU_Dataset_Overview.md                    ✓
+│   │                + VCAT_Reference_Material.md                  ✓
+│   └── Manuals\     SKF_Bearing_Installation_Guide.md             ✓
+│                    SKF_Bearing_Maintenance_Handbook.md           ✓
+│                    (CAT 1 manual pending)
 └── Data_Sets\
-    ├── cwru\        109 .mat files across 3 subfolders     ✓
-    ├── nasa_ims\    1st_test (2156) + 2nd_test (984)       ✓
+    ├── cwru\        109 .mat files across 3 subfolders            ✓
+    ├── nasa_ims\    1st_test (2156) + 2nd_test (984)              ✓
     │                3rd_test deferred
     └── field\
-        └── epson\trimmed\  96 files                        ✓
+        └── epson\trimmed\  96 files                               ✓
 ```
 
 ---
@@ -355,53 +349,39 @@ E:\Kairos\AxiomAnare\axiomanare\AxiomAnare\
 - "UI — [specific component name]"
 - "Data — KB field reports [quarter]"
 
-### Session Handoff Template
-At the end of each chat, note:
-```
-Completed this session: [what was done]
-Files changed: [list of files]
-Latest commit: [hash]
-Next session should: [what comes next]
-```
-Then update this file and re-upload to Project Knowledge.
-
 ---
 
-## Session Log — 18 Apr 2026 (Data — KB + ML population continued)
+## Session Log — 20 Apr 2026 (Data — KB documents assessed and processed)
 ```
 Completed this session:
-  - CWRU .mat dataset downloaded — 109 files, 0 failed
-  - Confirmed cwru_label_map.json matches download filenames exactly
-  - Confirmed folder structure: Data_Sets/cwru/normal + drive_end + fan_end
-  - NASA IMS 3rd_test deferred — ZIP corrupt, no Kaggle account
-  - CWRU README.pdf placed in KB/Reference
-  - Field reports anonymised and saved as .md:
-      Report_007: 24 AHUs, pharma plant, Apr 2023
-      Report_008: 15 Tank Farm assets, pharma plant, Apr 2023
-      Report_009: 2 Booster pumps, pharma plant, Apr 2023
-  - Decision: 1 report per quarter for Q1, Q3, Q4 2023 (pending)
-  - CWRU YouTube transcript analysed (Amir Resza)
-  - AxiomAnare implementation validated against independent academic review
-  - CWRU_Dataset_Overview.md written and committed to KB/Reference
+  - 4 documents assessed for KB inclusion:
+      Scale-Fractal DFA paper (Medina et al.) — EXCLUDED (too academic, wrong scope)
+      SKF Bearing Installation and Maintenance Guide — INCLUDED
+      SKF Bearing Maintenance Handbook — INCLUDED
+      VCAT-I-III Reference Material (Mobius Institute 2024) — INCLUDED
+  - VCAT_Reference_Material.md written → KB/Reference/
+      FFT formulas, unit conversions, ISO 20816-3 zone values,
+      transducer selection guide, full fault pattern spectra library,
+      bearing fault stage progression, trial weight formula
+  - SKF_Bearing_Installation_Guide.md written → KB/Manuals/
+      Symptom-to-cause matrix, damage mode classification,
+      lubrication guidance, fit selection impact on vibration
+  - SKF_Bearing_Maintenance_Handbook.md written → KB/Manuals/
+      Failure statistics, vibration monitoring principles,
+      inspection procedure, root cause matrix, diagnostic decision tree
 
 Files changed:
-  - download_cwru.py (created, run, complete — not committed, utility script)
-  - KB/Reports/Report_007.md
-  - KB/Reports/Report_008.md
-  - KB/Reports/Report_009.md
-  - KB/Reference/CWRU_Dataset_Overview.md
+  - KB/Reference/VCAT_Reference_Material.md (new)
+  - KB/Manuals/SKF_Bearing_Installation_Guide.md (new)
+  - KB/Manuals/SKF_Bearing_Maintenance_Handbook.md (new)
   - CONTEXT.md (this update)
 
-Latest commit: 1547bc4
+Latest commit: [fill in after git commit]
 
 Next session should:
   - Open "Payments — Stripe + PayPal integration"
-  - Create Stripe products + Price IDs in Stripe Dashboard first:
-      1. AxiomAnare Pro — $49/month recurring
-      2. AxiomAnare Fleet Starter — $99/month recurring
-      3. AxiomAnare Fleet Pro — $299/month recurring
-      4. Asset Add-on — $25/month recurring
+  - Create Stripe products + Price IDs in Stripe Dashboard first
   - Wire _doSignup() in auth.js → Stripe Checkout Session redirect
   - Handle Stripe webhook → update profiles.tier on subscription activation
-  - Phase 1 is the critical path — data collection is sufficient to proceed
+  - Phase 1 is the critical path — data collection is now sufficient to proceed
 ```
