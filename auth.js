@@ -7,6 +7,10 @@
 (function () {
   'use strict';
 
+  // ── Worker URL ────────────────────────────────────────────────────────────
+  // Same proxy used by app.js for Claude / RAG routes
+  const WORKER_URL = 'https://restless-tree-eac8.kairosventure-io.workers.dev';
+
   // ── Supabase client reference ─────────────────────────────────────────────
   // Both index.html and fleet.html init supabaseClient before loading auth.js
   function db() {
@@ -179,7 +183,7 @@
 
         <!-- Tier cards -->
         <div id="ax-tier-cards" style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px;">
-          ${_tierCard('pro',     'Pro',           '$49',  '/month', 'Unlimited analyses · Full AI report',         false)}
+          ${_tierCard('pro',           'Pro',           '$49',  '/month', 'Unlimited analyses · Full AI report',         false)}
           ${_tierCard('fleet_starter', 'Fleet Starter', '$99',  '/month', 'Up to 10 assets · Fleet dashboard · AI report', false)}
           ${_tierCard('fleet_pro',     'Fleet Pro',     '$299', '/month', 'Up to 30 assets · Priority support',          false)}
         </div>
@@ -366,7 +370,7 @@
     }
   }
 
-  // ── Signup action ─────────────────────────────────────────────────────────
+  // ── Signup action — creates Supabase account then redirects to Stripe ─────
 
   async function _doSignup() {
     const email    = (document.getElementById('ax-signup-email')?.value    || '').trim();
@@ -376,38 +380,127 @@
 
     _clearError(errEl);
 
-    if (!email)          { _showError(errEl, 'Email is required.'); return; }
-    if (!_validEmail(email)) { _showError(errEl, 'Enter a valid email address.'); return; }
-    if (password.length < 8) { _showError(errEl, 'Password must be at least 8 characters.'); return; }
+    if (!email)               { _showError(errEl, 'Email is required.'); return; }
+    if (!_validEmail(email))  { _showError(errEl, 'Enter a valid email address.'); return; }
+    if (password.length < 8)  { _showError(errEl, 'Password must be at least 8 characters.'); return; }
 
     _setLoading(btn, 'Creating account…');
+
     try {
-      await signUp(email, password);
-      // Account created — Stripe checkout will be wired in the Payments session
-      // For now, show confirmation and close
-      _showSignupSuccess(email);
+      // Step 1 — Create Supabase account
+      const authData = await signUp(email, password);
+      const userId   = authData?.user?.id;
+
+      if (!userId) {
+        // Supabase email confirmation required — user not yet active
+        // Still proceed to checkout; Stripe webhook will update tier on payment
+        // Use a temporary placeholder ID if not available yet
+        console.warn('auth.js: userId not returned from signUp — email confirmation may be pending');
+      }
+
+      // Step 2 — Request Stripe Checkout Session from Worker
+      _setLoading(btn, 'Redirecting to payment…');
+
+      const returnUrl = window.location.href.split('?')[0]; // strip existing params
+
+      const res = await fetch(WORKER_URL + '/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tier:      _selectedTier,
+          userId:    userId || email, // fall back to email if UUID not available yet
+          email:     email,
+          returnUrl: returnUrl,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || 'Payment redirect failed. Please try again.');
+      }
+
+      // Step 3 — Redirect to Stripe Checkout
+      window.location.href = data.url;
+
     } catch (err) {
       _showError(errEl, _friendlyError(err.message));
-    } finally {
       _setLoading(btn, 'Continue to Payment', false);
     }
   }
 
-  function _showSignupSuccess(email) {
-    const panel = document.getElementById('ax-panel-subscribe');
-    if (!panel) return;
-    panel.innerHTML = `
-      <div style="text-align:center;padding:12px 0 8px;">
-        <div style="font-size:32px;margin-bottom:14px;">&#10003;</div>
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;margin-bottom:8px;">Account created</div>
-        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);line-height:1.7;margin-bottom:18px;">
-          A confirmation email has been sent to<br>
-          <span style="color:var(--accent);">${email}</span><br><br>
-          Payment integration coming shortly — you will be directed<br>
-          to Stripe checkout to activate your subscription.
-        </div>
-        <button onclick="Auth.closeModal()" style="${_primaryBtnStyle()}">Close</button>
-      </div>`;
+  // ── Payment result: handle ?payment=success / ?payment=cancelled ──────────
+
+  function _handlePaymentReturn() {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get('payment');
+    if (!result) return;
+
+    // Clean the URL — remove payment param without reloading
+    const cleanUrl = window.location.pathname +
+      window.location.search.replace(/[?&]payment=[^&]*/g, '').replace(/^&/, '?') +
+      window.location.hash;
+    history.replaceState(null, '', cleanUrl || window.location.pathname);
+
+    if (result === 'success') {
+      _showPaymentToast('success', 'Payment successful — your subscription is now active.');
+      // Refresh profile so tier is up to date (webhook should have fired by now)
+      getSession().then(function (session) {
+        if (session?.user?.id) getProfile(session.user.id);
+      });
+    }
+
+    if (result === 'cancelled') {
+      // Re-open subscribe modal so user can try again
+      openModal('subscribe');
+    }
+  }
+
+  // ── Payment toast ─────────────────────────────────────────────────────────
+
+  function _showPaymentToast(type, message) {
+    const existing = document.getElementById('ax-payment-toast');
+    if (existing) existing.remove();
+
+    const isSuccess = type === 'success';
+    const toast = document.createElement('div');
+    toast.id = 'ax-payment-toast';
+    toast.style.cssText = [
+      'position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:9100;',
+      'display:flex;align-items:center;gap:10px;',
+      'padding:12px 20px;border-radius:8px;',
+      'font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:0.2px;',
+      'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
+      'animation:ax-toast-in 0.25s ease;',
+      isSuccess
+        ? 'background:rgba(39,174,96,0.15);border:1px solid rgba(39,174,96,0.4);color:#2ecc71;'
+        : 'background:rgba(231,76,60,0.12);border:1px solid rgba(231,76,60,0.35);color:var(--red);',
+    ].join('');
+
+    toast.innerHTML = `
+      <span style="font-size:15px;">${isSuccess ? '&#10003;' : '&#x26A0;'}</span>
+      <span>${message}</span>
+      <button onclick="this.parentElement.remove()" style="margin-left:12px;background:none;border:none;cursor:pointer;color:inherit;font-size:15px;line-height:1;padding:0;opacity:0.7;">&#x2715;</button>
+    `;
+
+    // Inject keyframe animation if not already present
+    if (!document.getElementById('ax-toast-style')) {
+      const style = document.createElement('style');
+      style.id = 'ax-toast-style';
+      style.textContent = '@keyframes ax-toast-in{from{opacity:0;transform:translateX(-50%) translateY(-8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
+      document.head.appendChild(style);
+    }
+
+    document.body.appendChild(toast);
+
+    // Auto-dismiss after 6 seconds
+    setTimeout(function () {
+      if (toast.parentElement) {
+        toast.style.transition = 'opacity 0.4s';
+        toast.style.opacity    = '0';
+        setTimeout(function () { toast.remove(); }, 400);
+      }
+    }, 6000);
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -443,10 +536,11 @@
 
   function _friendlyError(msg) {
     if (!msg) return 'An error occurred. Please try again.';
-    if (/invalid.*credentials|invalid login/i.test(msg))   return 'Incorrect email or password.';
+    if (/invalid.*credentials|invalid login/i.test(msg))        return 'Incorrect email or password.';
     if (/email.*already.*registered|already.*exists/i.test(msg)) return 'An account with this email already exists.';
-    if (/password.*short|password.*length/i.test(msg))     return 'Password must be at least 8 characters.';
-    if (/rate.limit/i.test(msg))                           return 'Too many attempts. Please wait a moment and try again.';
+    if (/password.*short|password.*length/i.test(msg))          return 'Password must be at least 8 characters.';
+    if (/rate.limit/i.test(msg))                                 return 'Too many attempts. Please wait a moment and try again.';
+    if (/payment redirect failed/i.test(msg))                    return msg;
     return msg;
   }
 
@@ -462,6 +556,9 @@
     getSession().then(function (session) {
       _updateNavUI(session);
     });
+
+    // Handle Stripe return URLs
+    _handlePaymentReturn();
   }
 
   if (document.readyState === 'loading') {
@@ -485,7 +582,7 @@
     closeModal,
     _doLogin,
     _doSignup,
-    _selectTier
+    _selectTier,
   };
 
 })();

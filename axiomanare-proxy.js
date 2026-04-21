@@ -4,17 +4,33 @@
  * Kairos Ventures Pte Ltd
  *
  * Routes:
- *   POST /v1/messages        → Anthropic Claude API (streaming supported)
- *   POST /embed              → Voyage AI embeddings  (VOYAGE_API_KEY secret)
- *   POST /rag                → Supabase match_knowledge_chunks RPC
- *                              (SUPABASE_URL + SUPABASE_SERVICE_KEY secrets)
+ *   POST /v1/messages              → Anthropic Claude API (streaming supported)
+ *   POST /embed                    → Voyage AI embeddings  (VOYAGE_API_KEY secret)
+ *   POST /rag                      → Supabase match_knowledge_chunks RPC
+ *                                    (SUPABASE_URL + SUPABASE_SERVICE_KEY secrets)
+ *   POST /create-checkout-session  → Stripe Checkout Session
+ *                                    (STRIPE_SECRET_KEY + STRIPE_PRICE_* secrets)
+ *   POST /stripe-webhook           → Stripe webhook receiver
+ *                                    (STRIPE_WEBHOOK_SECRET secret)
  *
  * All API keys injected server-side — never exposed to client.
+ *
+ * Required Cloudflare env vars (Worker → Settings → Variables → Secrets):
+ *   ANTHROPIC_API_KEY
+ *   VOYAGE_API_KEY
+ *   SUPABASE_URL
+ *   SUPABASE_SERVICE_KEY
+ *   STRIPE_SECRET_KEY
+ *   STRIPE_WEBHOOK_SECRET
+ *   STRIPE_PRICE_PRO            (Stripe Price ID for AxiomAnare Pro)
+ *   STRIPE_PRICE_FLEET_STARTER  (Stripe Price ID for Fleet Starter)
+ *   STRIPE_PRICE_FLEET_PRO      (Stripe Price ID for Fleet Pro)
  */
 
-const ALLOWED_ORIGIN   = "https://esimconnect.github.io";
+const ALLOWED_ORIGIN     = "https://esimconnect.github.io";
 const ANTHROPIC_API_BASE = "https://api.anthropic.com";
 const VOYAGE_API_BASE    = "https://api.voyageai.com";
+const STRIPE_API_BASE    = "https://api.stripe.com";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin":  ALLOWED_ORIGIN,
@@ -34,6 +50,53 @@ function errResponse(msg, status = 500) {
   return jsonResponse({ error: msg }, status);
 }
 
+// ── Stripe: map internal tier name → env var price ID ─────────────────────────
+function _stripePriceId(tier, env) {
+  const map = {
+    pro:           env.STRIPE_PRICE_PRO,
+    fleet_starter: env.STRIPE_PRICE_FLEET_STARTER,
+    fleet_pro:     env.STRIPE_PRICE_FLEET_PRO,
+  };
+  return map[tier] || null;
+}
+
+// ── Stripe: map Stripe Price ID back to internal tier name ────────────────────
+function _tierFromPriceId(priceId, env) {
+  if (priceId === env.STRIPE_PRICE_PRO)           return "pro";
+  if (priceId === env.STRIPE_PRICE_FLEET_STARTER) return "fleet_starter";
+  if (priceId === env.STRIPE_PRICE_FLEET_PRO)     return "fleet_pro";
+  return null;
+}
+
+// ── Stripe webhook: verify signature using HMAC-SHA256 ───────────────────────
+// Cloudflare Workers have SubtleCrypto available via globalThis.crypto
+async function _verifyStripeSignature(payload, sigHeader, secret) {
+  // sigHeader format: t=<timestamp>,v1=<sig1>,v1=<sig2>,...
+  const parts     = sigHeader.split(",");
+  const tPart     = parts.find(p => p.startsWith("t="));
+  const v1Parts   = parts.filter(p => p.startsWith("v1="));
+  if (!tPart || !v1Parts.length) return false;
+
+  const timestamp  = tPart.slice(2);
+  const signedPayload = `${timestamp}.${payload}`;
+
+  const enc     = new TextEncoder();
+  const keyData = enc.encode(secret);
+  const msgData = enc.encode(signedPayload);
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw", keyData,
+    { name: "HMAC", hash: "SHA-256" },
+    false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", cryptoKey, msgData);
+  const sigHex = Array.from(new Uint8Array(sig))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  return v1Parts.some(p => p.slice(3) === sigHex);
+}
+
 export default {
   async fetch(request, env) {
 
@@ -42,7 +105,195 @@ export default {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
-    // ── Origin guard ──────────────────────────────────────────────────────────
+    // ── Stripe webhook: no Origin check (called by Stripe servers, not browser)
+    const url      = new URL(request.url);
+    const pathname = url.pathname;
+
+    if (pathname === "/stripe-webhook") {
+      if (request.method !== "POST") {
+        return new Response("Method Not Allowed", { status: 405 });
+      }
+
+      const rawBody   = await request.text();
+      const sigHeader = request.headers.get("stripe-signature") || "";
+
+      if (!env.STRIPE_WEBHOOK_SECRET) {
+        console.error("STRIPE_WEBHOOK_SECRET not configured");
+        return new Response("Webhook secret not configured", { status: 500 });
+      }
+
+      const valid = await _verifyStripeSignature(rawBody, sigHeader, env.STRIPE_WEBHOOK_SECRET);
+      if (!valid) {
+        console.error("Stripe webhook signature verification failed");
+        return new Response("Invalid signature", { status: 400 });
+      }
+
+      let event;
+      try { event = JSON.parse(rawBody); } catch {
+        return new Response("Invalid JSON", { status: 400 });
+      }
+
+      // ── Handle checkout.session.completed ───────────────────────────────────
+      if (event.type === "checkout.session.completed") {
+        const session       = event.data.object;
+        const userId        = session.client_reference_id;   // Supabase user UUID
+        const subscriptionId = session.subscription;
+
+        if (!userId) {
+          console.error("Webhook: no client_reference_id on session", session.id);
+          return new Response("OK", { status: 200 }); // ACK to Stripe regardless
+        }
+
+        // Fetch the subscription to get the Price ID
+        let newTier = null;
+        if (subscriptionId && env.STRIPE_SECRET_KEY) {
+          try {
+            const subRes = await fetch(`${STRIPE_API_BASE}/v1/subscriptions/${subscriptionId}`, {
+              headers: { "Authorization": `Bearer ${env.STRIPE_SECRET_KEY}` },
+            });
+            if (subRes.ok) {
+              const subData = await subRes.json();
+              const priceId = subData?.items?.data?.[0]?.price?.id;
+              newTier = _tierFromPriceId(priceId, env);
+            }
+          } catch (err) {
+            console.error("Webhook: failed to fetch subscription:", err.message);
+          }
+        }
+
+        // Fall back: check metadata.tier set during checkout session creation
+        if (!newTier && session.metadata?.tier) {
+          newTier = session.metadata.tier;
+        }
+
+        if (!newTier) {
+          console.error("Webhook: could not resolve tier for session", session.id);
+          return new Response("OK", { status: 200 });
+        }
+
+        const supabaseUrl = env.SUPABASE_URL;
+        const serviceKey  = env.SUPABASE_SERVICE_KEY;
+
+        // Update profiles.tier
+        try {
+          const profileRes = await fetch(
+            `${supabaseUrl}/rest/v1/profiles?id=eq.${userId}`,
+            {
+              method: "PATCH",
+              headers: {
+                "Content-Type":  "application/json",
+                "apikey":        serviceKey,
+                "Authorization": `Bearer ${serviceKey}`,
+                "Prefer":        "return=minimal",
+              },
+              body: JSON.stringify({
+                tier:            newTier,
+                stripe_customer_id:    session.customer      || null,
+                stripe_subscription_id: subscriptionId       || null,
+                updated_at:      new Date().toISOString(),
+              }),
+            }
+          );
+          if (!profileRes.ok) {
+            const detail = await profileRes.text();
+            console.error("Webhook: profile update failed:", detail);
+          }
+        } catch (err) {
+          console.error("Webhook: profile PATCH error:", err.message);
+        }
+
+        // Insert subscription_events audit row
+        try {
+          await fetch(
+            `${supabaseUrl}/rest/v1/subscription_events`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type":  "application/json",
+                "apikey":        serviceKey,
+                "Authorization": `Bearer ${serviceKey}`,
+                "Prefer":        "return=minimal",
+              },
+              body: JSON.stringify({
+                user_id:          userId,
+                event_type:       event.type,
+                tier:             newTier,
+                stripe_event_id:  event.id,
+                stripe_customer_id:    session.customer      || null,
+                stripe_subscription_id: subscriptionId       || null,
+                raw_payload:      event,
+                created_at:       new Date().toISOString(),
+              }),
+            }
+          );
+        } catch (err) {
+          console.error("Webhook: subscription_events insert error:", err.message);
+          // Non-fatal — profile already updated above
+        }
+      }
+
+      // ── Handle customer.subscription.deleted (cancellation / lapse) ─────────
+      if (event.type === "customer.subscription.deleted") {
+        const subscription = event.data.object;
+        const customerId   = subscription.customer;
+        const supabaseUrl  = env.SUPABASE_URL;
+        const serviceKey   = env.SUPABASE_SERVICE_KEY;
+
+        // Look up user by stripe_customer_id and downgrade to free
+        try {
+          const profileRes = await fetch(
+            `${supabaseUrl}/rest/v1/profiles?stripe_customer_id=eq.${customerId}`,
+            {
+              method: "PATCH",
+              headers: {
+                "Content-Type":  "application/json",
+                "apikey":        serviceKey,
+                "Authorization": `Bearer ${serviceKey}`,
+                "Prefer":        "return=minimal",
+              },
+              body: JSON.stringify({
+                tier:       "free",
+                stripe_subscription_id: null,
+                updated_at: new Date().toISOString(),
+              }),
+            }
+          );
+          if (!profileRes.ok) {
+            const detail = await profileRes.text();
+            console.error("Webhook: subscription.deleted profile update failed:", detail);
+          }
+        } catch (err) {
+          console.error("Webhook: subscription.deleted PATCH error:", err.message);
+        }
+
+        // Audit log
+        try {
+          await fetch(`${supabaseUrl}/rest/v1/subscription_events`, {
+            method: "POST",
+            headers: {
+              "Content-Type":  "application/json",
+              "apikey":        serviceKey,
+              "Authorization": `Bearer ${serviceKey}`,
+              "Prefer":        "return=minimal",
+            },
+            body: JSON.stringify({
+              event_type:       event.type,
+              stripe_event_id:  event.id,
+              stripe_customer_id: customerId,
+              stripe_subscription_id: subscription.id,
+              raw_payload:      event,
+              created_at:       new Date().toISOString(),
+            }),
+          });
+        } catch (err) {
+          console.error("Webhook: subscription.deleted audit insert error:", err.message);
+        }
+      }
+
+      return new Response("OK", { status: 200 });
+    }
+
+    // ── Origin guard (all other routes) ──────────────────────────────────────
     const origin = request.headers.get("Origin") || "";
     if (origin !== ALLOWED_ORIGIN) {
       return new Response("Forbidden", { status: 403 });
@@ -52,8 +303,76 @@ export default {
       return new Response("Method Not Allowed", { status: 405 });
     }
 
-    const url      = new URL(request.url);
-    const pathname = url.pathname;
+    // ══════════════════════════════════════════════════════════════════════════
+    // ROUTE: /create-checkout-session  — Stripe Checkout
+    // Body: { tier: string, userId: string, email: string, returnUrl: string }
+    // Returns: { url: string }  — redirect client to this URL
+    // ══════════════════════════════════════════════════════════════════════════
+    if (pathname === "/create-checkout-session") {
+      let body;
+      try { body = await request.json(); } catch {
+        return errResponse("Invalid JSON body", 400);
+      }
+
+      const { tier, userId, email, returnUrl } = body;
+
+      if (!tier || !userId || !email) {
+        return errResponse("tier, userId and email are required", 400);
+      }
+
+      const priceId = _stripePriceId(tier, env);
+      if (!priceId) {
+        return errResponse(`No Stripe Price ID configured for tier: ${tier}`, 400);
+      }
+
+      if (!env.STRIPE_SECRET_KEY) {
+        return errResponse("Stripe not configured", 500);
+      }
+
+      // The page the user was on — used for success/cancel redirect
+      const base      = "https://esimconnect.github.io/AxiomAnare";
+      const returnPath = returnUrl || base + "/";
+      const successUrl = returnPath + (returnPath.includes("?") ? "&" : "?") + "payment=success";
+      const cancelUrl  = returnPath + (returnPath.includes("?") ? "&" : "?") + "payment=cancelled";
+
+      // Build Stripe Checkout Session
+      const params = new URLSearchParams({
+        mode:                        "subscription",
+        "line_items[0][price]":      priceId,
+        "line_items[0][quantity]":   "1",
+        customer_email:              email,
+        client_reference_id:         userId,          // links payment → Supabase user
+        success_url:                 successUrl,
+        cancel_url:                  cancelUrl,
+        "metadata[tier]":            tier,            // fallback tier resolution in webhook
+        "subscription_data[metadata][user_id]": userId,
+        "subscription_data[metadata][tier]":    tier,
+      });
+
+      let stripeRes;
+      try {
+        stripeRes = await fetch(`${STRIPE_API_BASE}/v1/checkout/sessions`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${env.STRIPE_SECRET_KEY}`,
+            "Content-Type":  "application/x-www-form-urlencoded",
+          },
+          body: params.toString(),
+        });
+      } catch (err) {
+        return errResponse("Stripe fetch failed: " + err.message, 502);
+      }
+
+      const stripeData = await stripeRes.json();
+
+      if (!stripeRes.ok) {
+        const msg = stripeData?.error?.message || "Stripe error";
+        console.error("Stripe checkout session error:", msg);
+        return errResponse(msg, stripeRes.status);
+      }
+
+      return jsonResponse({ url: stripeData.url });
+    }
 
     // ══════════════════════════════════════════════════════════════════════════
     // ROUTE: /embed  — Voyage AI text embedding
