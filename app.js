@@ -2422,11 +2422,11 @@ function buildRadar(faults){
   const ptColors = top.map(f => severityColor(f.pct));
 
   const canvas = document.getElementById('radarChart');
-  // Scale up canvas 20% via CSS while keeping Chart.js responsive
-  canvas.style.width  = '120%';
-  canvas.style.height = '120%';
-  canvas.style.marginLeft = '-10%';
-  canvas.style.marginTop  = '-4%';
+  // Reset any previous inline styles
+  canvas.style.width = '';
+  canvas.style.height = '';
+  canvas.style.marginLeft = '';
+  canvas.style.marginTop = '';
 
   radarInst = new Chart(canvas.getContext('2d'),{
     type:'radar',
@@ -2473,7 +2473,7 @@ function buildRadar(faults){
           },
           pointLabels:{
             color:'#e8edf5',
-            font:{size:11, weight:'600'}
+            font:{size:12, weight:'600'}
           }
         }
       }
