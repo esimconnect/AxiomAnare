@@ -2447,6 +2447,7 @@ function buildRadar(faults){
     },
     options:{
       responsive:true,
+      maintainAspectRatio:false,
       plugins:{
         legend:{display:false},
         tooltip:{
@@ -2487,7 +2488,7 @@ function buildFFT(fft,fs){
   const df=[],dm=[],dc=[];
   let dI=0; for(let i=1;i<mags.length;i++){if(mags[i]>mags[dI])dI=i;} const tF=freqs[dI];
   for(let i=0;i<freqs.length&&freqs[i]<fs*0.45;i+=step){const f=freqs[i];df.push(f.toFixed(1));dm.push(parseFloat(mags[i].toFixed(5)));dc.push(Math.abs(f-tF)<tF*0.15?'rgba(192,57,43,1.0)':Math.abs(f-tF*2)<tF*0.15?'rgba(211,84,0,1.0)':Math.abs(f-tF*3)<tF*0.15?'rgba(183,149,11,1.0)':f>fs*0.35?'rgba(88,44,140,0.9)':'rgba(0,85,170,0.5)');}
-  fftInst=new Chart(document.getElementById('fftChart').getContext('2d'),{type:'bar',data:{labels:df,datasets:[{data:dm,backgroundColor:dc,barPercentage:1.3,categoryPercentage:1,borderWidth:0}]},options:{responsive:true,animation:{duration:400},plugins:{legend:{display:false},tooltip:{backgroundColor:'#1a2030',borderColor:'#c0392b',borderWidth:1,titleColor:'#ffffff',bodyColor:'#ffffff',callbacks:{title:i=>i[0].label+' Hz',label:c=>' '+c.raw.toFixed(5)}}},scales:{x:{grid:{display:false},ticks:{maxTicksLimit:10,font:{size:10,weight:'bold'},color:'#7f93aa',callback:(v,i)=>parseFloat(df[i])%50<5?df[i]+'Hz':''}},y:{grid:{color:'rgba(77,157,224,0.12)'},ticks:{font:{size:10,weight:'bold'},color:'#7f93aa'},min:0}}}});
+  fftInst=new Chart(document.getElementById('fftChart').getContext('2d'),{type:'bar',data:{labels:df,datasets:[{data:dm,backgroundColor:dc,barPercentage:1.3,categoryPercentage:1,borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,animation:{duration:400},plugins:{legend:{display:false},tooltip:{backgroundColor:'#1a2030',borderColor:'#c0392b',borderWidth:1,titleColor:'#ffffff',bodyColor:'#ffffff',callbacks:{title:i=>i[0].label+' Hz',label:c=>' '+c.raw.toFixed(5)}}},scales:{x:{grid:{display:false},ticks:{maxTicksLimit:10,font:{size:10,weight:'bold'},color:'#7f93aa',callback:(v,i)=>parseFloat(df[i])%50<5?df[i]+'Hz':''}},y:{grid:{color:'rgba(77,157,224,0.12)'},ticks:{font:{size:10,weight:'bold'},color:'#7f93aa'},min:0}}}});
   document.getElementById('fft-legend').innerHTML=['Dominant freq','2nd harmonic','3rd harmonic','High-freq'].map((l,i)=>{const cs=['#c0392b','#c0520a','#b36a00','#6b3fa0'][i];return'<div style="display:flex;align-items:center;gap:4px;font-size:9px;color:'+cs+';font-family:\'IBM Plex Mono\',monospace;"><div style="width:7px;height:7px;border-radius:50%;background:'+cs+'"></div>'+l+'</div>';}).join('');
 }
 
@@ -2622,21 +2623,27 @@ async function streamClaude(){
     const reader=resp.body.getReader(),dec=new TextDecoder();let buf='',fullText='';
     const rt=document.getElementById('reco-text');
     rt.innerHTML='';
-    while(true){
-      const{done,value}=await reader.read();if(done)break;
-      buf+=dec.decode(value,{stream:true});const ls=buf.split('\n');buf=ls.pop();
+    let streamDone=false;
+    while(!streamDone){
+      const{done,value}=await reader.read();
+      if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      const ls=buf.split('\n');buf=ls.pop();
       for(const l of ls){
         if(!l.startsWith('data:'))continue;
-        const dat=l.slice(5).trim();if(dat==='[DONE]')break;
-        try{const e=JSON.parse(dat);if(e.type==='content_block_delta'&&e.delta?.type==='text_delta'){
-          fullText+=e.delta.text;
-          rt.innerHTML=mdToHtml(fullText);
-          rt.scrollIntoView({behavior:'smooth',block:'nearest'});
-        }}catch{}
+        const dat=l.slice(5).trim();
+        if(dat==='[DONE]'){streamDone=true;break;}
+        try{
+          const e=JSON.parse(dat);
+          if(e.type==='content_block_delta'&&e.delta?.type==='text_delta'){
+            fullText+=e.delta.text;
+            rt.innerHTML=mdToHtml(fullText);
+          }
+        }catch{}
       }
     }
-    // Final render
-    rt.innerHTML=mdToHtml(fullText);
+    // Final render — only if we have content
+    if(fullText) rt.innerHTML=mdToHtml(fullText);
   }catch(err){
     document.getElementById('stream-thinking').style.display='none';
     document.getElementById('reco-text').innerHTML = mdToHtml(buildFallback(nvr));
