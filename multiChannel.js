@@ -447,6 +447,12 @@ async function runMultiChannelPipeline(raw, filename) {
     if (typeof renderResults === 'function') renderResults();
   }
 
+  // Increment free analysis counter + apply gates (watermark, PDF lock, trial banner)
+  if (typeof Freemium !== 'undefined') {
+    Freemium.increment();
+    if (typeof applyFreemiumGates === 'function') applyFreemiumGates();
+  }
+
   // Stream Claude multi-channel AI summary
   mcStreamClaude(MC.results, combined, filename);
 }

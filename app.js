@@ -2637,7 +2637,8 @@ function applyFreemiumGates() {
 
   const count = Freemium.getCount();
 
-  // ── PDF button — always locked for free users ─────────────────────────
+  // ── Update nav badge ──────────────────────────────────────────────────
+  if (typeof window.updateFreeBadge === 'function') window.updateFreeBadge();
   const pdfBtn = document.getElementById('pdf-btn');
   if (pdfBtn) {
     pdfBtn.style.display = '';  // keep visible but intercept click
