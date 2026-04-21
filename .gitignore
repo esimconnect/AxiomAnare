@@ -14,3 +14,9 @@ Thumbs.db
 app.old.2.js
 app.old.2.js
 .wrangler/
+Data_Sets/
+ML/
+app_js_rag_patch.js
+match_knowledge_chunks.sql
+rag-embed-edge-function.ts
+schema_notes.md
