@@ -835,7 +835,7 @@ ${flags.length ? flags.map(f => '(!) ' + f).join('\n') : '  No flags.'}
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 25000); // 25s timeout
       try {
-        response = await fetch('https://restless-tree-eac8.kairosventure-io.workers.dev', {
+        response = await fetch('https://restless-tree-eac8.kairosventure-io.workers.dev/v1/messages', {
           method: 'POST',
           signal: controller.signal,
           headers: {
