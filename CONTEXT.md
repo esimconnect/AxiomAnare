@@ -1,6 +1,6 @@
 # AxiomAnare — Living Project Context
 Last updated: April 2026
-Latest commit: c95c2e3
+Latest commit: 46810ec
 
 ---
 
@@ -27,28 +27,36 @@ Latest commit: c95c2e3
 - [x] Fleet Dashboard (auth, RLS, baseline + batch upload)
 - [x] Fleet detail panel
 - [x] Agnostic file parser (CSV, MAT, XLSX, JSON, TSV)
-- [x] SVG logo integrated into nav (index.html)
 - [x] Nav: Free to Try, Subscribe, Login, Fleet Dashboard buttons
 - [x] Hero subtitle single line
 - [x] Register renamed to Subscribe
 - [x] Nav height and logo sizing finalised
+- [x] Animated canvas logo in nav (replaces static SVG) — gears + green wave
+- [x] Responsive layout — tablet (≤900px) + mobile (≤600px)
 - [x] ML label maps: cwru_label_map.json, nasa_ims_label_map.json, epson_label_map.json
 - [x] CWRU .mat dataset download — 109 files, 0 failed (drive_end + fan_end + normal)
 - [x] KB/Standards: ISO_10816_Chart_colour.pdf
 - [x] KB/Reports: Cooling_Tower_Fan-K394-11.pdf + Reports 001–006 (anonymised)
 - [x] KB/Reports: Reports 007–009 (anonymised .md, Apr 2023 quarter)
+- [x] KB/Reports: CM_SiteA_AHU, CM_SiteA_UTY, CM_SiteA_WWTP,
+      CM_SiteB_AHU, CM_SiteB_UTY, CM_SiteB_MFG, CM_SiteB_TankFarm, CM_SiteC_AHU
 - [x] KB/Reference: Nagahama_2025_Phase_Fault_Diagnosis.pdf
 - [x] KB/Reference: CWRU Bearing Data Centre README.pdf
 - [x] KB/Reference: CWRU_Dataset_Overview.md (dataset structure + AxiomAnare validation)
-- [x] KB/Reference: VCAT_Reference_Material.md (Mobius Institute CRMVA reference — fault spectra, ISO zones, FFT formulas, transducer guide)
+- [x] KB/Reference: VCAT_Reference_Material.md (fault spectra, ISO zones, FFT formulas, transducer guide)
 - [x] KB/Manuals: SKF_Bearing_Installation_Guide.md (symptom/cause matrix, damage modes, lubrication, fits)
-- [x] KB/Manuals: SKF_Bearing_Maintenance_Handbook.md (failure statistics, vibration monitoring, inspection procedure, root cause matrix)
+- [x] KB/Manuals: SKF_Bearing_Maintenance_Handbook.md (failure statistics, vibration monitoring, inspection, RCA)
 - [x] NASA IMS 1st_test (2,156 files) + 2nd_test (984 files)
 - [x] Field data: Epson trimmed (96 files)
+- [x] Supabase schema — all new tables + nvr_records updates
 - [x] auth.js shared module — signUp, signIn, signOut, getSession, getTier,
       getProfile, incrementAnalysesUsed, tierAnalysisLimit
 - [x] Auth + Subscribe modal — Login tab + Subscribe tab with tier cards
 - [x] Nav wired — nav-login-btn, nav-subscribe-btn, nav-user-btn (sign out)
+- [x] RAG pipeline — Cloudflare Worker /embed + /rag routes
+- [x] app.js — ragQuery(), buildRagContext(), streamClaude() with KB injection
+- [x] Supabase match_knowledge_chunks — SECURITY DEFINER, pgvector tested
+- [x] Total KB: 109 chunks embedded (voyage-3)
 
 ## In Progress
 - [ ] Stripe + PayPal integration
@@ -74,16 +82,17 @@ Latest commit: c95c2e3
 | Tier          | Price      | Analyses  | Assets | AI Report | Fleet |
 |---------------|------------|-----------|--------|-----------|-------|
 | Free          | $0         | 2         | —      | ✗         | ✗     |
-| Pro           | $49/month  | Unlimited | —      | ✓         | ✗     |
-| Fleet Starter | $99/month  | Unlimited | 10     | ✓         | ✓     |
-| Fleet Pro     | $299/month | Unlimited | 30     | ✓         | ✓     |
-| Asset add-on  | $25/asset  | —         | +1     | ✓         | ✓     |
+| Pro           | TBD        | Unlimited | —      | ✓         | ✗     |
+| Fleet Starter | TBD        | Unlimited | 10     | ✓         | ✓     |
+| Fleet Pro     | TBD        | Unlimited | 30     | ✓         | ✓     |
+| Asset add-on  | TBD        | —         | +1     | ✓         | ✓     |
 
 - No upload caps on any paid tier
 - Annual: 2 months free (pay 10, get 12)
 - AI report is the primary freemium gate
 - Pricing philosophy: below expense claim threshold —
   engineer pays own card, no PO or finance approval needed
+- Prices deferred — Stripe products to be created without prices for now
 
 ---
 
@@ -92,12 +101,12 @@ Latest commit: c95c2e3
 - PayPal: secondary (client ID TBC)
 - Currency: USD primary, local currency via Stripe/PayPal auto
 - Billing: monthly auto-renew, cancel anytime
-- Stripe Price IDs: to be created in Stripe Dashboard
-- Products to create in Stripe:
-    1. AxiomAnare Pro — $49/month recurring
-    2. AxiomAnare Fleet Starter — $99/month recurring
-    3. AxiomAnare Fleet Pro — $299/month recurring
-    4. Asset Add-on — $25/month recurring
+- Stripe Price IDs: to be created in Stripe Dashboard (prices TBD)
+- Products to create in Stripe (no prices yet):
+    1. AxiomAnare Pro
+    2. AxiomAnare Fleet Starter
+    3. AxiomAnare Fleet Pro
+    4. Asset Add-on
 
 ---
 
@@ -137,6 +146,7 @@ twin_deviation    float     -- delta from digital twin expected
 | K394-11 field report    | PDF  | Imbalance (confirmed)          | ✓ Uploaded  |
 | Reports 001–006         | PDF  | Anonymised field cases         | ✓ Uploaded  |
 | Reports 007–009         | MD   | Pharma plant, Apr 2023         | ✓ Complete  |
+| CM Site summaries (8)   | MD   | AHU/UTY/MFG/TankFarm/WWTP      | ✓ Complete  |
 | ISO 10816 CMVA guide    | PDF  | Zone thresholds                | ✓ Uploaded  |
 | Nagahama 2025           | PDF  | Phase fault diagnosis          | ✓ Uploaded  |
 | CWRU README             | PDF  | Bearing dataset ref            | ✓ Uploaded  |
@@ -212,15 +222,45 @@ Data_Sets/cwru/
 - Engineer sign-off requirement mitigates autonomous classification risk
 - Full validation documented in KB/Reference/CWRU_Dataset_Overview.md
 
+### RAG Pipeline (live)
+```
+PDF/MD → chunk text → embed via Voyage AI (voyage-3, 1024-dim)
+→ store in knowledge_chunks (pgvector, Supabase)
+→ at analysis time: build semantic query from NVR context
+→ Cloudflare Worker /embed → /rag → top-5 chunks (0.30 similarity floor)
+→ inject into Claude system prompt as === KNOWLEDGE BASE CONTEXT ===
+→ Claude narrative grounded in domain knowledge
+```
+
+### Cloudflare Worker Routes (axiomanare-proxy.js)
+- POST /v1/messages — proxies Claude API (ANTHROPIC_API_KEY)
+- POST /embed      — proxies Voyage AI embeddings (VOYAGE_API_KEY)
+- POST /rag        — proxies Supabase match_knowledge_chunks RPC (SUPABASE_SERVICE_KEY)
+- Worker version: 1ffa12d1-6960-4c3b-8a78-8c49e17c7437
+
 ### ML Pipeline (planned)
-1. Enable pgvector in Supabase
-2. Create Supabase Storage buckets
-3. Bulk upload CWRU/NASA MAT files via script
-4. Feature extraction script → ml_features table
-5. Label features by fault type
-6. Train classifier (target: 12 months post-launch)
-7. PDF/MD chunking + embedding → knowledge_chunks table
-8. RAG query injected into Claude prompt at analysis time
+1. Supabase Storage buckets setup
+2. Bulk upload CWRU/NASA MAT files via script
+3. Feature extraction script → ml_features table
+4. Label features by fault type
+5. Train classifier (target: 12 months post-launch)
+
+### Supabase Storage Structure (planned)
+```
+ml-raw-signals/          (private bucket)
+├── cwru/
+│   ├── normal/
+│   ├── drive_end/
+│   └── fan_end/
+└── nasa/
+    ├── 1st_test/
+    └── 2nd_test/
+
+knowledge-base/          (private bucket)
+├── manuals/
+├── reports/
+└── standards/
+```
 
 ---
 
@@ -229,7 +269,7 @@ Data_Sets/cwru/
 |----------|-------------------------------------------------|--------------------------------------|
 | Apr 2026 | Stripe primary, PayPal secondary                | Existing account, best docs          |
 | Apr 2026 | No upload caps on paid tiers                    | Reduce friction, gate on assets only |
-| Apr 2026 | $49/$99/$299 pricing                            | Below expense claim threshold        |
+| Apr 2026 | Pricing deferred — products created without price | Not finalised yet                  |
 | Apr 2026 | pgvector in Supabase (not separate vector DB)   | Single platform, already running     |
 | Apr 2026 | Claude Project + Supabase RAG (both)            | Dev workflow vs runtime production   |
 | Apr 2026 | CONTEXT.md as cross-chat bridge                 | Projects don't share chat history    |
@@ -251,6 +291,10 @@ Data_Sets/cwru/
 | Apr 2026 | Modal built dynamically in auth.js, not in HTML | Self-contained; works on fleet.html too |
 | Apr 2026 | Signup creates Supabase account only (no Stripe yet) | Stripe checkout wired in Payments session |
 | Apr 2026 | Default tier selection = Pro in Subscribe modal | Lowest-friction primary conversion target |
+| Apr 2026 | Animated canvas logo replacing static SVG       | More compelling, technically on-brand |
+| Apr 2026 | Logo animation: window.addEventListener('load') | Ensures canvas ready before rAF starts |
+| Apr 2026 | Responsive breakpoints: 900px tablet, 600px mobile | Covers iPad + phone without over-engineering |
+| Apr 2026 | Fleet Dashboard link hidden on mobile           | Too wide; accessible via desktop     |
 
 ---
 
@@ -260,6 +304,8 @@ PHASE 1 — Foundation (build now)
 ├── Supabase schema (all new tables + nvr_records updates)  ✓ DONE
 ├── auth.js shared module (login, signup, getTier)          ✓ DONE
 ├── Auth + Subscribe modal on index.html                    ✓ DONE
+├── RAG pipeline (Cloudflare Worker + pgvector)             ✓ DONE
+├── Animated logo + responsive layout                       ✓ DONE
 ├── Stripe + PayPal integration                             ← NEXT
 ├── Tier gating (index.html + fleet.html)
 └── Landing page
@@ -267,7 +313,7 @@ PHASE 1 — Foundation (build now)
 PHASE 2 — Intelligence (pre-launch)
 ├── Digital twin Phase 1 (Fleet — baseline + deviation)
 ├── Supabase Storage buckets setup
-├── PDF chunking + RAG pipeline
+├── PDF chunking + RAG pipeline (already live for MD)
 └── CWRU/NASA feature extraction
 
 PHASE 3 — Growth (post-launch, 1-6 months)
@@ -296,6 +342,7 @@ PHASE 4 — ML (12-24 months)
 | agnosticParser2.js         | Agnostic file parser                        |
 | multiChannel.js            | Multi-channel analysis                      |
 | agnosticParser.css         | Parser styles                               |
+| axiomanare-proxy.js        | Cloudflare Worker — Claude + embed + RAG    |
 | ISO_10816_Chart_colour.pdf | ISO zone reference + CMVA interpretation    |
 | Balancing_Report_K394.pdf  | Confirmed imbalance case study (K394-11)    |
 
@@ -311,10 +358,13 @@ E:\Kairos\AxiomAnare\axiomanare\AxiomAnare\
 │       └── epson_label_map.json      ✓
 ├── KB\
 │   ├── Standards\   ISO_10816_Chart_colour.pdf                    ✓
-│   ├── Reports\     K394-11 + Reports 001–009                     ✓
+│   ├── Reports\     K394-11 + Reports 001–009
+│   │                + CM_SiteA/B/C (8 files)                      ✓
 │   ├── Reference\   Nagahama_2025 + CWRU README
 │   │                + CWRU_Dataset_Overview.md                    ✓
 │   │                + VCAT_Reference_Material.md                  ✓
+│   │                (Vibration_Basic.pdf — local only,
+│   │                 do not commit — copyright Mobius 2005)
 │   └── Manuals\     SKF_Bearing_Installation_Guide.md             ✓
 │                    SKF_Bearing_Maintenance_Handbook.md           ✓
 │                    (CAT 1 manual pending)
@@ -349,39 +399,183 @@ E:\Kairos\AxiomAnare\axiomanare\AxiomAnare\
 - "UI — [specific component name]"
 - "Data — KB field reports [quarter]"
 
+### Session Handoff Template
+At the end of each chat, note:
+```
+Completed this session: [what was done]
+Files changed: [list of files]
+Latest commit: [hash]
+Next session should: [what comes next]
+```
+Then update this file and re-upload to Project Knowledge.
+
 ---
+
+## Session Log — 13 Apr 2026 (Data — KB + ML population)
+```
+Completed this session:
+  - CWRU .mat dataset downloaded — 109 files, 0 failed
+  - Confirmed cwru_label_map.json matches download filenames exactly
+  - Confirmed folder structure: Data_Sets/cwru/normal + drive_end + fan_end
+  - NASA IMS 3rd_test deferred — ZIP corrupt, no Kaggle account
+  - CWRU README.pdf placed in KB/Reference
+  - Field reports anonymised and saved as .md:
+      Report_007: 24 AHUs, pharma plant, Apr 2023
+      Report_008: 15 Tank Farm assets, pharma plant, Apr 2023
+      Report_009: 2 Booster pumps, pharma plant, Apr 2023
+  - Decision: 1 report per quarter for Q1, Q3, Q4 2023 (pending)
+
+Files changed:
+  - KB/Reports/Report_007.md
+  - KB/Reports/Report_008.md
+  - KB/Reports/Report_009.md
+  - CONTEXT.md
+
+Latest commit: 20ca27f
+```
+
+## Session Log — 13 Apr 2026 (Schema — profiles + twins + case_library)
+```
+Completed this session:
+  - Full Supabase schema migration run successfully
+  - New tables: profiles, asset_twins, case_library, knowledge_chunks,
+    usage_log, subscription_events
+  - Enum types: tier_name, subscription_status, fault_class, iso_zone
+  - Triggers: handle_new_user (auto-profile on signup), handle_updated_at
+  - Functions: get_user_tier, get_asset_allowance, increment_analyses_used
+  - RLS enabled on all new tables
+  - nvr_records updated: feature_vector, user_confirmed, confirmed_fault, twin_deviation
+  - pgvector confirmed already enabled
+  - Note: organisations table flagged UNRESTRICTED — RLS to be addressed later
+
+Files changed:
+  - schema.sql (run in Supabase — not committed, utility script)
+  - CONTEXT.md
+
+Latest commit: 20ca27f
+```
+
+## Session Log — 13 Apr 2026 (Auth — modal)
+```
+Completed this session:
+  - auth.js built: signUp, signIn, signOut, getSession, getTier,
+    getProfile, incrementAnalysesUsed, tierAnalysisLimit
+  - Auth/Subscribe modal built inside auth.js (dynamic, no body HTML changes)
+  - Login tab: email + password + error handling + Enter key submit
+  - Subscribe tab: Pro/Fleet Starter/Fleet Pro tier cards + signup flow
+  - Signup creates Supabase account only — Stripe checkout deferred
+  - Nav wired: nav-login-btn, nav-subscribe-btn, nav-user-btn (sign out)
+  - index.html nav patched — IDs added, nav-user-btn div inserted
+
+Files changed:
+  - auth.js (new)
+  - index.html (nav block only)
+  - CONTEXT.md
+
+Latest commit: a0411f4
+```
+
+## Session Log — 14 Apr 2026 (RAG — wiring + production test)
+```
+Completed this session:
+  - Cloudflare Worker extended: POST /embed (Voyage AI) + POST /rag (Supabase RPC)
+  - Cloudflare env vars added: VOYAGE_API_KEY, SUPABASE_SERVICE_KEY, SUPABASE_URL
+  - Worker deployed: version 1ffa12d1-6960-4c3b-8a78-8c49e17c7437
+  - app.js: ragQuery(), buildRagContext(), streamClaude() updated with KB injection
+  - Supabase match_knowledge_chunks recreated as SECURITY DEFINER — RLS fix
+  - index.html + fleet.html: SUPABASE_URL_AUTH / SUPABASE_ANON_KEY_AUTH rename fix
+  - Production test: /embed 200 ✓, /rag 200 ✓, /v1/messages 200 ✓
+  - KB context visible in AI report output
+
+Files changed:
+  - axiomanare-proxy.js
+  - app.js
+  - index.html
+  - fleet.html
+  - CONTEXT.md
+
+Latest commit: a10b773
+```
+
+## Session Log — 15 Apr 2026 (Data — KB CM Summaries)
+```
+Completed this session:
+  - 8 XLSX condition monitoring tables received and anonymised
+  - Converted to MD: CM_SiteA_AHU, CM_SiteA_UTY, CM_SiteA_WWTP,
+    CM_SiteB_AHU, CM_SiteB_UTY, CM_SiteB_MFG, CM_SiteB_TankFarm, CM_SiteC_AHU
+  - 40 new chunks ingested and embedded (voyage-3)
+  - Total KB: 109 chunks
+  - CMAPSSData.zip (NASA turbofan) — assessed, not relevant, skipped
+
+Files changed:
+  - KB/Reports/CM_SiteA_AHU.md (new)
+  - KB/Reports/CM_SiteA_UTY.md (new)
+  - KB/Reports/CM_SiteA_WWTP.md (new)
+  - KB/Reports/CM_SiteB_AHU.md (new)
+  - KB/Reports/CM_SiteB_UTY.md (new)
+  - KB/Reports/CM_SiteB_MFG.md (new)
+  - KB/Reports/CM_SiteB_TankFarm.md (new)
+  - KB/Reports/CM_SiteC_AHU.md (new)
+  - CONTEXT.md
+
+Latest commit: 1067951
+```
+
+## Session Log — 18 Apr 2026 (Data — KB + ML population continued)
+```
+Completed this session:
+  - CWRU YouTube transcript analysed (Amir Resza)
+  - AxiomAnare implementation validated against independent academic review
+  - CWRU_Dataset_Overview.md written and committed to KB/Reference
+
+Files changed:
+  - KB/Reference/CWRU_Dataset_Overview.md (new)
+  - CONTEXT.md
+
+Latest commit: 1547bc4
+```
 
 ## Session Log — 20 Apr 2026 (Data — KB documents assessed and processed)
 ```
 Completed this session:
   - 4 documents assessed for KB inclusion:
-      Scale-Fractal DFA paper (Medina et al.) — EXCLUDED (too academic, wrong scope)
+      Scale-Fractal DFA paper — EXCLUDED (too academic, wrong scope)
       SKF Bearing Installation and Maintenance Guide — INCLUDED
       SKF Bearing Maintenance Handbook — INCLUDED
       VCAT-I-III Reference Material (Mobius Institute 2024) — INCLUDED
-  - VCAT_Reference_Material.md written → KB/Reference/
-      FFT formulas, unit conversions, ISO 20816-3 zone values,
-      transducer selection guide, full fault pattern spectra library,
-      bearing fault stage progression, trial weight formula
-  - SKF_Bearing_Installation_Guide.md written → KB/Manuals/
-      Symptom-to-cause matrix, damage mode classification,
-      lubrication guidance, fit selection impact on vibration
-  - SKF_Bearing_Maintenance_Handbook.md written → KB/Manuals/
-      Failure statistics, vibration monitoring principles,
-      inspection procedure, root cause matrix, diagnostic decision tree
+  - VCAT_Reference_Material.md → KB/Reference/
+  - SKF_Bearing_Installation_Guide.md → KB/Manuals/
+  - SKF_Bearing_Maintenance_Handbook.md → KB/Manuals/
 
 Files changed:
   - KB/Reference/VCAT_Reference_Material.md (new)
   - KB/Manuals/SKF_Bearing_Installation_Guide.md (new)
   - KB/Manuals/SKF_Bearing_Maintenance_Handbook.md (new)
-  - CONTEXT.md (this update)
+  - CONTEXT.md
 
-Latest commit: [fill in after git commit]
+Latest commit: c95c2e3
+```
+
+## Session Log — 21 Apr 2026 (UI — animated logo + responsive layout)
+```
+Completed this session:
+  - Animated canvas logo built (3-gear system + green sine wave)
+  - Replaced static SVG logo in index.html nav
+  - window.addEventListener('load') guard added — fixes animation on GitHub Pages
+  - Full responsive CSS added:
+      Tablet (≤900px): nav collapses, taglines hidden, grids single-column
+      Mobile (≤600px): nav stacks vertically, buttons 2-col grid, hero shrinks
+  - Tested on live mobile device — animation and layout confirmed working
+
+Files changed:
+  - index.html
+
+Latest commit: 46810ec
 
 Next session should:
   - Open "Payments — Stripe + PayPal integration"
-  - Create Stripe products + Price IDs in Stripe Dashboard first
+  - Create Stripe products in Dashboard (no prices yet — TBD)
   - Wire _doSignup() in auth.js → Stripe Checkout Session redirect
   - Handle Stripe webhook → update profiles.tier on subscription activation
-  - Phase 1 is the critical path — data collection is now sufficient to proceed
+  - Tier gating on index.html + fleet.html
 ```
