@@ -2413,22 +2413,36 @@ function buildRadar(faults){
   if(radarInst){radarInst.destroy();radarInst=null;}
   const top = faults.slice(0,8);
   if(!top.length) return;
-  // Colour each point by severity
-  const ptColors = top.map((_,i)=>i===0?'#c0392b':i===1?'#e67e22':i===2?'#e74c3c':'#2471a3');
-  radarInst = new Chart(document.getElementById('radarChart').getContext('2d'),{
+  // Severity-coded dot colours — small clean dots, no white border clutter
+  const severityColor = pct =>
+    pct >= 65 ? '#ef4444' :   // Critical / Strong — red
+    pct >= 40 ? '#f97316' :   // Elevated — orange
+    pct >= 20 ? '#f59e0b' :   // Indicative — amber
+                '#4d9de0';    // Low / Trace — blue
+  const ptColors = top.map(f => severityColor(f.pct));
+
+  const canvas = document.getElementById('radarChart');
+  // Scale up canvas 20% via CSS while keeping Chart.js responsive
+  canvas.style.width  = '120%';
+  canvas.style.height = '120%';
+  canvas.style.marginLeft = '-10%';
+  canvas.style.marginTop  = '-4%';
+
+  radarInst = new Chart(canvas.getContext('2d'),{
     type:'radar',
     data:{
       labels: top.map(f=>f.name.split(' - ').pop().trim().split(' ').slice(0,3).join(' ')),
       datasets:[{
         data: top.map(f=>f.pct),
-        backgroundColor: 'rgba(192,57,43,0.25)',
+        backgroundColor: 'rgba(192,57,43,0.18)',
         borderColor: '#c0392b',
-        borderWidth: 3,
+        borderWidth: 2,
         pointBackgroundColor: ptColors,
-        pointBorderColor: '#ffffff',
-        pointBorderWidth: 2,
-        pointRadius: top.map((_,i)=>i===0?8:6),
-        pointHoverRadius: 10
+        pointBorderColor: ptColors,   // no white ring — dot only
+        pointBorderWidth: 0,
+        pointRadius: 4,               // uniform small dots
+        pointHoverRadius: 7,
+        pointStyle: 'circle'
       }]
     },
     options:{
@@ -2448,18 +2462,18 @@ function buildRadar(faults){
       scales:{
         r:{
           min:0, max:100,
-          grid:{color:'rgba(77,157,224,0.2)'},
-          angleLines:{color:'rgba(77,157,224,0.25)'},
+          grid:{color:'rgba(77,157,224,0.15)'},
+          angleLines:{color:'rgba(77,157,224,0.2)'},
           ticks:{
             backdropColor:'rgba(26,36,53,0.85)',
             color:'#e8edf5',
-            font:{size:10, weight:'bold'},
-            stepSize:20,
+            font:{size:9},
+            stepSize:25,
             showLabelBackdrop:true
           },
           pointLabels:{
             color:'#e8edf5',
-            font:{size:10, weight:'bold'}
+            font:{size:11, weight:'600'}
           }
         }
       }
