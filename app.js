@@ -36,7 +36,7 @@ const Freemium = {
         </div>
         <p style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7f93aa;line-height:1.8;margin-bottom:24px;">
           ${reason === 'limit'
-            ? 'Your free trial included 2 full diagnostic analyses. Upgrade to Professional for unlimited analyses, PDF export, fleet dashboard, and baseline tracking.'
+            ? 'You\'ve completed 5 free diagnostic analyses. Sign up for Professional to continue with unlimited diagnostics, PDF export, and fleet management.'
             : 'PDF export, fleet management, and baseline tracking are available on Professional and Enterprise plans.'}
         </p>
         <div style="display:flex;flex-direction:column;gap:10px;">
@@ -1953,6 +1953,11 @@ function resetApp(){
   const hint = document.getElementById('asset-name-hint');
   if (hint) { hint.style.display = 'none'; hint.textContent = ''; }
   if (window.MC) { window.MC.results = []; }
+  // Clean up freemium overlays
+  const wm = document.getElementById('ax-watermark');
+  if (wm) wm.remove();
+  const tb = document.getElementById('ax-trial-banner');
+  if (tb) tb.remove();
 }
 
 // == RENDER ==
@@ -2632,38 +2637,101 @@ function applyFreemiumGates() {
 
   const count = Freemium.getCount();
 
-  // Hide PDF button
+  // ── PDF button — always locked for free users ─────────────────────────
   const pdfBtn = document.getElementById('pdf-btn');
   if (pdfBtn) {
-    pdfBtn.style.display = 'none';
+    pdfBtn.style.display = '';  // keep visible but intercept click
+    pdfBtn.onclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      Freemium.showUpgradeModal('feature');
+    };
+    // Visual cue — lock badge
+    if (!pdfBtn.dataset.gated) {
+      pdfBtn.dataset.gated = '1';
+      pdfBtn.style.opacity = '0.55';
+      pdfBtn.style.cursor  = 'not-allowed';
+      pdfBtn.title = 'PDF export requires Professional plan';
+    }
   }
 
-  // After limit reached — show upgrade modal
+  // ── Watermark on results screen ───────────────────────────────────────
+  // Applied on every free analysis — removed cleanly when user upgrades
+  const rs = document.getElementById('results-screen');
+  if (rs && !rs.querySelector('#ax-watermark')) {
+    const wm = document.createElement('div');
+    wm.id = 'ax-watermark';
+    wm.setAttribute('aria-hidden', 'true');
+    wm.style.cssText = [
+      'position:fixed',
+      'top:50%',
+      'left:50%',
+      'transform:translate(-50%,-50%) rotate(-35deg)',
+      'font-family:\'Barlow Condensed\',sans-serif',
+      'font-size:clamp(28px,5vw,56px)',
+      'font-weight:800',
+      'letter-spacing:6px',
+      'color:rgba(77,157,224,0.06)',
+      'white-space:nowrap',
+      'pointer-events:none',
+      'user-select:none',
+      'z-index:9000',
+    ].join(';');
+    wm.textContent = 'AXIOMANARE FREE TRIAL';
+    rs.style.position = rs.style.position || 'relative';
+    rs.appendChild(wm);
+  }
+
+  // ── Free trial banner below results header ────────────────────────────
+  const existingBanner = document.getElementById('ax-trial-banner');
+  if (!existingBanner) {
+    const banner = document.createElement('div');
+    banner.id = 'ax-trial-banner';
+    banner.style.cssText = [
+      'display:flex',
+      'align-items:center',
+      'justify-content:space-between',
+      'flex-wrap:wrap',
+      'gap:8px',
+      'background:rgba(77,157,224,0.07)',
+      'border:1px solid rgba(77,157,224,0.22)',
+      'border-radius:8px',
+      'padding:10px 16px',
+      'margin:0 0 18px',
+      'font-family:\'IBM Plex Mono\',monospace',
+      'font-size:10px',
+      'color:#7f93aa',
+    ].join(';');
+
+    const remaining = FREE_ANALYSIS_LIMIT - count;
+    const remainText = remaining > 0
+      ? remaining + ' free ' + (remaining === 1 ? 'analysis' : 'analyses') + ' remaining'
+      : 'Free trial complete';
+
+    banner.innerHTML = `
+      <span>&#9888; Free Trial &nbsp;·&nbsp; ${remainText} &nbsp;·&nbsp; PDF export and fleet management require Professional</span>
+      <a href="landing.html#pricing" style="color:#4d9de0;text-decoration:none;font-weight:600;white-space:nowrap;">View Plans &#8599;</a>
+    `;
+
+    // Insert just above the results content
+    const resultsMeta = document.getElementById('results-meta');
+    if (resultsMeta && resultsMeta.parentNode) {
+      resultsMeta.parentNode.insertBefore(banner, resultsMeta);
+    }
+  } else {
+    // Update remaining count on subsequent analyses
+    const remaining = FREE_ANALYSIS_LIMIT - count;
+    const remainText = remaining > 0
+      ? remaining + ' free ' + (remaining === 1 ? 'analysis' : 'analyses') + ' remaining'
+      : 'Free trial complete';
+    existingBanner.querySelector('span').innerHTML =
+      `&#9888; Free Trial &nbsp;·&nbsp; ${remainText} &nbsp;·&nbsp; PDF export and fleet management require Professional`;
+  }
+
+  // ── After limit reached — show upgrade modal ──────────────────────────
   if (count >= FREE_ANALYSIS_LIMIT) {
-    setTimeout(() => Freemium.showUpgradeModal('limit'), 1800);
+    setTimeout(() => Freemium.showUpgradeModal('limit'), 2000);
   }
-
-  // Apply AI reco blur/truncate after streaming completes
-  setTimeout(() => {
-    const recoEl = document.getElementById('reco-text');
-    if (!recoEl) return;
-    // Already wrapped?
-    if (document.getElementById('ax-reco-gate')) return;
-
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'position:relative;';
-    wrapper.id = 'ax-reco-gate';
-
-    const blur = document.createElement('div');
-    blur.style.cssText = 'position:absolute;bottom:0;left:0;right:0;height:65%;background:linear-gradient(to bottom,transparent,#161b22 60%);display:flex;align-items:flex-end;justify-content:center;padding-bottom:16px;';
-    blur.innerHTML = `<button onclick="Freemium.showUpgradeModal('feature')" style="padding:10px 22px;background:#4d9de0;color:#fff;border:none;border-radius:8px;font-family:'Exo 2',sans-serif;font-weight:700;font-size:13px;cursor:pointer;letter-spacing:0.3px;">&#128274; Unlock Full AI Report</button>`;
-
-    recoEl.parentNode.insertBefore(wrapper, recoEl);
-    wrapper.appendChild(recoEl);
-    wrapper.appendChild(blur);
-    recoEl.style.maxHeight = '120px';
-    recoEl.style.overflow = 'hidden';
-  }, 4000); // wait for streaming to finish
 }
 
 // == FALLBACK REPORT ==
@@ -2786,6 +2854,11 @@ function mdToHtml(md) {
   // Prepares the page for printing then triggers window.print().
   // Print CSS (in index.html <style id="print-style">) handles layout.
   window.axiomPrint = function() {
+    // Freemium gate — PDF/print requires Professional
+    if (Freemium.isFree()) {
+      Freemium.showUpgradeModal('feature');
+      return;
+    }
     // Inject report metadata into print header
     const d = nvr;
     const isMulti = window.MC?.enabled && window.MC?.results?.length > 0;
