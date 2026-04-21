@@ -517,16 +517,23 @@ function mcRenderResults(channelResults, combined, filename) {
 
     ${combined?.crossAxisFindings?.length?`<div class="mc-section-header"><span>&#128279; Cross-Axis Fault Confirmation</span><span class="mc-section-clause">ISO 13373-1:2002 &sect;6.3</span></div><div class="mc-cross-axis-grid">${combined.crossAxisFindings.map(f=>`<div class="mc-cross-card"><div class="mc-cross-loc">${f.location}</div><div class="mc-cross-axes">${f.axes.join(' + ')} axes</div><div class="mc-cross-name">${f.rule.label}</div><div class="mc-cross-pct">${f.boostedPct.toFixed(0)}% <span class="mc-boost-tag">+${f.rule.boostPct}% boosted</span></div><div class="mc-cross-note">${f.rule.note}</div><div class="mc-iso-ref">${f.rule.clause}</div></div>`).join('')}</div>`:''}
 
-    <div class="mc-charts-row">
-      <div class="mc-chart-card">
-        <div class="mc-chart-header"><span class="mc-chart-title">Fault Severity Radar &mdash; All Channels</span><span class="mc-section-clause">ISO 13379-1</span></div>
-        <div class="mc-chart-legend" id="mc-radar-legend"></div>
-        <div style="position:relative;height:250px;padding:6px"><canvas id="mc-radarChart"></canvas></div>
-      </div>
-      <div class="mc-chart-card">
-        <div class="mc-chart-header"><span class="mc-chart-title">FFT Frequency Spectrum &mdash; All Channels</span><span class="mc-section-clause">ISO 13373-2</span></div>
-        <div class="mc-chart-legend" id="mc-fft-legend"></div>
-        <div style="position:relative;height:250px;padding:6px"><canvas id="mc-fftChart"></canvas></div>
+    <div class="mc-charts-row" style="grid-template-columns:1fr;">
+      <div class="mc-chart-card" style="grid-column:1/-1;">
+        <div class="mc-chart-header" style="flex-wrap:wrap;gap:8px;align-items:center;">
+          <span class="mc-chart-title">Fault Severity Radar &amp; FFT Spectrum</span>
+          <div id="mc-chart-tabs" style="display:flex;gap:4px;flex-wrap:wrap;margin-left:8px;"></div>
+          <span class="mc-section-clause" style="margin-left:auto;">ISO 13379-1 &middot; ISO 13373-2</span>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;margin-top:8px;">
+          <div style="flex:1;">
+            <div class="mc-chart-legend" id="mc-radar-legend" style="margin-bottom:4px;"></div>
+            <div style="position:relative;height:270px;padding:6px"><canvas id="mc-radarChart"></canvas></div>
+          </div>
+          <div style="flex:1;">
+            <div class="mc-chart-legend" id="mc-fft-legend" style="margin-bottom:4px;"></div>
+            <div style="position:relative;height:270px;padding:6px"><canvas id="mc-fftChart"></canvas></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -548,8 +555,57 @@ function mcRenderResults(channelResults, combined, filename) {
     </div>
   `;
 
-  requestAnimationFrame(() => { mcBuildRadar(ok); mcBuildFFT(ok); });
+  // Reset tab state and build tabs + charts
+  mcActiveChIdx = -1;
+  requestAnimationFrame(() => {
+    mcBuildChartTabs(ok);
+    mcBuildRadar(ok);
+    mcBuildFFT(ok);
+  });
 }
+
+// ── MC Chart Tab State ───────────────────────────────────────
+// activeChIdx: -1 = All channels, 0..N-1 = single channel
+let mcActiveChIdx = -1;
+let mcChResults = [];  // stored for tab switches
+
+function mcBuildChartTabs(channelResults) {
+  const el = document.getElementById('mc-chart-tabs');
+  if (!el) return;
+  mcChResults = channelResults;
+
+  const tabStyle = (active) =>
+    `display:inline-block;padding:3px 10px;border-radius:5px;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;border:1px solid;transition:all 0.15s;` +
+    (active
+      ? `background:#4d9de0;color:#fff;border-color:#4d9de0;`
+      : `background:transparent;color:#7f93aa;border-color:#30363d;`);
+
+  const tabs = [{ label: 'All', idx: -1 },
+    ...channelResults.map((ch, i) => ({ label: `${ch.location} (${ch.axis})`, idx: i }))
+  ];
+
+  el.innerHTML = tabs.map(t =>
+    `<span id="mc-tab-${t.idx === -1 ? 'all' : t.idx}"
+      style="${tabStyle(mcActiveChIdx === t.idx)}"
+      onclick="mcSetChartTab(${t.idx})">${t.label}</span>`
+  ).join('');
+}
+
+window.mcSetChartTab = function(idx) {
+  mcActiveChIdx = idx;
+  // Update tab styles
+  const tabs = document.querySelectorAll('[id^="mc-tab-"]');
+  tabs.forEach(t => {
+    const tIdx = t.id === 'mc-tab-all' ? -1 : parseInt(t.id.replace('mc-tab-',''));
+    const active = tIdx === idx;
+    t.style.background      = active ? '#4d9de0' : 'transparent';
+    t.style.color           = active ? '#fff'     : '#7f93aa';
+    t.style.borderColor     = active ? '#4d9de0'  : '#30363d';
+  });
+  const subset = idx === -1 ? mcChResults : [mcChResults[idx]];
+  mcBuildRadar(subset);
+  mcBuildFFT(subset);
+};
 
 // ── MC Radar Chart ────────────────────────────────────────────
 function mcBuildRadar(channelResults) {
@@ -561,40 +617,48 @@ function mcBuildRadar(channelResults) {
   channelResults.forEach(ch => (ch.faults||[]).filter(f=>!f.locked).forEach(f => {
     if (!faultMap[f.name] || faultMap[f.name] < f.pct) faultMap[f.name] = f.pct;
   }));
-  const sorted = Object.entries(faultMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const sorted     = Object.entries(faultMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const labels     = sorted.map(([n])=>n.split(' - ').pop().trim().split(' ').slice(0,3).join(' '));
   const faultNames = sorted.map(([n])=>n);
 
-  // Dynamic scale: set max to highest score rounded up to next 10, minimum ceiling of 40
-  // Apply a display floor: remap scores so even low values show spread across the chart.
-  // Floor lifts all non-zero scores to at least 15% of the scale for visibility.
   const maxScore = Math.max(...Object.values(faultMap), 1);
   const scaleMax = Math.max(40, Math.ceil(maxScore / 10) * 10 + 10);
-  const floor = scaleMax * 0.12; // minimum visible radius for any non-zero value
+  const floor    = scaleMax * 0.12;
+  const remap    = pct => pct > 0 ? Math.max(floor, pct) : 0;
 
-  const remap = pct => pct > 0 ? Math.max(floor, pct) : 0;
+  const severityColor = pct =>
+    pct >= 65 ? '#ef4444' : pct >= 40 ? '#f97316' : pct >= 20 ? '#f59e0b' : '#4d9de0';
 
   const datasets = channelResults.map((ch, i) => {
-    const col = MC_CH_COLORS[i] || MC_CH_COLORS[0];
+    // When showing a single channel use severity-coded dots; all channels use channel colours
+    const col = mcActiveChIdx === -1 ? (MC_CH_COLORS[i] || MC_CH_COLORS[0]) : null;
     const data = faultNames.map(n => {
       const f = (ch.faults||[]).find(f => f.name === n);
       return f ? remap(f.pct) : 0;
     });
+    const dotColors = data.map((v, di) => {
+      if (mcActiveChIdx !== -1) {
+        // Single channel — severity coded dots
+        const f = (ch.faults||[]).find(f => f.name === faultNames[di]);
+        return severityColor(f ? f.pct : 0);
+      }
+      return col.line;
+    });
     return {
       label: `${ch.location} (${ch.axis})`,
       data,
-      backgroundColor: col.fill,
-      borderColor: col.line,
+      backgroundColor: col ? col.fill : 'rgba(77,157,224,0.15)',
+      borderColor:     col ? col.line : '#4d9de0',
       borderWidth: 2,
-      pointBackgroundColor: col.line,
-      pointBorderColor: '#fff',
-      pointBorderWidth: 2,
-      pointRadius: 5,
+      pointBackgroundColor: dotColors,
+      pointBorderColor:     dotColors,
+      pointBorderWidth: 0,
+      pointRadius: 4,
       pointHoverRadius: 7,
+      pointStyle: 'circle',
     };
   });
 
-  // Tooltip shows real pct, not remapped value
   const realPct = (datasetIndex, dataIndex) => {
     const ch = channelResults[datasetIndex];
     if (!ch) return 0;
@@ -602,7 +666,7 @@ function mcBuildRadar(channelResults) {
     return f ? f.pct : 0;
   };
 
-  const stepSize = scaleMax <= 40 ? 10 : scaleMax <= 60 ? 10 : 20;
+  const stepSize = scaleMax <= 40 ? 10 : 20;
 
   mcRadarInst = new Chart(canvas.getContext('2d'), {
     type: 'radar',
@@ -614,24 +678,17 @@ function mcBuildRadar(channelResults) {
         tooltip: {
           backgroundColor: '#1a2030', borderColor: '#4d9de0', borderWidth: 1,
           callbacks: {
-            label: c => ` ${c.dataset.label}: ${realPct(c.datasetIndex, c.dataIndex).toFixed(0)}%`,
+            label: c => ` ${c.dataset.label}: ${window.faultIndicatorLabel ? window.faultIndicatorLabel(realPct(c.datasetIndex, c.dataIndex)) : realPct(c.datasetIndex, c.dataIndex).toFixed(0)+'%'} (${realPct(c.datasetIndex, c.dataIndex).toFixed(0)}%)`,
           }
         }
       },
       scales: {
         r: {
-          min: 0,
-          max: scaleMax,
-          ticks: {
-            stepSize,
-            backdropColor: 'rgba(26,36,53,0.8)',
-            color: '#7f93aa',
-            font: { size: 9 },
-            callback: v => v + '%',
-          },
-          grid:        { color: 'rgba(77,157,224,0.2)' },
-          angleLines:  { color: 'rgba(77,157,224,0.25)' },
-          pointLabels: { color: '#e8edf5', font: { size: 9, weight: 'bold' } },
+          min: 0, max: scaleMax,
+          ticks: { stepSize, backdropColor: 'rgba(26,36,53,0.8)', color: '#7f93aa', font: { size: 9 }, callback: v => v + '%' },
+          grid:        { color: 'rgba(77,157,224,0.15)' },
+          angleLines:  { color: 'rgba(77,157,224,0.2)'  },
+          pointLabels: { color: '#e8edf5', font: { size: 10, weight: '600' } },
         }
       }
     }
@@ -649,32 +706,66 @@ function mcBuildFFT(channelResults) {
   if (mcFftInst) { mcFftInst.destroy(); mcFftInst = null; }
   const canvas = document.getElementById('mc-fftChart');
   if (!canvas || !channelResults.length) return;
-  const sr = channelResults[0].sr;
+  const sr     = channelResults[0].sr;
   const fftRef = channelResults[0].fftR;
   if (!fftRef?.freqs?.length) return;
   const maxFreq = sr * 0.45;
-  const step = Math.max(1, Math.floor(fftRef.freqs.length / 300));
+  const step    = Math.max(1, Math.floor(fftRef.freqs.length / 300));
   const freqLabels = [];
-  for (let i=0; i<fftRef.freqs.length && fftRef.freqs[i]<maxFreq; i+=step) freqLabels.push(fftRef.freqs[i].toFixed(1));
-  const datasets = channelResults.map((ch,i)=>{
-    const col = MC_CH_COLORS[i]||MC_CH_COLORS[0];
+  for (let i = 0; i < fftRef.freqs.length && fftRef.freqs[i] < maxFreq; i += step)
+    freqLabels.push(fftRef.freqs[i].toFixed(1));
+
+  // When single channel — colour bars by frequency zone (like single-channel FFT)
+  const datasets = channelResults.map((ch, i) => {
+    const allCols = MC_CH_COLORS;
+    // Find original index in mcChResults for correct colour
+    const origIdx = mcChResults.indexOf(ch);
+    const col = allCols[origIdx >= 0 ? origIdx : i] || allCols[0];
     const data = [];
-    for (let j=0; j<ch.fftR.freqs.length && ch.fftR.freqs[j]<maxFreq; j+=step) data.push(parseFloat(ch.fftR.mags[j].toFixed(5)));
-    return { label:`${ch.location} (${ch.axis})`, data, borderColor:col.line, backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, pointHoverRadius:4, tension:0.1, fill:false };
+    for (let j = 0; j < ch.fftR.freqs.length && ch.fftR.freqs[j] < maxFreq; j += step)
+      data.push(parseFloat(ch.fftR.mags[j].toFixed(5)));
+    return {
+      label: `${ch.location} (${ch.axis})`,
+      data,
+      borderColor:     col.line,
+      backgroundColor: col.fill,
+      borderWidth: channelResults.length === 1 ? 2 : 1.5,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      tension: 0.1,
+      fill: channelResults.length === 1,  // fill under curve when single channel
+    };
   });
-  mcFftInst = new Chart(canvas.getContext('2d'), { type:'line', data:{labels:freqLabels,datasets},
-    options:{ responsive:true, maintainAspectRatio:false, animation:{duration:300},
-      interaction:{ mode:'index', intersect:false },
-      plugins:{ legend:{display:false}, tooltip:{
-        backgroundColor:'#1a2030', borderColor:'#4d9de0', borderWidth:1,
-        callbacks:{
-          title: items => items[0]?.label + ' Hz',
-          label: c => ` ${c.dataset.label}: ${parseFloat(c.raw).toFixed(4)}`,
+
+  mcFftInst = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { labels: freqLabels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a2030', borderColor: '#4d9de0', borderWidth: 1,
+          callbacks: {
+            title:  items => items[0]?.label + ' Hz',
+            label:  c => ` ${c.dataset.label}: ${parseFloat(c.raw).toFixed(4)}`,
+          }
         }
-      }},
-      scales:{ x:{grid:{display:false},ticks:{maxTicksLimit:12,color:'#7f93aa',font:{size:9},callback:(v,i)=>parseFloat(freqLabels[i])%50<3?freqLabels[i]+'Hz':''}}, y:{grid:{color:'rgba(77,157,224,0.1)'},ticks:{color:'#7f93aa',font:{size:9}},min:0} } } });
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxTicksLimit: 12, color: '#7f93aa', font: { size: 9 }, callback: (v,i) => parseFloat(freqLabels[i]) % 50 < 3 ? freqLabels[i] + 'Hz' : '' } },
+        y: { grid: { color: 'rgba(77,157,224,0.1)' }, ticks: { color: '#7f93aa', font: { size: 9 } }, min: 0 }
+      }
+    }
+  });
+
   const leg = document.getElementById('mc-fft-legend');
-  if (leg) leg.innerHTML = channelResults.map((ch,i)=>{const col=MC_CH_COLORS[i]||MC_CH_COLORS[0];return`<div class="mc-legend-item"><div class="mc-legend-line" style="background:${col.line}"></div>${ch.location} (${ch.axis})</div>`;}).join('');
+  if (leg) leg.innerHTML = channelResults.map((ch, i) => {
+    const origIdx = mcChResults.indexOf(ch);
+    const col = MC_CH_COLORS[origIdx >= 0 ? origIdx : i] || MC_CH_COLORS[0];
+    return `<div class="mc-legend-item"><div class="mc-legend-line" style="background:${col.line}"></div>${ch.location} (${ch.axis})</div>`;
+  }).join('');
 }
 
 // ── Stream Claude for multi-channel ──────────────────────────
