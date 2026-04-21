@@ -254,6 +254,62 @@ main{padding-top:160px;position:relative;z-index:1;}
    PRINT / PDF STYLESHEET
    Target: A4 Portrait · Chrome / Edge Save as PDF
    ══════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════
+   RESPONSIVE — Tablet (≤900px) + Mobile (≤600px)
+   ══════════════════════════════════════════════════════ */
+
+/* ── Tablet ── */
+@media(max-width:900px){
+  nav{height:auto;min-height:64px;padding:10px 16px;flex-wrap:wrap;gap:8px;overflow:visible;}
+  .logo{flex-shrink:0;}
+  #nav-logo{width:72px !important;height:55px !important;}
+  .logo-tag1,.logo-tag2{display:none;}
+  .logo span{font-size:1.6rem !important;}
+  .nav-right{margin-left:auto;align-items:flex-end;gap:6px;}
+  .nav-right>div:first-child{display:none !important;} /* hide free badge row on tablet */
+  .nav-right>div:nth-child(2){flex-wrap:wrap;gap:6px;}
+  .nav-tag{display:none;}
+  main{padding-top:80px;}
+  #upload-screen{min-height:calc(100vh - 80px);}
+  .hero-sub{white-space:normal !important;}
+  .class-grid{grid-template-columns:repeat(3,1fr) !important;}
+  .param-row{grid-template-columns:1fr !important;}
+  .grid-top{grid-template-columns:1fr !important;}
+  .grid-charts{grid-template-columns:1fr !important;}
+  .grid-mid{grid-template-columns:1fr !important;}
+}
+
+/* ── Mobile ── */
+@media(max-width:600px){
+  nav{padding:8px 12px;gap:6px;}
+  #nav-logo{width:56px !important;height:43px !important;}
+  .logo span{font-size:1.35rem !important;}
+  /* Stack nav: logo row on top, buttons below */
+  nav{flex-direction:column;align-items:stretch;}
+  .logo{justify-content:flex-start;}
+  .nav-right{margin-left:0;align-items:stretch;width:100%;}
+  .nav-right>div:nth-child(2){display:grid;grid-template-columns:1fr 1fr;gap:6px;width:100%;}
+  .nav-right>div:nth-child(2) a,
+  .nav-right>div:nth-child(2) div{text-align:center;justify-content:center;}
+  /* Hide Fleet Dashboard on mobile — too wide */
+  .nav-right>div:nth-child(2) a[href="fleet.html"]{display:none !important;}
+  /* Tighten button padding */
+  .nav-right a,.nav-right div[id="nav-user-btn"]{padding:7px 10px !important;font-size:11px !important;}
+  main{padding-top:130px;}
+  #upload-screen{min-height:calc(100vh - 130px);padding:20px 12px;}
+  .hero-title{font-size:28px !important;}
+  .hero-sub{white-space:normal !important;font-size:12px;}
+  .steps-wrap{max-width:100%;}
+  .class-grid{grid-template-columns:repeat(2,1fr) !important;}
+  .step-note{display:none;}
+  .run-card{flex-direction:column;align-items:stretch;}
+  .run-btn{justify-content:center;}
+  .results-header{flex-direction:column;}
+  .nvr-grid{grid-template-columns:1fr 1fr;}
+  #processing-screen{padding:20px 12px;}
+  .proc-card{padding:18px 14px;}
+}
+
 @media print {
   /* ── Page setup ── */
   @page { size: A4 portrait; margin: 14mm 12mm 18mm 12mm; }
@@ -437,8 +493,8 @@ main{padding-top:160px;position:relative;z-index:1;}
       <div style="display:flex;align-items:baseline;gap:0;line-height:1;">
         <span style="font-family:'Barlow Condensed',sans-serif;font-size:2.1rem;font-weight:800;letter-spacing:-.5px;color:#4d9de0;">Axiom</span><span style="font-family:'Barlow Condensed',sans-serif;font-size:2.1rem;font-weight:800;letter-spacing:-.5px;color:#7bbde8;">Anare</span>
       </div>
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#3a6a9a;letter-spacing:1.4px;white-space:nowrap;">AGNOSTIC · AUGMENTED DATA ANALYSING</div>
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#5a8ab0;white-space:nowrap;">Condition monitoring for rotary motors &amp; pumps</div>
+      <div class="logo-tag1" style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#3a6a9a;letter-spacing:1.4px;white-space:nowrap;">AGNOSTIC · AUGMENTED DATA ANALYSING</div>
+      <div class="logo-tag2" style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#5a8ab0;white-space:nowrap;">Condition monitoring for rotary motors &amp; pumps</div>
     </div>
   </div>
   <script>
