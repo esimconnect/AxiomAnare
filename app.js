@@ -2973,23 +2973,24 @@ function mdToHtml(md) {
     }
     const safeZone = zoneLabel;
     const safeName = (assetName || 'this asset').replace(/[<>]/g, '');
-    toast.innerHTML =
-      '<div style="display:flex;align-items:flex-start;gap:12px;">' +
-        '<div style="font-size:20px;flex-shrink:0;margin-top:1px;">&#128204;</div>' +
-        '<div style="flex:1;min-width:0;">' +
-          '<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#e8edf5;margin-bottom:4px;">Set as baseline?</div>' +
-          '<div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#7f93aa;line-height:1.6;margin-bottom:14px;">' +
-            'This Zone ' + safeZone + ' result looks healthy. Save as reference baseline for ' +
-            '<strong style="color:#e8edf5;">' + safeName + '</strong>' +
-            ' to enable deviation tracking on future readings.' +
-            '<span style="color:#4d9de0;display:block;margin-top:3px;">ISO 13373-2:2016 §8.1</span>' +
-          '</div>' +
-          '<div style="display:flex;gap:8px;">' +
-            '<button id="ax-bl-confirm" style="flex:1;padding:9px 0;background:#4d9de0;color:#fff;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;" onmouseover="this.style.background='#2b7cc4'" onmouseout="this.style.background='#4d9de0'">&#10003; Set Baseline</button>' +
-            '<button id="ax-bl-dismiss" style="padding:9px 14px;background:transparent;color:#7f93aa;border:1px solid #30363d;border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;" onmouseover="this.style.borderColor='#7f93aa'" onmouseout="this.style.borderColor='#30363d'">Not now</button>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
+    toast.innerHTML = [
+      "<div style='display:flex;align-items:flex-start;gap:12px;'>",
+        "<div style='font-size:20px;flex-shrink:0;margin-top:1px;'>&#128204;</div>",
+        "<div style='flex:1;min-width:0;'>",
+          "<div style='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:#e8edf5;margin-bottom:4px;'>Set as baseline?</div>",
+          "<div style='font-family:IBM Plex Mono,monospace;font-size:10px;color:#7f93aa;line-height:1.6;margin-bottom:14px;'>",
+            "This Zone " + safeZone + " result looks healthy. Save as reference baseline for ",
+            "<strong style='color:#e8edf5;'>" + safeName + "</strong>",
+            " to enable deviation tracking on future readings.",
+            "<span style='color:#4d9de0;display:block;margin-top:3px;'>ISO 13373-2:2016 §8.1</span>",
+          "</div>",
+          "<div style='display:flex;gap:8px;'>",
+            "<button id='ax-bl-confirm' style='flex:1;padding:9px 0;background:#4d9de0;color:#fff;border:none;border-radius:8px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;cursor:pointer;' onmouseover='this.style.background=\"#2b7cc4\"' onmouseout='this.style.background=\"#4d9de0\"'> &#10003; Set Baseline</button>",
+            "<button id='ax-bl-dismiss' style='padding:9px 14px;background:transparent;color:#7f93aa;border:1px solid #30363d;border-radius:8px;font-family:IBM Plex Mono,monospace;font-size:10px;cursor:pointer;' onmouseover='this.style.borderColor=\"#7f93aa\"' onmouseout='this.style.borderColor=\"#30363d\"'> Not now</button>",
+          "</div>",
+        "</div>",
+      "</div>"
+    ].join("");
     document.body.appendChild(toast);
     document.getElementById('ax-bl-dismiss').onclick = function(){ toast.remove(); };
     document.getElementById('ax-bl-confirm').onclick = async function() {
