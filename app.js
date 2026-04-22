@@ -896,11 +896,31 @@ async function runPipeline(raw, filename) {
   // Detect what type of data we have from column headers
   const dataTypes = detectDataTypes(parsed.allHeaders || [parsed.colName]);
   const dataBanner = getDataTypeBanner(dataTypes);
+  // ISO 13373-2:2016 §7.2 — remove DC offset from raw signal before analysis.
+  // Acceleration sensors (g, m/s²) often carry a gravity offset or amplifier DC bias.
+  // RMS computed on a DC-offset signal is dominated by the offset, not the vibration.
+  // Detrend here ensures RMS, kurtosis, CF, and zone classification reflect only
+  // the dynamic vibration content, not the static offset.
+  const rawMean = parsed.values.reduce((a,b)=>a+b,0) / parsed.values.length;
+  // Linear detrend on full signal
+  const pN = parsed.values.length;
+  let pSx=0,pSy=0,pSxy=0,pSxx=0;
+  for(let i=0;i<pN;i++){pSx+=i;pSy+=parsed.values[i];pSxy+=i*parsed.values[i];pSxx+=i*i;}
+  const pDenom = pN*pSxx - pSx*pSx;
+  const pSlope = pDenom!==0 ? (pN*pSxy - pSx*pSy)/pDenom : 0;
+  const pIntercept = (pSy - pSlope*pSx)/pN;
+  const detrended = parsed.values.map((v,i) => v - (pIntercept + pSlope*i));
+  // ISO 13373-2:2016 §7.2 — detrend full raw signal before RMS/kurtosis/CF/zone.
+  const pN = parsed.values.length;
+  let pSx=0,pSy=0,pSxy=0,pSxx=0;
+  for(let i=0;i<pN;i++){pSx+=i;pSy+=parsed.values[i];pSxy+=i*parsed.values[i];pSxx+=i*i;}
+  const pDen=pN*pSxx-pSx*pSx, pSlope=pDen?((pN*pSxy-pSx*pSy)/pDen):0, pInt=(pSy-pSlope*pSx)/pN;
+  const detrendedRaw = parsed.values.map((v,i)=>v-(pInt+pSlope*i));
   let vals;
   if (['g','m/s2','mg'].includes(parsed.unit)) {
-    const rf = computeFFT(parsed.values, sr); const hz = detectShaft(rf);
-    vals = parsed.values.map(v => toCanonicalUnit(v, parsed.unit, hz));
-  } else { vals = parsed.values.map(v => toCanonicalUnit(v, parsed.unit, null)); }
+    const rf = computeFFT(detrendedRaw, sr); const hz = detectShaft(rf);
+    vals = detrendedRaw.map(v => toCanonicalUnit(v, parsed.unit, hz));
+  } else { vals = detrendedRaw.map(v => toCanonicalUnit(v, parsed.unit, null)); }
   doneStage(1, vals.length+' samples . '+parsed.unit+'->'+cu+' . '+sr+'Hz');
 
   // Stage 2  -  Baseline Comparison
@@ -1002,7 +1022,7 @@ async function runPipeline(raw, filename) {
   // Stage 5  -  Fault Classification
   await activateStage(5);
   const fftR = computeFFT(vals, sr);
-  fftR._rawSignal = vals;   // raw signal attached for envelope demodulation -- ISO 13373-2:2016 §7.5
+  fftR._rawSignal = vals;   // detrended signal for envelope demodulation — ISO 13373-2:2016 §7.5
   // Shaft frequency: wizard RPM input takes priority over detectShaft()
   if (machineParams.shaftHz > 0) fftR._shaftHz = machineParams.shaftHz;
   const shaftHz = machineParams.shaftHz > 0 ? machineParams.shaftHz : detectShaft(fftR);
@@ -1084,14 +1104,10 @@ async function runPipeline(raw, filename) {
   applyFreemiumGates();
   streamClaude();
 
-  // Baseline prompt — show after a clean Zone A/B result when no baseline existed
-  // ISO 13373-2:2016 §8.1: baseline from stable healthy operating state
+  // Baseline prompt — Zone A/B, no existing baseline, not a manual baseline upload
   if (!isBaselineUpload && !baseline && ['A','B'].includes(zoneRow.zone_label)) {
-    // Small delay so results are visible before prompt appears
-    setTimeout(() => {
-      if (window.showBaselinePrompt) {
-        window.showBaselinePrompt(machineParams.assetName || filename, zoneRow.zone_label);
-      }
+    setTimeout(function() {
+      if (window.showBaselinePrompt) window.showBaselinePrompt(machineParams.assetName||filename, zoneRow.zone_label);
     }, 3500);
   }
 }
@@ -1249,7 +1265,19 @@ function parseData(raw) {
 // == FFT ==
 function computeFFT(signal, fs) {
   const N = Math.pow(2, Math.floor(Math.log2(Math.min(signal.length, 8192))));
-  const w = signal.slice(0,N).map((v,i) => v*(0.5-0.5*Math.cos(2*Math.PI*i/(N-1))));
+  // ISO 13373-2:2016 §7.2 — signal conditioning: remove DC offset and linear trend
+  // before windowing. A non-zero mean creates a dominant 0Hz bin that masks all
+  // fault frequencies. Linear detrend removes slow drift (gravity offset in g-unit data).
+  const seg = signal.slice(0, N);
+  const dcMean = seg.reduce((a, b) => a + b, 0) / N;
+  // Linear detrend: fit y = a + b*i, subtract trend
+  let sx = 0, sy = 0, sxy = 0, sxx = 0;
+  for (let i = 0; i < N; i++) { sx += i; sy += seg[i]; sxy += i * seg[i]; sxx += i * i; }
+  const denom = N * sxx - sx * sx;
+  const slope  = denom !== 0 ? (N * sxy - sx * sy) / denom : 0;
+  const intercept = (sy - slope * sx) / N;
+  const detrended = seg.map((v, i) => v - (intercept + slope * i));
+  const w = detrended.map((v, i) => v * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (N - 1))));
   function fft(re,im){const n=re.length;if(n<=1)return;const ee=[],eo=[],ie=[],io=[];for(let i=0;i<n/2;i++){ee.push(re[2*i]);eo.push(re[2*i+1]);ie.push(im[2*i]);io.push(im[2*i+1]);}fft(ee,ie);fft(eo,io);for(let k=0;k<n/2;k++){const a=-2*Math.PI*k/n,c=Math.cos(a),s=Math.sin(a),tr=c*eo[k]-s*io[k],ti=c*io[k]+s*eo[k];re[k]=ee[k]+tr;im[k]=ie[k]+ti;re[k+n/2]=ee[k]-tr;im[k+n/2]=ie[k]-ti;}}
   const re=[...w],im=new Array(N).fill(0); fft(re,im);
   const freqs=[],mags=[];
@@ -1744,11 +1772,9 @@ function classifyFaults(fft, cf, kurt, dataTypes, machineParams) {
     ? Math.max(berAvg(envRace.freqs, envRace.mags, bpfoHz, 0.15, 3),
                berAvg(envRace.freqs, envRace.mags, bpfiHz, 0.15, 3))
     : 0;
-  const rollHighBandPre = CONFIG.envelope_bands ? CONFIG.envelope_bands.rollHigh : { lo: 1800, hi: 5000 };
-  const envRollHighPre  = computeEnvelopeFFT(rollHighBandPre.lo, rollHighBandPre.hi);
-  const bsfBerLow  = envRoll         ? berAvg(envRoll.freqs,         envRoll.mags,         bsfHz, 0.15, 3) : 0;
-  const bsfBerHigh = envRollHighPre  ? berAvg(envRollHighPre.freqs,  envRollHighPre.mags,  bsfHz, 0.15, 3) : 0;
-  const bsfBer     = Math.max(bsfBerLow, bsfBerHigh);
+  const bsfBerRoll = envRoll ? berAvg(envRoll.freqs, envRoll.mags, bsfHz, 0.15, 3) : 0;
+  const bsfBerRace = envRace ? berAvg(envRace.freqs, envRace.mags, bsfHz, 0.15, 3) : 0;
+  const bsfBer     = Math.max(bsfBerRoll, bsfBerRace);
   const ftfBer1 = envRoll ? ber(envRoll.freqs, envRoll.mags, ftfHz, 0.20, 3) : 0;
   const maxRollBer = Math.max(bsfBer, ftfBer1);
   const maxBearingBer = Math.max(maxRaceBer, maxRollBer);
@@ -1822,33 +1848,28 @@ function classifyFaults(fft, cf, kurt, dataTypes, machineParams) {
 
     // ── BEARING — ROLLING ELEMENT (BSF) ──────────────────────────────────
     // ISO 13379-1:2012 Annex A §A.3 — roll band envelope BER
-    // Ball defects produce modulation that can appear anywhere in 200–5000 Hz
-    // depending on machine speed. Strategy:
-    //   1. Primary: roll envelope BER (200–1800 Hz) — 3 harmonics
-    //   2. Secondary: rollHigh envelope (1800–5000 Hz) — for higher-speed machines
-    //   3. Fallback: direct FFT BER at BSF frequency — catches missed envelope demod
-    //   4. FTF cage modulation confirms ball defect when BER elevated
+    // FTF cage modulation: when FTF BER elevated, use as confirmation
+    // and take max(BSF, FTF) BER as effective score — handles case where
+    // ball defect excites cage motion before BSF frequency dominates.
     } else if (rule.rule_id === 'r_bsf') {
-      const eArr     = envRoll;
-      // Compute rollHigh envelope on demand — only for BSF
+      // 4-path BSF detection: ball impacts excite race-band resonance same as race faults
+      const nHarm = Math.max(rule.harmonic_count, 3);
+      const bsfRace = envRace ? berAvg(envRace.freqs, envRace.mags, fc, rule.bandwidth_pct, nHarm) : 0;
+      const bsfRoll = envRoll ? berAvg(envRoll.freqs, envRoll.mags, fc, rule.bandwidth_pct, nHarm) : 0;
       const rollHighBand = CONFIG.envelope_bands ? CONFIG.envelope_bands.rollHigh : { lo: 1800, hi: 5000 };
       const envRollHigh  = computeEnvelopeFFT(rollHighBand.lo, rollHighBand.hi);
-      // Search 3 harmonics (vs original 2) — ISO 13379-1:2012 §A.3 ball defects
-      const nHarm = Math.max(rule.harmonic_count, 3);
-      const bsfE     = eArr        ? berAvg(eArr.freqs,        eArr.mags,        fc, rule.bandwidth_pct, nHarm) : 0;
-      const bsfEHigh = envRollHigh ? berAvg(envRollHigh.freqs, envRollHigh.mags, fc, rule.bandwidth_pct, nHarm) : 0;
-      // Direct raw FFT BER fallback — ball defects sometimes show in velocity spectrum
+      const bsfHigh = envRollHigh ? berAvg(envRollHigh.freqs, envRollHigh.mags, fc, rule.bandwidth_pct, nHarm) : 0;
       const bsfDirect = berAvg(freqs, mags, fc, rule.bandwidth_pct, nHarm);
-      const ftfE  = eArr ? ber(eArr.freqs, eArr.mags, ftfHz, 0.20, 3) : 0;
+      const ftfRoll = envRoll ? ber(envRoll.freqs, envRoll.mags, ftfHz, 0.20, 3) : 0;
+      const ftfRace = envRace ? ber(envRace.freqs, envRace.mags, ftfHz, 0.20, 3) : 0;
+      const ftfE    = Math.max(ftfRoll, ftfRace);
       h2 = nHarm;
-      // Take best BER across all three detection paths
-      const bestBsfBer = Math.max(bsfE, bsfEHigh, bsfDirect * 0.7); // direct FFT at 70% weight (less selective)
-      // ISO 13379-1:2012 §A.3: FTF modulation confirms ball defect — lower gate from 1.3 to 1.1
+      const bestBsfBer = Math.max(bsfRace, bsfRoll, bsfHigh, bsfDirect * 0.7);
       const ftfConfirmed = ftfE > 1.1;
       const effectiveBer = ftfConfirmed ? Math.max(bestBsfBer, ftfE) : bestBsfBer;
       sc = berToScore(effectiveBer, rule.confidence_weight);
       sc += Math.round((cfB + kB) * rule.confidence_weight * snrFactor);
-      if (ftfConfirmed) sc = Math.round(sc * 1.25);  // slightly stronger boost than before
+      if (ftfConfirmed) sc = Math.round(sc * 1.25);
 
 
     // ── BEARING — CAGE DEFECT (FTF) ──────────────────────────────────────
@@ -2952,114 +2973,59 @@ function mdToHtml(md) {
   };
 
   // == BASELINE PROMPT ==
-  // Show "Set as baseline?" toast after a clean analysis.
-  // Fires when: zone is A or B, no baseline existed for this asset, and user did NOT
-  // manually tick the baseline checkbox (isBaselineUpload was false).
-  // ISO 13373-2:2016 §8.1 — baseline should be established from stable operating condition.
   window.showBaselinePrompt = function(assetName, zoneLabel) {
-    // Only prompt for Zone A or B (stable / healthy condition)
     if (!['A','B'].includes(zoneLabel)) return;
-    // Don't show if already set this run
     const existing = document.getElementById('ax-baseline-prompt');
     if (existing) existing.remove();
-
     const toast = document.createElement('div');
     toast.id = 'ax-baseline-prompt';
-    toast.style.cssText = [
-      'position:fixed',
-      'bottom:28px',
-      'right:28px',
-      'z-index:8000',
-      'background:#161b22',
-      'border:1px solid rgba(77,157,224,0.5)',
-      'border-radius:14px',
-      'padding:20px 22px',
-      'max-width:340px',
-      'box-shadow:0 8px 32px rgba(0,0,0,0.5)',
-      'animation:slideUpIn 0.35s cubic-bezier(0.22,1,0.36,1) both',
-    ].join(';');
-
-    // Add keyframe if not present
+    toast.style.cssText = 'position:fixed;bottom:28px;right:28px;z-index:8000;background:#161b22;border:1px solid rgba(77,157,224,0.5);border-radius:14px;padding:20px 22px;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,0.5);animation:slideUpIn 0.35s cubic-bezier(0.22,1,0.36,1) both;';
     if (!document.getElementById('ax-baseline-kf')) {
-      const s = document.createElement('style');
-      s.id = 'ax-baseline-kf';
-      s.textContent = `@keyframes slideUpIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}`;
+      const s = document.createElement('style'); s.id = 'ax-baseline-kf';
+      s.textContent = '@keyframes slideUpIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}';
       document.head.appendChild(s);
     }
-
-    toast.innerHTML = `
-      <div style="display:flex;align-items:flex-start;gap:12px;">
-        <div style="font-size:20px;flex-shrink:0;margin-top:1px;">&#128204;</div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#e8edf5;margin-bottom:4px;">
-            Set as baseline?
-          </div>
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#7f93aa;line-height:1.6;margin-bottom:14px;">
-            This Zone ${zoneLabel} result looks healthy. Save it as the reference baseline for
-            <strong style="color:#e8edf5;">${assetName || 'this asset'}</strong>
-            to enable deviation tracking on future readings.
-            <span style="color:#4d9de0;display:block;margin-top:3px;">ISO 13373-2:2016 §8.1</span>
-          </div>
-          <div style="display:flex;gap:8px;">
-            <button id="ax-bl-confirm" style="flex:1;padding:9px 0;background:#4d9de0;color:#fff;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;transition:background 0.15s;"
-              onmouseover="this.style.background='#2b7cc4'" onmouseout="this.style.background='#4d9de0'">
-              &#10003; Set Baseline
-            </button>
-            <button id="ax-bl-dismiss" style="padding:9px 14px;background:transparent;color:#7f93aa;border:1px solid #30363d;border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;white-space:nowrap;"
-              onmouseover="this.style.borderColor='#7f93aa'" onmouseout="this.style.borderColor='#30363d'">
-              Not now
-            </button>
-          </div>
-        </div>
-      </div>`;
-
+    const safeZone = zoneLabel;
+    const safeName = (assetName || 'this asset').replace(/[<>]/g, '');
+    toast.innerHTML =
+      '<div style="display:flex;align-items:flex-start;gap:12px;">' +
+        '<div style="font-size:20px;flex-shrink:0;margin-top:1px;">&#128204;</div>' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#e8edf5;margin-bottom:4px;">Set as baseline?</div>' +
+          '<div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#7f93aa;line-height:1.6;margin-bottom:14px;">' +
+            'This Zone ' + safeZone + ' result looks healthy. Save as reference baseline for ' +
+            '<strong style="color:#e8edf5;">' + safeName + '</strong>' +
+            ' to enable deviation tracking on future readings.' +
+            '<span style="color:#4d9de0;display:block;margin-top:3px;">ISO 13373-2:2016 §8.1</span>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<button id="ax-bl-confirm" style="flex:1;padding:9px 0;background:#4d9de0;color:#fff;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;" onmouseover="this.style.background='#2b7cc4'" onmouseout="this.style.background='#4d9de0'">&#10003; Set Baseline</button>' +
+            '<button id="ax-bl-dismiss" style="padding:9px 14px;background:transparent;color:#7f93aa;border:1px solid #30363d;border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;" onmouseover="this.style.borderColor='#7f93aa'" onmouseout="this.style.borderColor='#30363d'">Not now</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
     document.body.appendChild(toast);
-
-    document.getElementById('ax-bl-dismiss').onclick = () => toast.remove();
-    document.getElementById('ax-bl-confirm').onclick = async () => {
+    document.getElementById('ax-bl-dismiss').onclick = function(){ toast.remove(); };
+    document.getElementById('ax-bl-confirm').onclick = async function() {
       const btn = document.getElementById('ax-bl-confirm');
-      btn.textContent = 'Saving…';
-      btn.disabled = true;
+      btn.textContent = 'Saving…'; btn.disabled = true;
       try {
-        // Resolve asset (same call as pipeline — returns existing record)
         const mp = nvr.machineParams || {};
-        const asset = await resolveAsset(
-          mp.assetName || nvr.assetName || 'unknown',
-          window.selClassId || 'cls_ii',
-          mp.equipType || '',
-          mp.measPoint || ''
-        );
+        const asset = await resolveAsset(mp.assetName||nvr.assetName||'unknown', window.selClassId||'cls_ii', mp.equipType||'', mp.measPoint||'');
         if (asset && asset.id) {
-          // Build baseline from current reading + any Zone A history
           const hist = nvr._history || [];
-          const zoneAHist = hist.filter(r => r.iso_zone === 'A');
-          const records = [...zoneAHist, { rms_mms: nvr.rms }];
+          const records = hist.filter(function(r){return r.iso_zone==='A';}).concat([{ rms_mms: nvr.rms }]);
           await saveBaseline(asset.id, records);
-          // Mark nvr so Supabase record is flagged
-          await SB.patch('nvr_records',
-            'asset_id=eq.'+asset.id+'&order=recorded_at.desc&limit=1',
-            { is_baseline: true }
-          ).catch(()=>{});
-          btn.textContent = '&#10003; Baseline saved';
-          btn.style.background = '#22c55e';
-          setTimeout(() => toast.remove(), 2200);
+          await SB.patch('nvr_records','asset_id=eq.'+asset.id+'&order=recorded_at.desc&limit=1',{is_baseline:true}).catch(function(){});
+          btn.innerHTML = '&#10003; Baseline saved'; btn.style.background = '#22c55e';
+          setTimeout(function(){ toast.remove(); }, 2200);
         } else {
-          btn.textContent = '(!) Login to save';
-          btn.style.background = '#e74c3c';
-          setTimeout(() => {
-            toast.innerHTML += `<div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#7f93aa;text-align:center;">
-              <a href="fleet.html" style="color:#4d9de0;text-decoration:none;">Sign in to Fleet Dashboard</a> to save baselines</div>`;
-          }, 400);
+          btn.textContent = '(!) Login to save'; btn.style.background = '#e74c3c';
+          setTimeout(function(){ toast.innerHTML += '<div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#7f93aa;text-align:center;"><a href="fleet.html" style="color:#4d9de0;text-decoration:none;">Sign in to Fleet Dashboard</a> to save baselines</div>'; }, 400);
         }
-      } catch(e) {
-        btn.textContent = '(!) Error — retry';
-        btn.style.background = '#e74c3c';
-        setTimeout(() => toast.remove(), 3000);
-      }
+      } catch(e){ btn.textContent='(!) Error'; btn.style.background='#e74c3c'; setTimeout(function(){ toast.remove(); },3000); }
     };
-
-    // Auto-dismiss after 20 seconds
-    setTimeout(() => { if (document.getElementById('ax-baseline-prompt')) toast.remove(); }, 20000);
+    setTimeout(function(){ if(document.getElementById('ax-baseline-prompt')) toast.remove(); }, 20000);
   };
 
   // == PRINT RADAR / FFT COLOUR OVERRIDE ==
