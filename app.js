@@ -896,20 +896,6 @@ async function runPipeline(raw, filename) {
   // Detect what type of data we have from column headers
   const dataTypes = detectDataTypes(parsed.allHeaders || [parsed.colName]);
   const dataBanner = getDataTypeBanner(dataTypes);
-  // ISO 13373-2:2016 §7.2 — remove DC offset from raw signal before analysis.
-  // Acceleration sensors (g, m/s²) often carry a gravity offset or amplifier DC bias.
-  // RMS computed on a DC-offset signal is dominated by the offset, not the vibration.
-  // Detrend here ensures RMS, kurtosis, CF, and zone classification reflect only
-  // the dynamic vibration content, not the static offset.
-  const rawMean = parsed.values.reduce((a,b)=>a+b,0) / parsed.values.length;
-  // Linear detrend on full signal
-  const pN = parsed.values.length;
-  let pSx=0,pSy=0,pSxy=0,pSxx=0;
-  for(let i=0;i<pN;i++){pSx+=i;pSy+=parsed.values[i];pSxy+=i*parsed.values[i];pSxx+=i*i;}
-  const pDenom = pN*pSxx - pSx*pSx;
-  const pSlope = pDenom!==0 ? (pN*pSxy - pSx*pSy)/pDenom : 0;
-  const pIntercept = (pSy - pSlope*pSx)/pN;
-  const detrended = parsed.values.map((v,i) => v - (pIntercept + pSlope*i));
   // ISO 13373-2:2016 §7.2 — detrend full raw signal before RMS/kurtosis/CF/zone.
   const pN = parsed.values.length;
   let pSx=0,pSy=0,pSxy=0,pSxx=0;
