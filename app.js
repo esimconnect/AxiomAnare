@@ -239,7 +239,7 @@ const CONFIG = {
   // Envelope demodulation bands -- ISO 13373-2:2016 §7.5
   // race: high-freq resonance band for race faults (BPFO, BPFI)
   // roll: mid-freq band for rolling element / cage faults (BSF, FTF)
-  envelope_bands: { race: { lo: 3000, hi: 4500 }, roll: { lo: 700, hi: 1800 } },
+  envelope_bands: { race: { lo: 3000, hi: 4500 }, roll: { lo: 200, hi: 1800 }, rollHigh: { lo: 1800, hi: 5000 } },
 
   // Bearing BER suppression threshold -- ISO 13379-1:2012 §5.2
   // When bearing envelope BER > threshold, mechanical scores capped at 10%
@@ -1083,6 +1083,17 @@ async function runPipeline(raw, filename) {
   // Apply AI reco gate — truncate for free users
   applyFreemiumGates();
   streamClaude();
+
+  // Baseline prompt — show after a clean Zone A/B result when no baseline existed
+  // ISO 13373-2:2016 §8.1: baseline from stable healthy operating state
+  if (!isBaselineUpload && !baseline && ['A','B'].includes(zoneRow.zone_label)) {
+    // Small delay so results are visible before prompt appears
+    setTimeout(() => {
+      if (window.showBaselinePrompt) {
+        window.showBaselinePrompt(machineParams.assetName || filename, zoneRow.zone_label);
+      }
+    }, 3500);
+  }
 }
 
 // == MAT FILE PARSER ==
@@ -1733,7 +1744,11 @@ function classifyFaults(fft, cf, kurt, dataTypes, machineParams) {
     ? Math.max(berAvg(envRace.freqs, envRace.mags, bpfoHz, 0.15, 3),
                berAvg(envRace.freqs, envRace.mags, bpfiHz, 0.15, 3))
     : 0;
-  const bsfBer  = envRoll ? berAvg(envRoll.freqs, envRoll.mags, bsfHz, 0.15, 2) : 0;
+  const rollHighBandPre = CONFIG.envelope_bands ? CONFIG.envelope_bands.rollHigh : { lo: 1800, hi: 5000 };
+  const envRollHighPre  = computeEnvelopeFFT(rollHighBandPre.lo, rollHighBandPre.hi);
+  const bsfBerLow  = envRoll         ? berAvg(envRoll.freqs,         envRoll.mags,         bsfHz, 0.15, 3) : 0;
+  const bsfBerHigh = envRollHighPre  ? berAvg(envRollHighPre.freqs,  envRollHighPre.mags,  bsfHz, 0.15, 3) : 0;
+  const bsfBer     = Math.max(bsfBerLow, bsfBerHigh);
   const ftfBer1 = envRoll ? ber(envRoll.freqs, envRoll.mags, ftfHz, 0.20, 3) : 0;
   const maxRollBer = Math.max(bsfBer, ftfBer1);
   const maxBearingBer = Math.max(maxRaceBer, maxRollBer);
@@ -1807,19 +1822,33 @@ function classifyFaults(fft, cf, kurt, dataTypes, machineParams) {
 
     // ── BEARING — ROLLING ELEMENT (BSF) ──────────────────────────────────
     // ISO 13379-1:2012 Annex A §A.3 — roll band envelope BER
-    // FTF cage modulation: when FTF BER elevated, use as confirmation
-    // and take max(BSF, FTF) BER as effective score — handles case where
-    // ball defect excites cage motion before BSF frequency dominates.
+    // Ball defects produce modulation that can appear anywhere in 200–5000 Hz
+    // depending on machine speed. Strategy:
+    //   1. Primary: roll envelope BER (200–1800 Hz) — 3 harmonics
+    //   2. Secondary: rollHigh envelope (1800–5000 Hz) — for higher-speed machines
+    //   3. Fallback: direct FFT BER at BSF frequency — catches missed envelope demod
+    //   4. FTF cage modulation confirms ball defect when BER elevated
     } else if (rule.rule_id === 'r_bsf') {
-      const eArr  = envRoll;
-      const bsfE  = eArr ? berAvg(eArr.freqs, eArr.mags, fc, rule.bandwidth_pct, rule.harmonic_count) : 0;
+      const eArr     = envRoll;
+      // Compute rollHigh envelope on demand — only for BSF
+      const rollHighBand = CONFIG.envelope_bands ? CONFIG.envelope_bands.rollHigh : { lo: 1800, hi: 5000 };
+      const envRollHigh  = computeEnvelopeFFT(rollHighBand.lo, rollHighBand.hi);
+      // Search 3 harmonics (vs original 2) — ISO 13379-1:2012 §A.3 ball defects
+      const nHarm = Math.max(rule.harmonic_count, 3);
+      const bsfE     = eArr        ? berAvg(eArr.freqs,        eArr.mags,        fc, rule.bandwidth_pct, nHarm) : 0;
+      const bsfEHigh = envRollHigh ? berAvg(envRollHigh.freqs, envRollHigh.mags, fc, rule.bandwidth_pct, nHarm) : 0;
+      // Direct raw FFT BER fallback — ball defects sometimes show in velocity spectrum
+      const bsfDirect = berAvg(freqs, mags, fc, rule.bandwidth_pct, nHarm);
       const ftfE  = eArr ? ber(eArr.freqs, eArr.mags, ftfHz, 0.20, 3) : 0;
-      h2 = rule.harmonic_count;
-      // ISO 13379-1:2012 §A.3: FTF modulation confirms ball defect
-      const effectiveBer = (ftfE > CONFIG.bearing_ber_threshold) ? Math.max(bsfE, ftfE) : bsfE;
+      h2 = nHarm;
+      // Take best BER across all three detection paths
+      const bestBsfBer = Math.max(bsfE, bsfEHigh, bsfDirect * 0.7); // direct FFT at 70% weight (less selective)
+      // ISO 13379-1:2012 §A.3: FTF modulation confirms ball defect — lower gate from 1.3 to 1.1
+      const ftfConfirmed = ftfE > 1.1;
+      const effectiveBer = ftfConfirmed ? Math.max(bestBsfBer, ftfE) : bestBsfBer;
       sc = berToScore(effectiveBer, rule.confidence_weight);
       sc += Math.round((cfB + kB) * rule.confidence_weight * snrFactor);
-      if (ftfE > CONFIG.bearing_ber_threshold) sc = Math.round(sc * 1.2);
+      if (ftfConfirmed) sc = Math.round(sc * 1.25);  // slightly stronger boost than before
 
 
     // ── BEARING — CAGE DEFECT (FTF) ──────────────────────────────────────
@@ -2920,6 +2949,117 @@ function mdToHtml(md) {
       // Remove MC class after print dialog closes
       setTimeout(() => document.body.classList.remove('mc-print-mode'), 2000);
     }, 150);
+  };
+
+  // == BASELINE PROMPT ==
+  // Show "Set as baseline?" toast after a clean analysis.
+  // Fires when: zone is A or B, no baseline existed for this asset, and user did NOT
+  // manually tick the baseline checkbox (isBaselineUpload was false).
+  // ISO 13373-2:2016 §8.1 — baseline should be established from stable operating condition.
+  window.showBaselinePrompt = function(assetName, zoneLabel) {
+    // Only prompt for Zone A or B (stable / healthy condition)
+    if (!['A','B'].includes(zoneLabel)) return;
+    // Don't show if already set this run
+    const existing = document.getElementById('ax-baseline-prompt');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'ax-baseline-prompt';
+    toast.style.cssText = [
+      'position:fixed',
+      'bottom:28px',
+      'right:28px',
+      'z-index:8000',
+      'background:#161b22',
+      'border:1px solid rgba(77,157,224,0.5)',
+      'border-radius:14px',
+      'padding:20px 22px',
+      'max-width:340px',
+      'box-shadow:0 8px 32px rgba(0,0,0,0.5)',
+      'animation:slideUpIn 0.35s cubic-bezier(0.22,1,0.36,1) both',
+    ].join(';');
+
+    // Add keyframe if not present
+    if (!document.getElementById('ax-baseline-kf')) {
+      const s = document.createElement('style');
+      s.id = 'ax-baseline-kf';
+      s.textContent = `@keyframes slideUpIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}`;
+      document.head.appendChild(s);
+    }
+
+    toast.innerHTML = `
+      <div style="display:flex;align-items:flex-start;gap:12px;">
+        <div style="font-size:20px;flex-shrink:0;margin-top:1px;">&#128204;</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#e8edf5;margin-bottom:4px;">
+            Set as baseline?
+          </div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#7f93aa;line-height:1.6;margin-bottom:14px;">
+            This Zone ${zoneLabel} result looks healthy. Save it as the reference baseline for
+            <strong style="color:#e8edf5;">${assetName || 'this asset'}</strong>
+            to enable deviation tracking on future readings.
+            <span style="color:#4d9de0;display:block;margin-top:3px;">ISO 13373-2:2016 §8.1</span>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button id="ax-bl-confirm" style="flex:1;padding:9px 0;background:#4d9de0;color:#fff;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;transition:background 0.15s;"
+              onmouseover="this.style.background='#2b7cc4'" onmouseout="this.style.background='#4d9de0'">
+              &#10003; Set Baseline
+            </button>
+            <button id="ax-bl-dismiss" style="padding:9px 14px;background:transparent;color:#7f93aa;border:1px solid #30363d;border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;white-space:nowrap;"
+              onmouseover="this.style.borderColor='#7f93aa'" onmouseout="this.style.borderColor='#30363d'">
+              Not now
+            </button>
+          </div>
+        </div>
+      </div>`;
+
+    document.body.appendChild(toast);
+
+    document.getElementById('ax-bl-dismiss').onclick = () => toast.remove();
+    document.getElementById('ax-bl-confirm').onclick = async () => {
+      const btn = document.getElementById('ax-bl-confirm');
+      btn.textContent = 'Saving…';
+      btn.disabled = true;
+      try {
+        // Resolve asset (same call as pipeline — returns existing record)
+        const mp = nvr.machineParams || {};
+        const asset = await resolveAsset(
+          mp.assetName || nvr.assetName || 'unknown',
+          window.selClassId || 'cls_ii',
+          mp.equipType || '',
+          mp.measPoint || ''
+        );
+        if (asset && asset.id) {
+          // Build baseline from current reading + any Zone A history
+          const hist = nvr._history || [];
+          const zoneAHist = hist.filter(r => r.iso_zone === 'A');
+          const records = [...zoneAHist, { rms_mms: nvr.rms }];
+          await saveBaseline(asset.id, records);
+          // Mark nvr so Supabase record is flagged
+          await SB.patch('nvr_records',
+            'asset_id=eq.'+asset.id+'&order=recorded_at.desc&limit=1',
+            { is_baseline: true }
+          ).catch(()=>{});
+          btn.textContent = '&#10003; Baseline saved';
+          btn.style.background = '#22c55e';
+          setTimeout(() => toast.remove(), 2200);
+        } else {
+          btn.textContent = '(!) Login to save';
+          btn.style.background = '#e74c3c';
+          setTimeout(() => {
+            toast.innerHTML += `<div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#7f93aa;text-align:center;">
+              <a href="fleet.html" style="color:#4d9de0;text-decoration:none;">Sign in to Fleet Dashboard</a> to save baselines</div>`;
+          }, 400);
+        }
+      } catch(e) {
+        btn.textContent = '(!) Error — retry';
+        btn.style.background = '#e74c3c';
+        setTimeout(() => toast.remove(), 3000);
+      }
+    };
+
+    // Auto-dismiss after 20 seconds
+    setTimeout(() => { if (document.getElementById('ax-baseline-prompt')) toast.remove(); }, 20000);
   };
 
   // == PRINT RADAR / FFT COLOUR OVERRIDE ==
