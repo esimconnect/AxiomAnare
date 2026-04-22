@@ -3008,7 +3008,7 @@ function mdToHtml(md) {
           setTimeout(function(){ toast.remove(); }, 2200);
         } else {
           btn.textContent = '(!) Login to save'; btn.style.background = '#e74c3c';
-          setTimeout(function(){ toast.innerHTML += '<div style="margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#7f93aa;text-align:center;"><a href="fleet.html" style="color:#4d9de0;text-decoration:none;">Sign in to Fleet Dashboard</a> to save baselines</div>'; }, 400);
+          setTimeout(function(){ toast.innerHTML += "<div style='margin-top:10px;font-family:IBM Plex Mono,monospace;font-size:10px;color:#7f93aa;text-align:center;'><a href='fleet.html' style='color:#4d9de0;text-decoration:none;'>Sign in to Fleet Dashboard</a> to save baselines</div>"; }, 400);
         }
       } catch(e){ btn.textContent='(!) Error'; btn.style.background='#e74c3c'; setTimeout(function(){ toast.remove(); },3000); }
     };
