@@ -326,70 +326,36 @@ function toCanonicalUnit(v, unit, hz) {
   return v;
 }
 
-// == FREQUENCY-DOMAIN ACCELERATION→VELOCITY INTEGRATION ==
-// ISO 10816 velocity is measured by integrating acceleration in the frequency domain.
-// v(f) = a(f) / (2*pi*f) per bin — each bin gets its own integration factor.
-// Integration band: 10–1000 Hz per ISO 10816 standard measurement band.
-// Returns an array of velocity values (mm/s) same length as input signal.
-// This replaces the incorrect single-frequency scalar conversion for broadband signals.
-function integrateAccelToVelocity(signal, fs, unit) {
-  const N2 = Math.pow(2, Math.floor(Math.log2(Math.min(signal.length, 8192))));
-  const seg = signal.slice(0, N2);
-
-  // Scale to mm/s² first
+// == SPECTRAL VELOCITY RMS FROM ACCELERATION ==
+// ISO 10816 velocity RMS computed by frequency-domain integration.
+// v(f) = a(f) / (2*pi*f) per FFT bin — each bin gets its own integration factor.
+// Spectral RMS = sqrt( sum_band( 0.5 * (mag_mms2[k]/(2*pi*f[k]))^2 ) )
+// Integration band: 10–1000 Hz per ISO 10816-3 standard velocity measurement band.
+// Returns scalar RMS velocity in mm/s. No IFFT needed — Parseval's theorem.
+// ISO 10816-3:2009 §4.2 — velocity RMS is the primary severity metric.
+function accelToVelocityRMS(signal, fs, unit) {
+  const fftResult = computeFFT(signal, fs);
+  const { freqs, mags } = fftResult;
   const gravity = CONFIG.gravity_mm_s2; // 9806.65 mm/s²
-  let scaled;
-  if (unit === 'g')    scaled = seg.map(v => v * gravity);
-  else if (unit === 'm/s2') scaled = seg.map(v => v * 1000); // m/s² → mm/s²
-  else if (unit === 'mg')   scaled = seg.map(v => v * gravity * 0.001);
-  else return signal; // not an acceleration unit — pass through
-
-  // FFT
-  const re = [...scaled], im = new Array(N2).fill(0);
-  (function fft(re, im) {
-    const n = re.length; if (n <= 1) return;
-    const ee=[], eo=[], ie=[], io=[];
-    for (let i=0; i<n/2; i++){ee.push(re[2*i]);eo.push(re[2*i+1]);ie.push(im[2*i]);io.push(im[2*i+1]);}
-    fft(ee,ie); fft(eo,io);
-    for (let k=0; k<n/2; k++){
-      const a=-2*Math.PI*k/n, c=Math.cos(a), s=Math.sin(a);
-      const tr=c*eo[k]-s*io[k], ti=c*io[k]+s*eo[k];
-      re[k]=ee[k]+tr; im[k]=ie[k]+ti; re[k+n/2]=ee[k]-tr; im[k+n/2]=ie[k]-ti;
-    }
-  })(re, im);
-
-  // Integrate in frequency domain: V(f) = A(f)/(2*pi*f)
-  // ISO 10816 band: 10–1000 Hz. Zero out DC and out-of-band bins.
+  // Scale factor from input unit to mm/s²
+  let scale;
+  if      (unit === 'g')    scale = gravity;
+  else if (unit === 'm/s2') scale = 1000;
+  else if (unit === 'mg')   scale = gravity * 0.001;
+  else return null; // not acceleration — caller handles
+  // Spectral integration: v_rms² = sum of 0.5*(A_peak_mms2/(2pi*f))² over ISO band
+  // mags from computeFFT are peak amplitudes (not RMS) of each frequency component
   const fLo = 10, fHi = 1000;
-  const vRe = new Array(N2).fill(0), vIm = new Array(N2).fill(0);
-  for (let k = 1; k < N2/2; k++) {
-    const f = k * fs / N2;
-    if (f < fLo || f > fHi) continue;
-    const factor = 1 / (2 * Math.PI * f);
-    // Integration: divide by j*omega → multiply real by factor, swap and negate for imaginary
-    vRe[k]        =  im[k] * factor;
-    vIm[k]        = -re[k] * factor;
-    // Mirror for IFFT symmetry
-    vRe[N2 - k]   =  vRe[k];
-    vIm[N2 - k]   = -vIm[k];
+  let sumV2 = 0;
+  for (let k = 1; k < freqs.length; k++) {
+    const f = freqs[k];
+    if (f < fLo) continue;
+    if (f > fHi) break;
+    const aMag_mms2 = mags[k] * scale; // peak acceleration amplitude in mm/s²
+    const vMag_mms  = aMag_mms2 / (2 * Math.PI * f); // peak velocity in mm/s
+    sumV2 += 0.5 * vMag_mms * vMag_mms; // 0.5 converts peak² to RMS²
   }
-
-  // IFFT to get time-domain velocity signal
-  for (let i=0; i<N2; i++) vIm[i] = -vIm[i];
-  (function fft(re, im) {
-    const n = re.length; if (n <= 1) return;
-    const ee=[], eo=[], ie=[], io=[];
-    for (let i=0; i<n/2; i++){ee.push(re[2*i]);eo.push(re[2*i+1]);ie.push(im[2*i]);io.push(im[2*i+1]);}
-    fft(ee,ie); fft(eo,io);
-    for (let k=0; k<n/2; k++){
-      const a=-2*Math.PI*k/n, c=Math.cos(a), s=Math.sin(a);
-      const tr=c*eo[k]-s*io[k], ti=c*io[k]+s*eo[k];
-      re[k]=ee[k]+tr; im[k]=ie[k]+ti; re[k+n/2]=ee[k]-tr; im[k+n/2]=ie[k]-ti;
-    }
-  })(vRe, vIm);
-  for (let i=0; i<N2; i++) { vRe[i] /= N2; }
-
-  return vRe; // velocity time series in mm/s
+  return Math.sqrt(sumV2); // RMS velocity in mm/s
 }
 function calcRUL(zone, trend) {
   const b = CONFIG.rul_zone_base_days.find(r => r.zone === zone);
@@ -959,33 +925,42 @@ async function runPipeline(raw, filename) {
   const dataTypes = detectDataTypes(parsed.allHeaders || [parsed.colName]);
   const dataBanner = getDataTypeBanner(dataTypes);
   // ISO 13373-2:2016 §7.2 — detrend full raw signal before all analysis.
-  // Removes DC offset and linear drift so RMS/kurtosis/CF reflect vibration only.
+  // Removes DC offset and linear drift so kurtosis/CF/peak reflect vibration only.
   const pN = parsed.values.length;
   let pSx=0,pSy=0,pSxy=0,pSxx=0;
   for(let i=0;i<pN;i++){pSx+=i;pSy+=parsed.values[i];pSxy+=i*parsed.values[i];pSxx+=i*i;}
   const pDen=pN*pSxx-pSx*pSx, pSlope=pDen?((pN*pSxy-pSx*pSy)/pDen):0, pInt=(pSy-pSlope*pSx)/pN;
   const detrendedRaw = parsed.values.map((v,i)=>v-(pInt+pSlope*i));
+  // For acceleration units: keep vals in original unit (g/m/s²) for kurtosis/CF/peak/FFT.
+  // Kurtosis and CF are dimensionless ratios — unit-independent. FFT envelope analysis
+  // uses BER (dimensionless ratios) — also unit-independent.
+  // RMS velocity for ISO zone comparison is computed separately via spectral integration.
+  const isAccel = ['g','m/s2','mg'].includes(parsed.unit);
   let vals;
-  if (['g','m/s2','mg'].includes(parsed.unit)) {
-    // Frequency-domain integration: v(f)=a(f)/(2pi*f) per ISO 10816 band (10-1000Hz)
-    // Correct broadband g→mm/s — avoids single-frequency scalar error
-    vals = integrateAccelToVelocity(detrendedRaw, sr, parsed.unit);
-    if (!vals || vals.length < 10) {
-      // Fallback: scalar conversion using detected shaft frequency
-      const rf = computeFFT(detrendedRaw, sr); const hz = detectShaft(rf);
-      vals = detrendedRaw.map(v => toCanonicalUnit(v, parsed.unit, hz));
-    }
-  } else { vals = detrendedRaw.map(v => toCanonicalUnit(v, parsed.unit, null)); }
-  doneStage(1, vals.length+' samples . '+parsed.unit+'->'+cu+' . '+sr+'Hz');
+  if (isAccel) {
+    vals = detrendedRaw; // keep in g — dimensionless stats + FFT unaffected by unit
+  } else {
+    vals = detrendedRaw.map(v => toCanonicalUnit(v, parsed.unit, null));
+  }
+  // Spectral velocity RMS for ISO zone — ISO 10816-3:2009 §4.2
+  // accelToVelocityRMS integrates FFT mags over 10-1000Hz band: v(f)=a(f)/(2pi*f)
+  const spectralVelRMS = isAccel ? accelToVelocityRMS(detrendedRaw, sr, parsed.unit) : null;
+  doneStage(1, vals.length+' samples . '+parsed.unit+(isAccel?' (spectral vel integration)':'->')+cu+' . '+sr+'Hz');
 
   // Stage 2  -  Baseline Comparison
   await activateStage(2);
   const n = vals.length;
   const mean = vals.reduce((a,b)=>a+b,0)/n;
   const std  = Math.sqrt(vals.reduce((s,v)=>s+(v-mean)**2,0)/n) || 1;
-  const rms  = Math.sqrt(vals.reduce((s,v)=>s+v*v,0)/n);
+  // RMS velocity for ISO zone: use spectral integration for accel units (ISO 10816-3 §4.2)
+  // For velocity units: standard time-domain RMS.
+  const rmsRaw = Math.sqrt(vals.reduce((s,v)=>s+v*v,0)/n);
+  const rms = (spectralVelRMS && spectralVelRMS > 0) ? spectralVelRMS : rmsRaw;
   let peak = 0; for (let i=0; i<vals.length; i++) { const a=Math.abs(vals[i]); if(a>peak) peak=a; }
-  const cf   = peak/(rms||1);
+  // CF and kurtosis: computed from detrended signal (dimensionless — unit-independent)
+  // For accel units, peak is in g — CF = peak_g/rms_g (dimensionless ratio, still valid)
+  const cfRaw = peak/(rmsRaw||1);
+  const cf    = cfRaw; // use raw-unit CF — dimensionless, not affected by unit choice
   const kurt = vals.reduce((s,v)=>s+((v-mean)/std)**4,0)/n;
 
   // Supabase baseline comparison — ISO 13373-2:2016 §8.1
