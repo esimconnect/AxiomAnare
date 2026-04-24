@@ -17,11 +17,48 @@ const Freemium = {
     } catch(e) { return 1; }
   },
   isPro() {
-    try { return localStorage.getItem('ax_pro') === 'true'; } catch(e) { return false; }
+    // Primary: check cached tier written by syncTier() after auth resolves
+    try {
+      const t = localStorage.getItem('ax_tier');
+      if (t && t !== 'free') return true;
+      // Legacy fallback: ax_pro flag (set by older auth flows)
+      if (localStorage.getItem('ax_pro') === 'true') return true;
+    } catch(e) {}
+    return false;
   },
   isFree() { return !this.isPro(); },
   remaining() { return Math.max(0, FREE_ANALYSIS_LIMIT - this.getCount()); },
   isLocked() { return this.isFree() && this.getCount() >= FREE_ANALYSIS_LIMIT; },
+
+  // ── syncTier ─────────────────────────────────────────────────────────────
+  // Called once on page load (after auth.js is ready).
+  // Reads the live Supabase tier via window.Auth.getTier() and caches it in
+  // localStorage so all synchronous isPro() calls see the correct value.
+  // Also refreshes the nav badge and removes freemium overlays if user is paid.
+  async syncTier() {
+    try {
+      if (typeof window.Auth === 'undefined' || typeof window.Auth.getTier !== 'function') return;
+      const tier = await window.Auth.getTier();           // null if not logged in
+      const paid = tier && tier !== 'free';
+      try {
+        localStorage.setItem('ax_tier', tier || 'free');
+        if (paid) localStorage.setItem('ax_pro', 'true');
+        else localStorage.removeItem('ax_pro');
+      } catch(e) {}
+      if (typeof window.updateFreeBadge === 'function') window.updateFreeBadge();
+      // If user just became paid, remove any lingering freemium overlays
+      if (paid) {
+        const wm = document.getElementById('ax-watermark');   if (wm) wm.remove();
+        const tb = document.getElementById('ax-trial-banner');if (tb) tb.remove();
+        const mo = document.getElementById('ax-upgrade-modal');if (mo) mo.remove();
+        const pb = document.getElementById('pdf-btn');
+        if (pb) { pb.style.opacity = ''; pb.style.cursor = ''; pb.title = ''; pb.dataset.gated = ''; pb.onclick = null; }
+      }
+    } catch(e) {
+      console.warn('[Freemium] syncTier failed (non-blocking):', e.message);
+    }
+  },
+
   showUpgradeModal(reason) {
     const existing = document.getElementById('ax-upgrade-modal');
     if (existing) existing.remove();

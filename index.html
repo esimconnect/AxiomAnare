@@ -958,7 +958,6 @@ window.addEventListener('load', function() {
       badge.style.color = 'var(--yellow)';
       badge.style.borderColor = 'rgba(245,158,11,0.3)';
       badge.style.background = 'rgba(245,158,11,0.07)';
-      badge.textContent = '&#9650; Upgrade to continue';
       badge.innerHTML = '&#9650; Upgrade to continue';
     }
   };
@@ -975,5 +974,24 @@ window.addEventListener('load', function() {
   const supabaseClient = supabase.createClient(SUPABASE_URL_AUTH, SUPABASE_ANON_KEY_AUTH);
 </script>
 <script src="auth.js"></script>
+<script>
+// Sync Supabase tier → Freemium after auth.js has initialised.
+// auth.js runs synchronously as an IIFE so window.Auth is available immediately
+// after the script tag above. We defer one tick to let any auth.js async init
+// (session restore) settle before reading the tier.
+(function() {
+  function doSync() {
+    if (typeof Freemium !== 'undefined' && typeof Freemium.syncTier === 'function') {
+      Freemium.syncTier();
+    }
+  }
+  // Wait for DOMContentLoaded if not already fired, else run next tick
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() { setTimeout(doSync, 200); });
+  } else {
+    setTimeout(doSync, 200);
+  }
+})();
+</script>
 </body>
 </html>
