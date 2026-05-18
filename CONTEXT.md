@@ -1,6 +1,6 @@
 # AxiomAnare — Living Project Context
-Last updated: April 2026
-Latest commit: 76f681a
+Last updated: May 2026
+Latest commit: 4649bc0
 
 ---
 
@@ -18,6 +18,7 @@ Latest commit: 76f681a
   knowledge_chunks, usage_log, subscription_events
 - RLS: hardened and tested on all tables (organisations still UNRESTRICTED — pending)
 - pgvector: confirmed already enabled
+- Keep-alive: Cloudflare Worker cron "0 9 */3 * *" — prevents 7-day inactivity pause
 
 ---
 
@@ -73,6 +74,11 @@ Latest commit: 76f681a
 - [x] CWRU benchmark 5/5 confirmed on .mat files
 - [x] FREE_ANALYSIS_LIMIT = 5 (confirmed in app.js — CONTEXT was stale at 2)
 - [x] Tier gating — index.html (Freemium.syncTier() wired to Auth.getTier())
+- [x] Supabase keep-alive — CF Worker scheduled() handler
+      Cron: "0 9 */3 * *" (every 3 days, 09:00 UTC)
+      Query: GET /rest/v1/assets?select=id&limit=1
+      Workers Logs enabled in Cloudflare Observability
+      Prevents 7-day inactivity pause on Supabase free tier
 
 ## In Progress
 - [ ] Tier gating — fleet.html (same syncTier pattern, pending)
@@ -155,7 +161,7 @@ ALTER TABLE profiles
 
 ---
 
-## Current State (stable — commit 76f681a)
+## Current State (stable — commit 4649bc0)
 - CWRU benchmark: 5/5 (97_Normal ✓, 105_IR ✓, 118_Ball ✓, 130_OR ✓, 234_OR ✓)
 - Single + multi-channel diagnostic pipeline ✅
 - Multi-channel tab selector — All / per-channel tabs filter Radar + FFT simultaneously ✅
@@ -166,8 +172,9 @@ ALTER TABLE profiles
 - Fleet dashboard at /fleet.html — Supabase auth, RLS, asset-first upload ✅
 - Landing page at /landing.html ✅
 - Cloudflare Worker proxy: restless-tree-eac8.kairosventure-io.workers.dev ✅
+- Cloudflare Worker cron: scheduled() handler runs every 3 days @ 09:00 UTC ✅
 - Supabase baseline engine: assets, baselines, nvr_records, fault_signatures, bearing_library ✅
-- Keep-alive ping: every 4 days prevents Supabase free tier pause ✅
+- Workers Logs enabled in Cloudflare Observability ✅
 
 ---
 
@@ -313,7 +320,8 @@ PDF/MD → chunk text → embed via Voyage AI (voyage-3, 1024-dim)
 - POST /rag                      — proxies Supabase match_knowledge_chunks RPC (SUPABASE_SERVICE_KEY)
 - POST /create-checkout-session  — creates Stripe Checkout Session (STRIPE_SECRET_KEY + STRIPE_PRICE_*)
 - POST /stripe-webhook           — Stripe event receiver (STRIPE_WEBHOOK_SECRET)
-- Worker version: 1ffa12d1-6960-4c3b-8a78-8c49e17c7437 (redeploy needed after adding Stripe secrets)
+- CRON  "0 9 */3 * *"            — scheduled() handler — Supabase keep-alive ping (every 3 days, 09:00 UTC)
+- Active version: 18 May 2026 deploy (commit 4649bc0)
 
 ### ML Pipeline (planned)
 1. Supabase Storage buckets setup
@@ -380,6 +388,10 @@ knowledge-base/          (private bucket)
 | Apr 2026 | Freemium.isPro() reads ax_tier (not ax_pro)     | ax_tier written by syncTier() from Supabase |
 | Apr 2026 | syncTier() called 200ms after auth.js loads     | Allows Supabase session restore before tier read |
 | Apr 2026 | ax_pro flag retained as legacy fallback         | Existing sessions not broken         |
+| May 2026 | Supabase keep-alive via CF Worker cron (not GH Actions) | Worker already has SUPABASE_SERVICE_KEY bound; one surface to maintain |
+| May 2026 | Cron schedule: "0 9 */3 * *" (every 3 days)     | Comfortable margin under Supabase 7-day inactivity threshold |
+| May 2026 | Keep-alive query: GET /rest/v1/assets?limit=1   | Minimal payload, proves Postgres awake |
+| May 2026 | Avoid */N cron expressions inside JSDoc blocks  | "*/" terminates /** */ comments — use prose in docstrings |
 
 ---
 
@@ -393,6 +405,7 @@ PHASE 1 — Foundation (build now)
 ├── Animated logo + responsive layout                       ✓ DONE
 ├── Stripe integration                                      ✓ DONE (PayPal deferred)
 ├── Tier gating — index.html                                ✓ DONE
+├── Supabase keep-alive cron                                ✓ DONE
 ├── Tier gating — fleet.html                                ← NEXT
 └── Landing page                                            ✓ DONE (copy only)
 
@@ -430,7 +443,7 @@ PHASE 4 — ML (12-24 months)
 | agnosticParser2.js         | Agnostic file parser                             |
 | multiChannel.js            | Multi-channel analysis                           |
 | agnosticParser.css         | Parser styles                                    |
-| axiomanare-proxy.js        | Cloudflare Worker — Claude + embed + RAG + Stripe|
+| axiomanare-proxy.js        | Cloudflare Worker — Claude + embed + RAG + Stripe + cron |
 | ISO_10816_Chart_colour.pdf | ISO zone reference + CMVA interpretation         |
 | Balancing_Report_K394.pdf  | Confirmed imbalance case study (K394-11)         |
 
@@ -484,6 +497,7 @@ D:\Kairos\AxiomAnare\axiomanare\AxiomAnare\
 - "ML — feature extraction CWRU/NASA"
 - "RAG — knowledge base pipeline"
 - "Twin — digital twin Phase 1"
+- "Ops — [infrastructure / observability task]"
 - "UI — [specific component name]"
 - "Data — KB field reports [quarter]"
 
@@ -718,12 +732,46 @@ Files changed:
   - CONTEXT.md
 
 Latest commit: 76f681a
+```
+
+## Session Log — 18 May 2026 (Ops — Supabase keep-alive cron)
+```
+Completed this session:
+  - Triggered by Supabase pause warning email (7-day inactivity threshold)
+  - Manual SQL ping run first to stop pause clock:
+      SELECT count(*) FROM assets;  → returned 17, activity registered
+  - Added scheduled() handler to axiomanare-proxy.js:
+      Query: GET /rest/v1/assets?select=id&limit=1
+      Uses existing SUPABASE_URL + SUPABASE_SERVICE_KEY secrets
+      Logs status + ISO timestamp to console
+  - Cloudflare dashboard:
+      - Edit Code → pasted updated worker file → Save and Deploy
+      - Settings → Trigger Events → Add Cron Trigger: "0 9 */3 * *"
+      - Settings → Observability → Workers Logs: Enabled
+  - Cron registered, handler bound to scheduled(), next run: Tue 19 May 2026 09:00 UTC
+  - Bug squashed during deploy: original draft had "*/3" inside a /** JSDoc */
+    block, which terminated the comment early at the "*/" sequence. Reworded
+    docstring to prose (no "*/" inside block) — see Key Decisions Log.
+  - Manual cron firing not available in Cloudflare UI — verification deferred
+    to first scheduled run.
+
+Files changed:
+  - axiomanare-proxy.js (added scheduled() handler, updated header docstring)
+  - CONTEXT.md
+
+Latest commit: 4649bc0
 
 Next session should:
-  - Verify auth.js Auth.getTier() returns tier string matching isPro() check
-    (must return 'pro' / 'fleet_starter' / 'fleet_pro' / 'free' / null)
-  - Apply same syncTier pattern to fleet.html
-  - Run Supabase ALTER TABLE profiles ADD COLUMN stripe_customer_id + stripe_subscription_id
-  - Stripe go-live checklist: add Worker secrets, create products/prices, register webhook
-  - RLS re-hardening on organisations table
+  - Verify keep-alive cron ran successfully (Cloudflare → Workers →
+    restless-tree-eac8 → Observability → Events, after 19 May 09:00 UTC).
+    Expect: 1 Success event, log "keepalive 200 @ 2026-05-19T09:00:..."
+  - Open "Gating — fleet.html tier sync" per 24 Apr handoff:
+      Apply Freemium.syncTier pattern to fleet.html, same as index.html.
+      Verify Auth.getTier() returns 'pro' / 'fleet_starter' / 'fleet_pro' /
+      'free' / null.
+  - Run Supabase ALTER TABLE profiles ADD COLUMN stripe_customer_id +
+    stripe_subscription_id (still pending from 21 Apr Stripe session)
+  - Stripe go-live checklist: add Worker secrets, create products/prices,
+    register webhook endpoint
+  - RLS re-hardening on organisations table (currently UNRESTRICTED)
 ```
