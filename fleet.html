@@ -385,6 +385,29 @@ tr:hover td { background: rgba(77,157,224,0.03); }
   </div>
 </div>
 
+<!-- ══ UPGRADE GATE SCREEN (Fleet plan required) ═════════════ -->
+<div id="upgrade-screen" style="display:none;min-height:100vh;align-items:center;justify-content:center;padding:20px;background:radial-gradient(ellipse at 30% 20%, rgba(77,157,224,0.08) 0%, transparent 60%),radial-gradient(ellipse at 70% 80%, rgba(168,85,247,0.05) 0%, transparent 50%),var(--bg);">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-mark">Ax</div>
+      <div>
+        <div class="login-app-name">AxiomAnare</div>
+        <div class="login-app-sub">AGNOSTIC · AUGMENTED AI ANALYSIS</div>
+      </div>
+    </div>
+    <div class="login-title">Fleet plan required</div>
+    <div class="login-sub">The Fleet Dashboard is available on Fleet Starter and Fleet Pro plans</div>
+
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);line-height:1.6;margin-bottom:20px;">
+      Your current plan: <span id="upgrade-current-tier" style="color:var(--text);">—</span><br>
+      Fleet Starter manages up to 10 assets with full diagnostic history and baseline tracking. Fleet Pro extends this to 30 assets with priority support.
+    </div>
+
+    <button class="login-btn" onclick="Auth.openModal('subscribe')">View Fleet plans →</button>
+    <div class="login-divider"><span class="register-link" onclick="doLogout()">Sign out</span></div>
+  </div>
+</div>
+
 <!-- ══ REGISTER MODAL ════════════════════════════════════════ -->
 <div class="modal-overlay" id="register-modal">
   <div class="modal-card">
@@ -696,6 +719,53 @@ async function sbPatch(table, params, data) {
   return r.json();
 }
 
+// ══ TIER GATING ═════════════════════════════════════════════
+// Master switch. Leave FALSE during stress testing so any authenticated
+// user reaches the dashboard. Flip to TRUE before launch to enforce that
+// only fleet_starter / fleet_pro plans can access the Fleet Dashboard.
+const FLEET_GATING_ENABLED = false;
+
+// Reads the signed-in user's tier via fleet's own authenticated session.
+// NOTE: do NOT use Auth.getTier() here — that reads through the supabase-js
+// client, which has no session on fleet.html (fleet auths via raw fetch).
+// Routing through it would floor every user to 'free' and lock out paying
+// fleet subscribers. We query profiles directly with the bearer token,
+// the same way loadUserOrg() reads organisations.
+async function getUserTier() {
+  const uid = _session?.user?.id;
+  if (!uid) return 'free';
+  try {
+    const rows = await sbGet('profiles', `select=tier&id=eq.${uid}`);
+    return rows?.[0]?.tier || 'free';
+  } catch (e) {
+    console.warn('getUserTier: tier read failed, defaulting to free —', e.message);
+    return 'free';
+  }
+}
+
+function isFleetTier(tier) {
+  return tier === 'fleet_starter' || tier === 'fleet_pro';
+}
+
+// Gate a freshly-authenticated session. Returns true if the user may proceed
+// to the dashboard. When gating is disabled, always allows through.
+async function enforceFleetGate() {
+  if (!FLEET_GATING_ENABLED) return true;
+  const tier = await getUserTier();
+  if (isFleetTier(tier)) return true;
+  showUpgradeScreen(tier);
+  return false;
+}
+
+function showUpgradeScreen(tier) {
+  const labels = { free: 'Free', pro: 'Pro', fleet_starter: 'Fleet Starter', fleet_pro: 'Fleet Pro' };
+  const el = document.getElementById('upgrade-current-tier');
+  if (el) el.textContent = labels[tier] || (tier || 'Free');
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'none';
+  document.getElementById('upgrade-screen').style.display = 'flex';
+}
+
 // ══ INIT ════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', async () => {
   // Set today's date defaults
@@ -713,6 +783,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       });
       if (r.ok) {
         _session = parsed;
+        if (!(await enforceFleetGate())) return;
         await loadUserOrg();
         showApp();
         return;
@@ -738,6 +809,7 @@ async function doLogin() {
   }
   _session = res;
   localStorage.setItem('ax_session', JSON.stringify(res));
+  if (!(await enforceFleetGate())) return;
   await loadUserOrg();
   showApp();
 }
@@ -776,6 +848,8 @@ async function doLogout() {
   localStorage.removeItem('ax_session');
   _session = null; _orgId = null; _orgName = null;
   document.getElementById('app-screen').style.display = 'none';
+  const up = document.getElementById('upgrade-screen');
+  if (up) up.style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
 }
 
