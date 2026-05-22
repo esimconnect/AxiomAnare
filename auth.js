@@ -72,8 +72,9 @@
 
   // Returns the numeric analysis allowance for the current tier
   // 0 = unlimited (paid tiers)
+  // NOTE: free limit must match FREE_ANALYSIS_LIMIT in app.js (source of truth = 5).
   function tierAnalysisLimit(tier) {
-    return tier === 'free' ? 2 : 0;
+    return tier === 'free' ? 5 : 0;
   }
 
   async function incrementAnalysesUsed(userId) {

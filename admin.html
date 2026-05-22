@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AxiomAnare — Admin</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- :root values copied verbatim from index.html (22 May) so admin.html matches the app. -->
+<style>
+  :root{
+    --bg:#1c2333; --surface:#232d3f; --surface2:#1a2435; --surface3:#151e2d;
+    --border:#2a3a52; --border2:#334560;
+    --accent:#4d9de0; --accent2:#2b7cc4;
+    --green:#2ecc71; --yellow:#f39c12; --red:#e74c3c; --purple:#9b59b6;
+    --text:#e8edf5; --muted:#7f93aa;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:'IBM Plex Sans',sans-serif;line-height:1.5;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  h1,h2,h3,.label{font-family:'Barlow Condensed',sans-serif;
+    letter-spacing:.02em;text-transform:uppercase;margin:0;}
+  table{border-collapse:collapse;width:100%;}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);
+    font-size:13px;vertical-align:middle;}
+  th{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--muted);font-weight:600;font-size:14px;}
+  tr:hover td{background:rgba(255,255,255,.02);}
+  ::placeholder{color:var(--muted);}
+  @media (max-width:600px){ td,th{padding:8px 6px;font-size:12px;} }
+</style>
+</head>
+
+<body>
+
+<!-- ===================== LOGIN VIEW ===================== -->
+<div id="login-view" style="display:none;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;">
+  <div style="width:100%;max-width:380px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:28px;">
+    <h1 style="font-size:26px;margin-bottom:4px;">AxiomAnare Admin</h1>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:20px;">Administrator sign-in required</div>
+    <label class="label" style="font-size:13px;color:var(--muted);">Email</label>
+    <input id="login-email" type="email" autocomplete="username"
+      style="width:100%;margin:6px 0 14px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13px;">
+    <label class="label" style="font-size:13px;color:var(--muted);">Password</label>
+    <input id="login-pass" type="password" autocomplete="current-password"
+      style="width:100%;margin:6px 0 18px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13px;">
+    <button id="login-btn"
+      style="width:100%;padding:11px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-family:'Barlow Condensed',sans-serif;font-size:16px;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;">Sign In</button>
+    <div id="login-msg" class="mono" style="font-size:12px;color:var(--red);margin-top:12px;min-height:16px;"></div>
+    <div style="margin-top:16px;text-align:center;"><a href="index.html" style="color:var(--muted);font-size:12px;text-decoration:none;">&larr; Back to app</a></div>
+  </div>
+</div>
+
+<!-- ===================== BLOCKED OVERLAY (non-admin) ===================== -->
+<div id="blocked-view" style="display:none;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;">
+  <div style="width:100%;max-width:420px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:28px;text-align:center;">
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:30px;color:var(--red);text-transform:uppercase;letter-spacing:.04em;">Access Restricted</div>
+    <div style="color:var(--muted);font-size:14px;margin:12px 0 22px;">This area is limited to AxiomAnare administrators. Your account does not have administrator privileges.</div>
+    <div id="blocked-who" class="mono" style="font-size:12px;color:var(--muted);margin-bottom:18px;"></div>
+    <a href="index.html" style="display:inline-block;padding:10px 18px;background:var(--accent);color:#fff;border-radius:6px;text-decoration:none;font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.04em;">Return to App</a>
+    <div style="margin-top:14px;"><a href="#" id="blocked-signout" style="color:var(--muted);font-size:12px;text-decoration:none;">Sign out</a></div>
+  </div>
+</div>
+
+<!-- ===================== ADMIN DASHBOARD ===================== -->
+<div id="admin-view" style="display:none;min-height:100vh;">
+  <!-- header -->
+  <div style="border-bottom:1px solid var(--border);background:var(--surface);">
+    <div style="max-width:1100px;margin:0 auto;padding:16px 22px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div>
+        <h1 style="font-size:24px;">AxiomAnare <span style="color:var(--accent);">Admin</span></h1>
+        <div id="admin-who" class="mono" style="font-size:12px;color:var(--muted);margin-top:2px;"></div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <button id="refresh-btn"
+          style="padding:8px 14px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;">Refresh</button>
+        <button id="signout-btn"
+          style="padding:8px 14px;background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:6px;font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;">Sign Out</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="max-width:1100px;margin:0 auto;padding:22px;">
+
+    <!-- write-path self test (the one untested live path: admin JWT -> update -> trigger) -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:18px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div>
+          <div class="label" style="font-size:15px;">Admin write-path check</div>
+          <div style="color:var(--muted);font-size:12px;margin-top:2px;max-width:640px;">
+            Verifies that an admin JWT can write a guarded column (tier) through the column-guard trigger.
+            Performs a harmless no-op: re-writes your own tier to its current value. Run this once before relying on tier edits.
+          </div>
+        </div>
+        <button id="selftest-btn"
+          style="padding:9px 16px;background:var(--purple);color:#fff;border:none;border-radius:6px;font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;white-space:nowrap;">Verify write path</button>
+      </div>
+      <div id="selftest-msg" class="mono" style="font-size:12px;margin-top:10px;min-height:16px;"></div>
+    </div>
+
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+      <h2 style="font-size:20px;">Subscribers</h2>
+      <div id="row-count" class="mono" style="font-size:12px;color:var(--muted);"></div>
+    </div>
+    <div id="email-note" style="display:none;color:var(--yellow);font-size:12px;margin-bottom:10px;"></div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:auto;">
+      <table id="subs-table">
+        <thead>
+          <tr>
+            <th>Email / ID</th>
+            <th>Tier</th>
+            <th>Status</th>
+            <th style="text-align:right;">Analyses</th>
+            <th>Signed up</th>
+            <th style="width:1%;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="subs-body">
+          <tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div id="global-msg" class="mono" style="font-size:12px;margin-top:14px;min-height:16px;"></div>
+    <div style="color:var(--muted);font-size:11px;margin-top:20px;line-height:1.6;">
+      Admin v1 — read all profiles; set tier; reset analysis count. Deferred to v2:
+      config-flag editing, usage analytics, KB management, subscription-event browser.
+      All output requires qualified engineer review and sign-off where applicable.
+    </div>
+  </div>
+</div>
+
+<!-- supabase-js v2 (self-contained: admin.html does NOT load auth.js, to avoid a second client sharing session storage) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // ---- Supabase config (must match index.html so the session is shared) -----
+  // index.html does: supabase.createClient(URL, PUBLISHABLE_KEY) with no custom
+  // storageKey. We use the SAME key and default config, so the storage key
+  // (derived from the project ref) matches and an existing index.html session
+  // is picked up here automatically.
+  const SUPABASE_URL  = "https://zjfhxutcvjxootoekade.supabase.co";
+  const SUPABASE_ANON = "sb_publishable_lM8rmd2rwRo3-XXW_iOy2A_28Zinsh8";
+
+  const TIERS = ["free","pro","fleet_starter","fleet_pro"];
+
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+  const $ = (id) => document.getElementById(id);
+  const show = (id) => { $(id).style.display = (id==="login-view"||id==="blocked-view") ? "flex" : "block"; };
+  const hideAll = () => ["login-view","blocked-view","admin-view"].forEach(v => $(v).style.display="none");
+
+  let currentUser = null;   // { id, email }
+  let myTier = null;        // admin's own tier (for the write-path self-test)
+
+  // ---- date helper ----------------------------------------------------------
+  function fmtDate(s){
+    if(!s) return "—";
+    const d = new Date(s);
+    if(isNaN(d)) return "—";
+    return d.toISOString().slice(0,10);
+  }
+
+  // ---- boot -----------------------------------------------------------------
+  async function boot(){
+    const { data:{ session } } = await sb.auth.getSession();
+    if(!session){ hideAll(); show("login-view"); return; }
+    currentUser = { id: session.user.id, email: session.user.email };
+    await routeBySession();
+  }
+
+  async function routeBySession(){
+    // is_admin() helper (SECURITY DEFINER, granted to authenticated) — read via
+    // the client that actually holds the session, i.e. this supabase-js client.
+    let isAdmin = false;
+    try{
+      const { data, error } = await sb.rpc("is_admin");
+      if(error) throw error;
+      isAdmin = data === true;
+    }catch(e){
+      // Fallback: read own profile row (admin SELECT policy permits own row).
+      try{
+        const { data } = await sb.from("profiles").select("is_admin,tier").eq("id", currentUser.id).single();
+        isAdmin = data && data.is_admin === true;
+        if(data) myTier = data.tier;
+      }catch(_){ /* leave isAdmin false */ }
+    }
+
+    if(!isAdmin){
+      hideAll();
+      $("blocked-who").textContent = "Signed in as " + (currentUser.email || currentUser.id);
+      show("blocked-view");
+      return;
+    }
+
+    hideAll();
+    $("admin-who").textContent = (currentUser.email || currentUser.id) + " · administrator";
+    show("admin-view");
+    if(myTier === null) await loadMyTier();
+    await loadSubscribers();
+  }
+
+  async function loadMyTier(){
+    try{
+      const { data } = await sb.from("profiles").select("tier").eq("id", currentUser.id).single();
+      myTier = data ? data.tier : null;
+    }catch(_){ myTier = null; }
+  }
+
+  // ---- login ----------------------------------------------------------------
+  $("login-btn").addEventListener("click", login);
+  $("login-pass").addEventListener("keydown", (e)=>{ if(e.key==="Enter") login(); });
+  async function login(){
+    const email = $("login-email").value.trim();
+    const password = $("login-pass").value;
+    $("login-msg").textContent = "";
+    if(!email || !password){ $("login-msg").textContent = "Enter email and password."; return; }
+    $("login-btn").disabled = true; $("login-btn").textContent = "Signing in…";
+    try{
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if(error) throw error;
+      currentUser = { id: data.user.id, email: data.user.email };
+      myTier = null;
+      await routeBySession();
+    }catch(e){
+      $("login-msg").textContent = e.message || "Sign-in failed.";
+    }finally{
+      $("login-btn").disabled = false; $("login-btn").textContent = "Sign In";
+    }
+  }
+
+  // ---- sign out -------------------------------------------------------------
+  async function signOut(){ await sb.auth.signOut(); hideAll(); show("login-view"); }
+  $("signout-btn").addEventListener("click", signOut);
+  $("blocked-signout").addEventListener("click", (e)=>{ e.preventDefault(); signOut(); });
+
+  // ---- load subscribers -----------------------------------------------------
+  $("refresh-btn").addEventListener("click", loadSubscribers);
+
+  async function loadSubscribers(){
+    const body = $("subs-body");
+    body.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Loading…</td></tr>';
+    $("email-note").style.display = "none";
+    $("global-msg").textContent = "";
+
+    let rows = null;
+
+    // Preferred: admin_list_profiles() RPC — joins auth.users for email, gated
+    // on is_admin() inside the function. Deploy admin_list_profiles.sql to enable.
+    try{
+      const { data, error } = await sb.rpc("admin_list_profiles");
+      if(error) throw error;
+      rows = data || [];
+    }catch(e){
+      // Fallback: direct profiles read (admin SELECT policy). No email column on
+      // profiles, so email shows as the short id until the RPC is deployed.
+      try{
+        const { data, error } = await sb
+          .from("profiles")
+          .select("id,tier,subscription_status,analyses_used,org_id,created_at")
+          .order("created_at", { ascending:false });
+        if(error) throw error;
+        rows = (data || []).map(r => ({ ...r, email:null }));
+        $("email-note").textContent =
+          "Email unavailable from the browser (profiles has no email column). Deploy admin_list_profiles.sql to show email.";
+        $("email-note").style.display = "block";
+      }catch(e2){
+        body.innerHTML = '<tr><td colspan="6" style="color:var(--red);text-align:center;padding:24px;">Failed to load: '
+          + (e2.message || e2) + '</td></tr>';
+        return;
+      }
+    }
+
+    renderRows(rows);
+  }
+
+  function renderRows(rows){
+    const body = $("subs-body");
+    $("row-count").textContent = rows.length + (rows.length===1?" account":" accounts");
+    if(!rows.length){
+      body.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">No accounts.</td></tr>';
+      return;
+    }
+    body.innerHTML = "";
+    rows.forEach(r => {
+      const tr = document.createElement("tr");
+      tr.dataset.id = r.id;
+
+      const idLabel = r.email ? r.email : (r.id.slice(0,8) + "…");
+      const tierOpts = TIERS.map(t =>
+        `<option value="${t}"${t===r.tier?" selected":""}>${t}</option>`).join("");
+
+      tr.innerHTML =
+        `<td class="mono" title="${r.id}">${idLabel}</td>
+         <td>
+           <select class="tier-select" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 6px;font-family:'IBM Plex Mono',monospace;font-size:12px;">${tierOpts}</select>
+         </td>
+         <td class="mono" style="color:var(--muted);">${r.subscription_status || "—"}</td>
+         <td class="mono" style="text-align:right;">${r.analyses_used ?? 0}</td>
+         <td class="mono" style="color:var(--muted);">${fmtDate(r.created_at)}</td>
+         <td style="white-space:nowrap;">
+           <button class="save-tier-btn" style="padding:6px 10px;background:var(--accent);color:#fff;border:none;border-radius:5px;font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;font-size:12px;letter-spacing:.03em;cursor:pointer;">Set tier</button>
+           <button class="reset-btn" style="padding:6px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:5px;font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;font-size:12px;letter-spacing:.03em;cursor:pointer;margin-left:4px;">Reset count</button>
+           <span class="row-msg mono" style="font-size:11px;margin-left:8px;"></span>
+         </td>`;
+
+      tr.querySelector(".save-tier-btn").addEventListener("click", () => setTier(tr));
+      tr.querySelector(".reset-btn").addEventListener("click", () => resetCount(tr));
+      body.appendChild(tr);
+    });
+  }
+
+  function rowMsg(tr, text, color){
+    const el = tr.querySelector(".row-msg");
+    el.textContent = text; el.style.color = color || "var(--muted)";
+  }
+
+  // ---- action: set tier -----------------------------------------------------
+  // Admin UPDATE on a guarded column. Policy allows (admin); column-guard trigger
+  // exempts admins. Issued by the admin's JWT through supabase-js.
+  async function setTier(tr){
+    const id = tr.dataset.id;
+    const tier = tr.querySelector(".tier-select").value;
+    rowMsg(tr, "saving…", "var(--muted)");
+    try{
+      const { error } = await sb.from("profiles").update({ tier }).eq("id", id);
+      if(error) throw error;
+      rowMsg(tr, "tier set ✓", "var(--green)");
+    }catch(e){
+      rowMsg(tr, (e.message || "failed"), "var(--red)");
+    }
+  }
+
+  // ---- action: reset analysis count -----------------------------------------
+  // analyses_used is NOT a guarded column; admin UPDATE permitted by policy.
+  async function resetCount(tr){
+    const id = tr.dataset.id;
+    rowMsg(tr, "resetting…", "var(--muted)");
+    try{
+      const { error } = await sb.from("profiles").update({ analyses_used: 0 }).eq("id", id);
+      if(error) throw error;
+      const cell = tr.children[3]; if(cell) cell.textContent = "0";
+      rowMsg(tr, "reset ✓", "var(--green)");
+    }catch(e){
+      rowMsg(tr, (e.message || "failed"), "var(--red)");
+    }
+  }
+
+  // ---- write-path self test (the flagged untested live path) ----------------
+  $("selftest-btn").addEventListener("click", selfTest);
+  async function selfTest(){
+    const msg = $("selftest-msg");
+    if(myTier === null) await loadMyTier();
+    if(myTier === null){ msg.textContent = "Could not read own tier to test."; msg.style.color="var(--red)"; return; }
+    msg.textContent = "Testing: re-writing own tier ('" + myTier + "') as a no-op via admin JWT…";
+    msg.style.color = "var(--muted)";
+    try{
+      const { error } = await sb.from("profiles").update({ tier: myTier }).eq("id", currentUser.id);
+      if(error) throw error;
+      msg.textContent = "PASS — admin JWT can write guarded column 'tier' through the trigger. Tier edits are safe to use.";
+      msg.style.color = "var(--green)";
+    }catch(e){
+      msg.textContent = "FAIL — " + (e.message || e) +
+        "  (the trigger is rejecting the admin JWT; tier edits will not work until resolved).";
+      msg.style.color = "var(--red)";
+    }
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
